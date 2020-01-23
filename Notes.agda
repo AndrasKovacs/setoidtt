@@ -11,6 +11,10 @@ open import Relation.Binary.PropositionalEquality
 
 infixr 4 _▶_
 
+-- foobar
+id : {A : Set} → A → A
+id x = x
+
 data Tel : Set₁ where
   ∙   : Tel
   _▶_ : (A : Set) → (A → Tel) → Tel
@@ -28,4 +32,4 @@ app f = f
 lam : ∀ {Δ B} → ((x : Rec Δ) → B x) → Π* Δ B
 lam f = f
 
-eq1 : ∀ {A Δ B} → app {A ▶ Δ}{B} {!!} {!!} ≡ {!!}
+-- eq1 : ∀ {A Δ B} → app {A ▶ Δ}{B} {!!} {!!} ≡ {!!}

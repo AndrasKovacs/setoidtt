@@ -67,6 +67,10 @@
 %%   BoldItalicFont = *-BoldOblique]
 %%   {DejaVuSansMono}
 \setmonofont[Scale=0.8]{DejaVuSansMono}
+\usepackage{fancyvrb}
+\usepackage{xcolor}
+\newcommand{\blue}[1]{\textcolor{blue}{#1}}
+\newcommand{\red}[1]{\textcolor{red}{#1}}
 
 %% ------------------------------------------------------------
 
@@ -153,11 +157,11 @@ and where to try filling in details on its own.
 \textbf{Implicit function types} are a common mechanism for conveying to the
 compiler that particular arguments should be inferred by default. In Agda and
 Coq, one can use bracketed function domains for this purpose:
-\begin{verbatim}
-          -- Agda                       (* Coq *)
-          id : {A : Set} → A → A        Definition id {A:Type}(x : A) := x.
+\begin{Verbatim}[commandchars=\\\{\}]
+          \red{-- Agda}                     \red{(* Coq *)}
+          \blue{id} : {A : \blue{Set}} → A → A        \blue{Definition} id \{A:Type\}(x : A) := x.
           id x = x
-\end{verbatim}
+\end{Verbatim}
 In GHC, one can use \texttt{forall} to define implicit function
 types\footnote{This notation requires language extensions
   \texttt{KindSignatures} and \texttt{RankNTypes}; one could also write the type
@@ -183,10 +187,11 @@ the type of elements is an implicit function, as in \texttt{List (\{A : Set\} �
 handling such types, and in many cases programmers must write out
 implicit lambda abstractions.
 
-In Coq, the core language does not have an actual implicit function
-type, instead, implicitness is tied to particular \emph{names}, and while we can
-write \texttt{List (forall \{A : Set\}, A -> A)}, the brackets here are simply
-ignored by Coq. For illustration, Coq accepts the following definition:
+In Coq, the core language does not have an actual implicit function type,
+instead, implicitness is tied to particular \emph{names}, and while we can write
+\texttt{List (forall \{A : Set\}, A -> A)}, the brackets here are simply ignored
+by Coq and we get a plain function a type. For illustration, Coq accepts the
+following definition:
 \begin{verbatim}
       Definition poly : forall (f : forall {A : Type}, A -> A), bool * nat :=
         fun f => (f bool true, f nat 0).
@@ -246,7 +251,6 @@ metavariables to polymorphic types. In particular, we have that
     implements type-inference-predicative elaboration.
   \item GHC is type-theory-impredicative with \texttt{RankNTypes} but without
     \texttt{ImpredicativeTypes}, as we have \texttt{(forall a. a -> a) :: *}.
-
 \end{itemize}
 
 \section{Bidirectional Elaboration}
