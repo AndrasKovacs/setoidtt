@@ -34,7 +34,6 @@ data Raw
   | RU
   | RPi Name Icit Raw Raw
   | RLet Name Raw Raw Raw
-  | RAssume Name Raw Raw
   | RHole
   | RStopInsertion Raw
   | RSrcPos SourcePos Raw
@@ -52,7 +51,6 @@ instance Show Raw where
       RU                   -> U
       RPi x i a b          -> Pi x i (go a) (go b)
       RLet x a t u         -> Let x (go a) (go t) (go u)
-      RAssume x a t        -> Assume x (go a) (go t)
       RHole                -> Var "_"
       RStopInsertion t     -> App (go t) (Var "!") Expl
       RSrcPos _ t          -> go t
@@ -83,7 +81,7 @@ type Info  = Sub VarInfo
 type MCxt  = M.IntMap MetaEntry
 
 data BoundVar = BVSrc | BVTel ~VTy | BVRenamed
-data VarInfo = Bound BoundVar | Defined | Assumed
+data VarInfo = Bound BoundVar | Defined
 
 data ElabCxt = ElabCxt {
   elabCxtVals  :: Vals,
@@ -327,12 +325,10 @@ instance Show ElabError where
     IcitMismatch i i' -> printf (
       "Function icitness mismatch: expected %s, got %s.")
       (show i) (show i')
-    AssumptionNotTopLevel -> "Assumption only allowed in the top scope."
     NonLinearSolution m sp rhs x -> printf
       ("Nonlinear variable %s in meta spine in equation\n\n" ++
        "  %s %s =? %s")
       (show x) (show m) ('[':intercalate ", " sp++"]") (show rhs)
-    UnsolvedAfterAssumption -> "Unsolved meta remains after assumption"
 
 
 report :: HasPos cxt SourcePos => ElabError -> M cxt a

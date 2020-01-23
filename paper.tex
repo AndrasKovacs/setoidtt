@@ -1,3 +1,6 @@
+
+%% build: latexmk -pdf -pvc -xelatex paper.tex
+
 %% For double-blind review submission, w/o CCS and ACM Reference (max submission space)
 \documentclass[acmsmall,review,anonymous]{acmart}\settopmatter{printfolios=true,printccs=false,printacmref=false}
 %% For double-blind review submission, w/ CCS and ACM Reference
@@ -54,6 +57,20 @@
                         %% http://ctan.org/pkg/subcaption
 
 
+%% ------------------------------------------------------------
+
+%% \usepackage{fontspec}
+%% \fontspec[
+%%   Path = fonts/,
+%%   BoldFont = *-Bold,
+%%   ItalicFont = *-Oblique,
+%%   BoldItalicFont = *-BoldOblique]
+%%   {DejaVuSansMono}
+\setmonofont[Scale=0.8]{DejaVuSansMono}
+
+%% ------------------------------------------------------------
+
+
 \begin{document}
 
 %% Title information
@@ -86,7 +103,7 @@ in the context of GHC and ML-like languages, this has been dubbed
 framework for elaborating first-class implicit functions, which is applicable
 for full dependent type theories and compares favorably to prior solutions in
 terms of power, generality and conceptual simplicity. We build atop Norell's
-bidirectional elaboration algorithm for Agda, and note that key issue is
+bidirectional elaboration algorithm for Agda, and note that the key issue is
 incomplete information about insertions of implicit abstractions and
 applications. We make it possible to track and refine information related to
 such insertions, by adding a new function type to a core Martin-L\"of type
@@ -126,24 +143,115 @@ inserted.
 
 \section{Introduction}
 
+Programmers and users of proof assistants do not like to write out obvious
+things. Type inference and elaboration in general serve the purpose of filling
+in tedious details, translating terse surface-level languages to explicit core
+languages. Modern compilers such as Agda have gotten quite adept at this
+task. However, in practice the programmer still has to tell the compiler when
+and where to try filling in details on its own.
+
+\textbf{Implicit function types} are a common mechanism for conveying to the
+compiler that particular arguments should be inferred by default. In Agda and
+Coq, one can use bracketed function domains for this purpose:
+\begin{verbatim}
+          -- Agda                       (* Coq *)
+          id : {A : Set} → A → A        Definition id {A:Type}(x : A) := x.
+          id x = x
+\end{verbatim}
+In GHC, one can use \texttt{forall} to define implicit function
+types\footnote{This notation requires language extensions
+  \texttt{KindSignatures} and \texttt{RankNTypes}; one could also write the type
+  \texttt{a -> a} and GHC would silently insert the quantification.}
+\begin{verbatim}
+                         id :: forall (a :: *). a -> a
+                         id x = x
+\end{verbatim}
+
+In all of the above cases, if we apply \texttt{id} to an argument, the implicit
+type argument is provided by elaboration. For example, in Agda \texttt{id true}
+is elaborated to \texttt{id \{Bool\} true}, and analogously in GHC and Coq. In
+all three systems, there is also a way to explicitly specify implicit arguments:
+in Agda we may put arguments in brackets as we have seen, in Coq we can prefix a
+name with \texttt{@} to make every implicit argument explicit, as in \texttt{@id
+  bool true}, and in GHC we can enable the language extension
+\texttt{TypeApplications} and write \texttt{id @Bool true}.
+
+Implicit functions are \textbf{first class} if they can be manipulated like any
+other type. In Agda, this is the case. For example, we have a list type where
+the type of elements is an implicit function, as in \texttt{List (\{A : Set\} →
+  A → A)}. That said, Agda's elaboration has limitations when it comes to
+handling such types, and in many cases programmers must write out
+implicit lambda abstractions.
+
+In Coq, the core language does not have an actual implicit function
+type, instead, implicitness is tied to particular \emph{names}, and while we can
+write \texttt{List (forall \{A : Set\}, A -> A)}, the brackets here are simply
+ignored by Coq. For illustration, Coq accepts the following definition:
+\begin{verbatim}
+      Definition poly : forall (f : forall {A : Type}, A -> A), bool * nat :=
+        fun f => (f bool true, f nat 0).
+\end{verbatim}
+This is a higher-rank polymorphic function which returns a pair. Note that
+\texttt{f} is applied to two arguments, because the implicitness in
+\texttt{forall \{A : Type\}, A -> A} is silently dropped.
+
+In GHC Haskell, \texttt{forall} types are somewhere between Agda and Coq. We can certainly write the following, with \texttt{RankNTypes} enabled:
+\begin{verbatim}
+                    poly :: (forall a. a -> a) -> (Bool, Int)
+                    poly f = (f True, f 0)
+\end{verbatim}
+However, polymorphic types are only supported in function domains and as fields
+of algebraic data constructors. We cannot instantiate an arbitrary type
+parameter to a \texttt{forall}, as in \texttt{[forall a. a -> a]} for the list
+type with polymorphic elements. While this type is technically allowed by the
+\texttt{ImpredicativeTypes} language extension, as of GHC 8.8 this extension is
+deprecated and is not particularly usable in practice.
+
+There is significant literature on type inference in the presence of first-class
+polymorphic types, mainly in relation to GHC and ML-like languages
+\cite{TODO}. However, none of the proposed algorithms have landed so far in
+production compilers, for reasons of complexity, fragility, interaction with
+other language features, or necessity to modify surface or core languages.
+
+\subsection{Contributions}
 \begin{itemize}
-\item Elaboration.
+  \item We propose an elaboration algorithm which translates from a small
+    Agda-like surface language to a small Martin-L\"of type theory extended with
+    implicit function types, telescopes and \emph{strictly curried} function
+    types with telescope domain. The extensions to the target theory are modest
+    and are derivable from W-types.
+  \item Our algorithm is a conservative extension of Norell's bidirectional
+    elaborator for Agda \cite[Chapter~3.6]{norell07thesis}; it accepts strictly more
+    programs, and does not require new constructs in the surface language.
+  \item Our target language serves as a general platform for elaborating
+    implicit functions. The concrete elaborator presented in this paper is a
+    relatively simple one, and there is plenty of room to develop more advanced
+    elaboration and unification. However, our simple algorithm is already
+    comparable or superior to previous solutions for impredicative inference.
+  \item We provide a standalone implementation of the elaborator described in
+    this paper.
+\end{itemize}
 
-\item Hole filling.
+\subsection{Note on Terminology}
 
-\item Insertion of implicits.
-
-\item First-class implicit functions vs Coq.
-
-\item Unique vs non-unique solutions.
+We prefer to avoid the term ``impredicative inference'' in order to avoid
+confusion with impredicativity in type theory, which is an orthogonal notion. In
+type theory, impredicativity is a property of a universe, i.e.\ closure of a
+universe under arbitrary products. In the type inference literature,
+impredicativity means the ability to instantiate type variables and
+metavariables to polymorphic types. In particular, we have that
+\begin{itemize}
+  \item Agda is type-theory-predicative, but implements type-inference-impredicative elaboration.
+  \item Coq has type-theory-impredicative $\mathsf{Prop}$ universe, but
+    implements type-inference-predicative elaboration.
+  \item GHC is type-theory-impredicative with \texttt{RankNTypes} but without
+    \texttt{ImpredicativeTypes}, as we have \texttt{(forall a. a -> a) :: *}.
 
 \end{itemize}
 
 \section{Bidirectional Elaboration}
 
 \begin{itemize}
-\item
-
 \item Limitations in Agda
 
 \item Insertion of implicits.
