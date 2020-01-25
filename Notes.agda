@@ -8,6 +8,7 @@ record ⊤ {i} : Set i where
 open import Relation.Binary.PropositionalEquality
   renaming (subst to tr; cong to ap)
 
+data Bool : Set where true false : Bool
 
 infixr 4 _▶_
 

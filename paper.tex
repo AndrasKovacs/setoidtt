@@ -2,7 +2,7 @@
 %% build: latexmk -pdf -pvc -xelatex paper.tex
 
 %% For double-blind review submission, w/o CCS and ACM Reference (max submission space)
-\documentclass[acmsmall,review,anonymous]{acmart}\settopmatter{printfolios=true,printccs=false,printacmref=false}
+\documentclass[acmsmall,review,anonymous,prologue,dvipsnames]{acmart}\settopmatter{printfolios=true,printccs=false,printacmref=false}
 %% For double-blind review submission, w/ CCS and ACM Reference
 %\documentclass[acmsmall,review,anonymous]{acmart}\settopmatter{printfolios=true}
 %% For single-blind review submission, w/o CCS and ACM Reference (max submission space)
@@ -66,11 +66,29 @@
 %%   ItalicFont = *-Oblique,
 %%   BoldItalicFont = *-BoldOblique]
 %%   {DejaVuSansMono}
-\setmonofont[Scale=0.8]{DejaVuSansMono}
+\setmonofont[Colour=blue,Scale=0.8]{DejaVuSansMono}
 \usepackage{fancyvrb}
 \usepackage{xcolor}
-\newcommand{\blue}[1]{\textcolor{blue}{#1}}
-\newcommand{\red}[1]{\textcolor{red}{#1}}
+\usepackage{mathpartir}
+\usepackage{todonotes}
+\presetkeys{todonotes}{inline}{}
+\usepackage{scalerel}
+
+%% \newcommand{\blue}[1]{\textcolor{blue}{#1}}
+%% \newcommand{\red}[1]{\textcolor{red}{#1}}
+%% \newcommand{\green}[1]{\textcolor{ForestGreen}{#1}}
+%% \newcommand{\purple}[1]{\textcolor{purple}{#1}}
+%% \newcommand{\ASet}{\blue{Set}}
+%% \newcommand{\CDefinition}{\blue{Definition}}
+%% \newcommand{\CType}{\blue{Type}}
+%% \newcommand{\Hforall}{\blue{forall}}
+%% \newcommand{\Cforall}{\blue{forall}}
+%% \newcommand{\HStar}{\blue{*}}
+
+\newcommand{\slet}{\mathsf{let}}
+\renewcommand{\sin}{\mathsf{in}}
+\renewcommand{\U}{\mathsf{U}}
+\newcommand{\emptycon}{\scaleobj{.75}\bullet}
 
 %% ------------------------------------------------------------
 
@@ -148,75 +166,101 @@ inserted.
 \section{Introduction}
 
 Programmers and users of proof assistants do not like to write out obvious
-things. Type inference and elaboration in general serve the purpose of filling
-in tedious details, translating terse surface-level languages to explicit core
+things. Type inference and elaboration serve the purpose of filling in tedious
+details, translating terse surface-level languages to explicit core
 languages. Modern compilers such as Agda have gotten quite adept at this
-task. However, in practice the programmer still has to tell the compiler when
-and where to try filling in details on its own.
+task. However, in practice, programmers still have to tell the compiler when and
+where to try filling in details on its own.
 
 \textbf{Implicit function types} are a common mechanism for conveying to the
-compiler that particular arguments should be inferred by default. In Agda and
-Coq, one can use bracketed function domains for this purpose:
+compiler that particular function arguments should be inferred by default. In
+Agda and Coq, one can use bracketed function domains for this purpose:
 \begin{Verbatim}[commandchars=\\\{\}]
-          \red{-- Agda}                     \red{(* Coq *)}
-          \blue{id} : {A : \blue{Set}} → A → A        \blue{Definition} id \{A:Type\}(x : A) := x.
+          -- Agda                     (* Coq *)
+          id : \{A : Set\} → A → A      Definition id \{A : Type\}(x : A) := x.
           id x = x
 \end{Verbatim}
 In GHC, one can use \texttt{forall} to define implicit function
 types\footnote{This notation requires language extensions
   \texttt{KindSignatures} and \texttt{RankNTypes}; one could also write the type
   \texttt{a -> a} and GHC would silently insert the quantification.}
-\begin{verbatim}
+\begin{Verbatim}[commandchars=\\\{\}]
                          id :: forall (a :: *). a -> a
                          id x = x
-\end{verbatim}
+\end{Verbatim}
 
 In all of the above cases, if we apply \texttt{id} to an argument, the implicit
-type argument is provided by elaboration. For example, in Agda \texttt{id true}
-is elaborated to \texttt{id \{Bool\} true}, and analogously in GHC and Coq. In
-all three systems, there is also a way to explicitly specify implicit arguments:
-in Agda we may put arguments in brackets as we have seen, in Coq we can prefix a
+type argument is provided by elaboration. For example, in Agda, \texttt{id true}
+is elaborated to \texttt{id \{Bool\} true}, and analogously in GHC and Coq. In all
+three systems, there is also a way to explicitly specify implicit arguments: in
+Agda we may put arguments in brackets as we have seen, in Coq we can prefix a
 name with \texttt{@} to make every implicit argument explicit, as in \texttt{@id
   bool true}, and in GHC we can enable the language extension
-\texttt{TypeApplications} and write \texttt{id @Bool true}.
+\texttt{TypeApplications} and write \texttt{id @Bool True}.
 
-Implicit functions are \textbf{first class} if they can be manipulated like any
-other type. In Agda, this is the case. For example, we have a list type where
-the type of elements is an implicit function, as in \texttt{List (\{A : Set\} →
-  A → A)}. That said, Agda's elaboration has limitations when it comes to
-handling such types, and in many cases programmers must write out
-implicit lambda abstractions.
-
+Implicit functions are \textbf{first-class} if they can be manipulated like any
+other type. Coq is an example for a system where this is \emph{not} the case.
 In Coq, the core language does not have an actual implicit function type,
 instead, implicitness is tied to particular \emph{names}, and while we can write
-\texttt{List (forall \{A : Set\}, A -> A)}, the brackets here are simply ignored
-by Coq and we get a plain function a type. For illustration, Coq accepts the
+\texttt{List (forall \{A : Type\}, A -> A)}, the brackets here are simply
+ignored by Coq and we get a plain function type. For example, Coq accepts the
 following definition:
-\begin{verbatim}
-      Definition poly : forall (f : forall {A : Type}, A -> A), bool * nat :=
+\begin{Verbatim}[commandchars=\\\{\}]
+      Definition poly : forall (f : forall \{A : Type\}, A -> A), bool * nat :=
         fun f => (f bool true, f nat 0).
-\end{verbatim}
+\end{Verbatim}
 This is a higher-rank polymorphic function which returns a pair. Note that
 \texttt{f} is applied to two arguments, because the implicitness in
 \texttt{forall \{A : Type\}, A -> A} is silently dropped.
 
-In GHC Haskell, \texttt{forall} types are somewhere between Agda and Coq. We can certainly write the following, with \texttt{RankNTypes} enabled:
-\begin{verbatim}
-                    poly :: (forall a. a -> a) -> (Bool, Int)
-                    poly f = (f True, f 0)
-\end{verbatim}
+In GHC Haskell, \texttt{forall} types are more flexible. We can write
+the following, with \texttt{RankNTypes} enabled:
+\begin{Verbatim}[commandchars=\\\{\}]
+                     poly :: (forall a. a -> a) -> (Bool, Int)
+                     poly f = (f True, f 0)
+\end{Verbatim}
 However, polymorphic types are only supported in function domains and as fields
 of algebraic data constructors. We cannot instantiate an arbitrary type
-parameter to a \texttt{forall}, as in \texttt{[forall a. a -> a]} for the list
+parameter to a \texttt{forall}, as in \texttt{[forall a. a -> a]} for a list
 type with polymorphic elements. While this type is technically allowed by the
 \texttt{ImpredicativeTypes} language extension, as of GHC 8.8 this extension is
 deprecated and is not particularly usable in practice.
 
+In Agda, implicit functions are truly a first-class notion, and we may have
+\texttt{List (\{A : Set\} → A → A)} without issue. However, Agda's elaboration
+still has limitations when it comes to handling implicit functions. Assume that
+we have \texttt{[]} for the empty list and \texttt{\_∷\_} for list extension,
+and consider the following code:
+\begin{Verbatim}[commandchars=\\\{\}]
+                     polyList : List (\{A : Set\} → A → A)
+                     polyList = (λ x → x) ∷ []
+\end{Verbatim}
+Agda 2.6.0.1 does not accept this. However, it does accept \texttt{polyList = (λ
+  \{A\} x → x) ∷ []}. The issue is the following. Agda first \emph{infers} a
+type for \texttt{(λ x → x) ∷ []}, then tries to unify the inferred type with the
+given \texttt{List (\{A : Set\} → A → A)} annotation. However, when Agda
+elaborates \texttt{λ x → x}, it does not yet know anything about the element
+type of the list; it is an undetermined unification variable. Hence, Agda does
+not know whether it should insert an extra \texttt{λ\{A\}} or not. If the
+element type is later found to be an implicit function, then it should, otherwise it
+should not. To solve this conundrum, Agda simply assumes that any unknown type
+is \emph{not} an implicit function type, and elects to not insert a lambda. This
+assumption is often correct, but sometimes --- as in the current case --- it is not.
+
 There is significant literature on type inference in the presence of first-class
-polymorphic types, mainly in relation to GHC and ML-like languages
-\cite{TODO}. However, none of the proposed algorithms have landed so far in
-production compilers, for reasons of complexity, fragility, interaction with
-other language features, or necessity to modify surface or core languages.
+polymorphic types, mainly in relation to GHC and ML-like languages \cite{TODO}.
+The above issue in Agda is a specific instance of the challenges described in
+the mentioned works. However, none of the proposed algorithms have landed so far
+in production compilers, for reasons of complexity, fragility and interaction
+with other language features.
+
+The solution presented in this paper is to gradually accummulate information
+about implicit insertions, and to have a setup where insertions can be refined
+and performed at any time after a particular expression is elaborated. In the
+current example, our algorithm wraps \texttt{λ x → x} in an implicit lambda with
+unknown arity, and the domain type is later refined to be \texttt{A : Set} when
+the inferred type is unified with the annotation.
+
 
 \subsection{Contributions}
 \begin{itemize}
@@ -224,51 +268,247 @@ other language features, or necessity to modify surface or core languages.
     Agda-like surface language to a small Martin-L\"of type theory extended with
     implicit function types, telescopes and \emph{strictly curried} function
     types with telescope domain. The extensions to the target theory are modest
-    and are derivable from W-types.
+    and are derivable from W-types. We use these extensions to accummulate
+    information about implicit insertions.
   \item Our algorithm is a conservative extension of Norell's bidirectional
-    elaborator for Agda \cite[Chapter~3.6]{norell07thesis}; it accepts strictly more
+    elaborator for Agda \cite[Chapter~3]{norell07thesis}; it accepts strictly more
     programs, and does not require new constructs in the surface language.
   \item Our target language serves as a general platform for elaborating
     implicit functions. The concrete elaborator presented in this paper is a
     relatively simple one, and there is plenty of room to develop more advanced
     elaboration and unification. However, our simple algorithm is already
     comparable or superior to previous solutions for impredicative inference.
-  \item We provide a standalone implementation of the elaborator described in
+  \item We provide an executable implementation of the elaborator described in
     this paper.
 \end{itemize}
 
-\subsection{Note on Terminology}
+\subsubsection{Note on Terminology}
 
 We prefer to avoid the term ``impredicative inference'' in order to avoid
-confusion with impredicativity in type theory, which is an orthogonal notion. In
-type theory, impredicativity is a property of a universe, i.e.\ closure of a
-universe under arbitrary products. In the type inference literature,
-impredicativity means the ability to instantiate type variables and
-metavariables to polymorphic types. In particular, we have that
+confusion with impredicativity in type theory. The two notions historically
+coincided, but has since diverged to the point of being orthogonal. In type
+theory, impredicativity is a property of a universe, i.e.\ closure of a universe
+under arbitrary products. In the type inference literature, impredicativity
+means the ability to instantiate type variables and metavariables to polymorphic
+types. In particular, we have that
 \begin{itemize}
-  \item Agda is type-theory-predicative, but implements type-inference-impredicative elaboration.
-  \item Coq has type-theory-impredicative $\mathsf{Prop}$ universe, but
-    implements type-inference-predicative elaboration.
-  \item GHC is type-theory-impredicative with \texttt{RankNTypes} but without
-    \texttt{ImpredicativeTypes}, as we have \texttt{(forall a. a -> a) :: *}.
+  \item Agda has type-theory-predicative universes, but implements
+    type-inference-impredicative elaboration with first-class implicit function
+    types.
+  \item Coq has type-theory-impredicative \texttt{Prop} universe (and
+    optionally also \texttt{Set}), but implements
+    type-inference-predicative elaboration, because of the lack of implicit
+    function types.
+  \item GHC is type-theory-impredicative with \texttt{RankNTypes} enabled
+    and \texttt{ImpredicativeTypes} disabled, as we have
+    \texttt{(forall (a :: *). a -> a) :: *}.
 \end{itemize}
 
-\section{Bidirectional Elaboration}
+\section{Basic Bidirectional Elaboration}
+\label{sec:basic_bidirectional_elaboration}
 
+First, we present a variant of Norell's bidirectional elaborator
+\cite[Chapter~3]{norell07thesis}. Compared to ibid.\ we make some extensions and
+simplifications; what we end up with can be viewed as a toy version of the
+actual Agda elaborator. In this section, we use it to illustrate the key issues,
+and we extend it in Section TODO with additional rules.
+\begin{figure}[h]
+\begin{alignat*}{4}
+  t,\,u,\,v,\,A,\,B,\,C\, :&:=\quad  && x\hspace{8em}              & \text{variable}                 &  \\
+                           & |       && (x : A)\to B               & \text{function type}            &  \\
+                           & |       && \{x : A\}\to B             & \text{implicit function type}   &  \\
+                           & |       && t\,u                       & \text{application}              &  \\
+                           & |       && t\,\{u\}                   & \text{implicit application}     &  \\
+                           & |       && \lambda\,x.\, t            & \text{lambda abstraction}       &  \\
+                           & |       && \lambda\,\{x\}.\,t         & \text{implicit abstraction}     &  \\
+                           & |       && \U                         & \text{universe}                 &  \\
+                           & |       && \slet\,x : A = t\,\sin\, u & \text{let-definition}           &  \\
+                           & |       && \_                         & \text{hole for inferred term}   &
+\end{alignat*}
+\caption{Syntax of the surface language.}
+\label{fig:surface}
+\end{figure}
+
+\begin{figure}[h]
+
+\begin{alignat*}{2}
+  & \boxed{\Theta\vdash}\hspace{6em}           && \text{\emph{metacontext formation}}\\
+  & \boxed{\Theta|\Gamma\vdash}                && \text{\emph{context formation}}\\
+  & \boxed{\Theta|\Gamma\vdash t : A}          && \text{\emph{typing}}\\
+  & \boxed{\Theta|\Gamma\vdash t \equiv u : A} && \text{\emph{term equality}}
+\end{alignat*}
+
+\begin{mathpar}
+  \inferrule*[lab=metacon/empty]
+             {\\}
+             {\emptycon \vdash}
+
+  \inferrule*[lab=metacon/bind]
+             {\Theta \vdash \\ \Theta \vdash A : \U}
+             {\Theta, \alpha : A \vdash}
+
+  \inferrule*[lab=con/empty]
+             {\Theta \vdash}
+             {\Theta|\emptycon \vdash}
+
+  \inferrule*[lab=con/bind]
+             {\Theta|\Gamma \vdash \\ \Theta|\Gamma \vdash A : \U}
+             {\Theta|\Gamma,\,x : A \vdash}
+
+  \inferrule*[lab=con/define]
+             {\Theta|\Gamma \vdash \\ \Theta|\Gamma \vdash t : A}
+             {\Theta|\Gamma,\,x : A = t \vdash}
+
+  \inferrule*[lab=tm/metavar]
+             {\\}
+             {\Theta_0,\,\alpha : A,\,\Theta_1|\Gamma \vdash \alpha : A}
+
+  \inferrule*[lab=tm/bound-var]
+             {\\}
+             {\Theta|\Gamma,\,x : A,\,\Delta \vdash x : A}
+
+  \inferrule*[lab=tm/defined-var]
+             {\\}
+             {\Theta|\Gamma,\,x : A = t,\,\Delta \vdash x : A}
+
+  \inferrule*[lab=ty/u]
+             {\\}
+             {\Theta|\Gamma \vdash \U : \U}
+
+  \inferrule*[lab=let]
+             {\Theta|\Gamma\vdash t : A \\ \Theta|\Gamma,\,x : A = t \vdash u : B}
+             {\Theta|\Gamma\vdash \slet\,x : A = t\,\sin\,u : B[x\mapsto t]}
+
+  \inferrule*[lab=ty/fun]
+             {\Theta|\Gamma \vdash A : \U \\ \Theta|\Gamma,\,x : A \vdash B : \U}
+             {\Theta|\Gamma \vdash (x : A) \to B : \U}
+
+  \inferrule*[lab=ty/implicit-fun]
+             {\Theta|\Gamma \vdash A : \U \\ \Theta|\Gamma,\,x : A \vdash B : \U}
+             {\Theta|\Gamma \vdash \{x : A\} \to B : \U}
+
+  \inferrule*[lab=tm/app]
+             {\Theta|\Gamma \vdash t : (x : A) \to B \\ \Theta|\Gamma\vdash u : A}
+             {\Theta|\Gamma \vdash t\,u : B[x \mapsto u]}
+
+  \inferrule*[lab=tm/implicit-app]
+             {\Theta|\Gamma \vdash t : \{x : A\} \to B \\ \Theta|\Gamma\vdash u : A}
+             {\Theta|\Gamma \vdash t\,\{u\} : B[x \mapsto u]}
+
+  \inferrule*[lab=tm/lam]
+             {\Theta|\Gamma,\,x : A \vdash t : B}
+             {\Theta|\Gamma \vdash \lambda\,x.\,t : (x : A) \to B}
+
+  \inferrule*[lab=tm/implicit-lam]
+             {\Theta|\Gamma,\,x : A \vdash t : B}
+             {\Theta|\Gamma \vdash \lambda\,\{x\}.\,t : \{x : A\} \to B}
+
+  \inferrule*[lab=fun-$\beta$]
+             {\Theta|\Gamma,\,x : A \vdash t : B \\\Theta|\Gamma\vdash u : A }
+             {\Theta|\Gamma\vdash (\lambda\,x.\,t)\,u \equiv t[x\mapsto u] : B[x\mapsto u]}
+
+  \inferrule*[lab=implicit-fun-$\beta$]
+             {\Theta|\Gamma,\,x : A \vdash t : B \\\Theta|\Gamma\vdash u : A }
+             {\Theta|\Gamma\vdash (\lambda\,\{x\}.\,t)\,\{u\} \equiv t[x\mapsto u] : B[x\mapsto u]}
+
+  \inferrule*[lab=fun-$\eta$]
+             {\Theta|\Gamma\vdash t : (x : A)\to B}
+             {\Theta|\Gamma\vdash (\lambda\,x.\,t\,x) \equiv t : (x : A)\to B}
+
+  \inferrule*[lab=implicit-fun-$\eta$]
+             {\Theta|\Gamma\vdash t : \{x : A\}\to B}
+             {\Theta|\Gamma\vdash (\lambda\,\{x\}.\,t\,\{x\}) \equiv t : \{x : A\}\to B}
+
+  \inferrule*[lab=definition]
+             {\\}
+             {\Theta|\Gamma,\,x : A = t,\,\Delta \vdash x \equiv t : A}
+\end{mathpar}
+\caption{Selected rules of the core language.}
+\label{fig:plaincore}
+\end{figure}
+
+\subsection{Surface syntax}
+Figure \ref{fig:surface} shows the the possible constructs in the surface
+language. We only have terms, as we have Russell-style universe in the core, and
+we can conflate types and terms for convenience. The surface syntax does not
+have semantics or any well-formedness relations attached; its sole purpose is to
+serve as input to elaboration. Hence, the surface syntax can be also viewed as
+a minimal untyped tactic language, which is interpreted by the elaborator.
+
+The syntactic constructs are the almost the same in the surface language as in
+the core syntax. The difference is that $\_$ holes only appear in surface
+syntax. The $\_$ can be used to request a term to be inferred by elaboration,
+the same way as in Agda.  This can be used to give let-definitions without type
+annotation, as in $\slet\,x : \_ = \U\,\sin\,x$.
+
+\subsection{Core syntax}
+
+Figure \ref{fig:plaincore} lists selected rules of the core language. We avoid a
+fully formal presentation in this paper. Some notes on what is elided:
 \begin{itemize}
-\item Limitations in Agda
-
-\item Insertion of implicits.
-
-\item First-class implicit functions vs Coq.
-
-\item Unique vs non-unique solutions.
-
-\item On the uniqueness of implicit insertion.
+  \item We use nameful notation and implicit weakening, i.e.\ whenever a term is
+    well-formed in some context, it is assumed to be well-formed (as it is) in
+    extended contexts. Formally, we would use de Bruijn indices for variables,
+    and define variable renaming and parallel substitution by recursion on
+    presyntax, e.g.\ as in \cite{schafer2015autosubst}. Also, typing is stable
+    under substitution.
+  \item
+    Definitional equality is understood to be a congruence and an equivalence relation,
+    which is respected by substitution and typing.
+  \item
+    We elide a number of well-formedness assumptions in rules. For instance, whenever
+    a context appears in a rule, it is assumed to be well-formed. Likewise, whenever
+    we have $\Theta|\Gamma\vdash t : A$, we assume that $\Theta|\Gamma\vdash A : \U$.
 \end{itemize}
 
+From now on, we will only consider well-formed core syntax, and only
+constructions which respect definitional equality. In other words, we quotient
+well-formed syntax by definitional equality.
+
+Alternatively, one could present the syntax as a generalized algebraic theory
+\cite{sterling2019algebraic} or a quotient inductive-inductive type
+\cite{ttintt}, in which case we would get congruences and quotienting for
+definitional equality for free. However, it seems that there are a number of
+possible choices for giving an algebraic presentation of metacontexts, and
+existing works on algebraic presentations of dependent modal contexts
+(e.g.\ \cite{birkedal2018modal}, TODO) do not precisely cover our current use
+case. We leave to future work this and the investigation of elaboration from an
+algebraic perspective.
+
+\todo{how to refer to mathpartir rules from text?}
+
+\emph{Metacontexts} are used to record metavariables which are created during
+elaboration. In our case, metacontexts are simply a context prefix, and we have
+variables pointing into it, but we do not support contextual modality e.g.\ as
+in \cite{nanevski2008contextual}. The non-meta typing context additionally
+supports \emph{defined variables}, which is used in the typing rule for
+\emph{let-definitions}, and we have that any defined variable is equal to its
+definition. We mainly support this as a convenience feature in the
+implementation of our elaborator.
+
+\emph{The universe} $\U$ is Russell-style, and we have the type-in-type rule.
+This causes our core syntax to be non-total, and our elaboration algorithm
+to be possibly non-terminating. We use type-in-type for simplicity of
+presentation, since consistent universe setups are orthogonal to the focus of
+this work.
+
+\emph{Function types} only differ from each other in notation: implicit
+functions have the same rules as ``explicit'' functions. The primary purpose of
+implicit function types is to \emph{guide elaboration}: the elaborator will at
+times compute a type and branch on whether it is an implicit function.
+
+\subsubsection{Example programs}
+
+The core syntax is quite expressive as a programming language, thanks to
+let-definitions and the type-in-type rule which allows Church-encodings of a
+large variety of inductive types. For example, the following term computes a
+list of Booleans:
+
+%% \begin{alignat*}{3}
+%%   & \slet
 
 
+%% \end{alignat*}
 
 
 
