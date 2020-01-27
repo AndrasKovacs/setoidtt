@@ -85,10 +85,26 @@
 %% \newcommand{\Cforall}{\blue{forall}}
 %% \newcommand{\HStar}{\blue{*}}
 
-\newcommand{\slet}{\mathsf{let}}
-\renewcommand{\sin}{\mathsf{in}}
+\newcommand{\slet}{\boldsymbol{\mathsf{let}}}
+\renewcommand{\sin}{\boldsymbol{\mathsf{in}}}
 \renewcommand{\U}{\mathsf{U}}
 \newcommand{\emptycon}{\scaleobj{.75}\bullet}
+\newcommand{\To}{\Rightarrow}
+\newcommand{\p}{\mathsf{p}}
+\newcommand{\id}{\mathsf{id}}
+\newcommand{\blank}{\mathord{\hspace{1pt}\text{--}\hspace{1pt}}}
+\newcommand{\fresh}{\mathsf{fresh}}
+\newcommand{\unify}{\mathsf{unify}}
+\newcommand{\fail}{\mathsf{fail}}
+
+\newcommand{\echeck}[4]{\llbracket#1\rrbracket\!\Downarrow\,#2\,#3\,#4}
+\newcommand{\einfer}[3]{\llbracket#1\rrbracket\!\Uparrow\,#2\,#3}
+\newcommand{\edo}{\boldsymbol{\mathsf{do}}}
+\newcommand{\ereturn}{\boldsymbol{\mathsf{return}}}
+
+
+\theoremstyle{remark}
+\newtheorem{notation}{Notation}
 
 %% ------------------------------------------------------------
 
@@ -329,7 +345,7 @@ and we extend it in Section TODO with additional rules.
 \label{fig:surface}
 \end{figure}
 
-\begin{figure}[h]
+\begin{figure}
 
 \begin{alignat*}{2}
   & \boxed{\Theta\vdash}\hspace{6em}           && \text{\emph{metacontext formation}}\\
@@ -487,28 +503,200 @@ definition. We mainly support this as a convenience feature in the
 implementation of our elaborator.
 
 \emph{The universe} $\U$ is Russell-style, and we have the type-in-type rule.
-This causes our core syntax to be non-total, and our elaboration algorithm
-to be possibly non-terminating. We use type-in-type for simplicity of
-presentation, since consistent universe setups are orthogonal to the focus of
-this work.
+This causes our core syntax to be non-total, and our elaboration algorithm to be
+possibly non-terminating. We use type-in-type to simplify presentation, since
+consistent universe setups are orthogonal to the focus of this work.
 
 \emph{Function types} only differ from each other in notation: implicit
 functions have the same rules as ``explicit'' functions. The primary purpose of
 implicit function types is to \emph{guide elaboration}: the elaborator will at
 times compute a type and branch on whether it is an implicit function.
 
-\subsubsection{Example programs}
+\begin{notation}
+Both in the surface and core syntax, we use Agda-like notation:
+\begin{itemize}
+  \item We use $A \to B$ to refer to non-dependent functions.
+  \item We group domain types together in functions, and omit function arrows,
+    as in $\{A\,B : \U\}(x : A) \to B \to A$.
+  \item We group multiple $\lambda$-s, as in $\lambda\,\{A\}\,\{B\}\,x\,y.\,x$.
+\end{itemize}
 
+\end{notation}
+
+
+\begin{example}
 The core syntax is quite expressive as a programming language, thanks to
 let-definitions and the type-in-type rule which allows Church-encodings of a
 large variety of inductive types. For example, the following term computes a
-list of Booleans:
+list of types, by mapping over the list $cons\,\U\,(cons\,\U\,nil)$.
+\begin{alignat*}{3}
+  & \slet\,List : \U\to\U\\
+  & \hspace{1em}= \lambda\,A.\,(L : \U)\to(A\to L\to L)\to L\to L\,\,\sin\\
+  & \slet\,map : \{A\,B : \U\}\to (A \to B) \to List\,A \to List\,B\\
+  & \hspace{1em}=
+  \lambda\,\{A\}\,\{B\}\,f\,as\,L\,cons\,nil.\,as\,L\,(\lambda\,a.\,cons\,(f\,a))\,nil\,\,\sin\\
+  & map\,\{\U\}\,\{\U\}\,(\lambda\,A.\, A \to A)\,(\lambda\,L\,cons\,nil.\,cons\,\U\,(cons\,\U\,nil))
+\end{alignat*}
+In the core syntax, all applications must be explicit, so using implicit
+function type for $map$ above does not make much difference in optics.
+\end{example}
 
-%% \begin{alignat*}{3}
-%%   & \slet
+\subsection{Metasubstitutions}
 
+Before we can move on to the description of the elaborator, we need to specify
+metasubstitutions. These are essentially just parallel substitutions of
+metacontexts, and their purpose is to keep track of meta-operations (e.g.\ fresh
+meta creation or solution of a meta).
 
-%% \end{alignat*}
+\begin{itemize}
+  \item
+    A metasubstitution $\boxed{\theta : \Theta_0 \To \Theta_1}$ assigns to each variable
+    in $\Theta_1$ a term in $\Theta_0$ , hence it is represented as a list of
+    terms $(\alpha_1 \mapsto t_1,\,...\,\,\alpha_i \mapsto t_i)$.
+  \item
+    We define the action of a metasubstitution on contexts and terms by
+    recursion; we notate action on contexts as $\Gamma[\theta]$ and action on
+    terms as $t[\theta]$. We remark that there is no abstraction for
+    metavariables in the core syntax, so we do not have to handle variable
+    capture (or index shifting).
+\end{itemize}
+The following are admissible:
+\begin{mathpar}
+  \inferrule*[lab=metasub/empty]
+             {\Theta_0\vdash}
+             {() : \Theta_0\To \emptycon}
+
+  \inferrule*[lab=metasub/extended]
+             {\theta : \Theta_0\To\Theta_1 \\ \Theta_0|\emptycon\vdash t : A[\theta]}
+             {(\theta,\, \alpha\mapsto t) : \Theta_0\To(\Theta_1,\,\alpha : A)}
+
+  \inferrule*[lab=metasub/con-action]
+             {\Theta_1|\Gamma\vdash \\ \theta : \Theta_0\To\Theta_1}
+             {\Theta_0|\Gamma[\theta]\vdash}
+
+  \inferrule*[lab=metasub/tm-action]
+             {\Theta_1|\Gamma\vdash t : A \\ \theta : \Theta_0\To\Theta_1}
+             {\Theta_0|\Gamma[\theta] \vdash t[\theta] : A[\theta]}
+
+  \inferrule*[lab=metasub/identity]
+             {\\}
+             {\id : \Theta\To\Theta}
+
+  \inferrule*[lab=metasub/composition]
+             {\theta_{0} : \Theta_1 \To \Theta_2 \\ \theta_1 : \Theta_0 \To \Theta_1}
+             {\theta_0 \circ \theta_1 : \Theta_0 \To \Theta_2}
+
+  \inferrule*[lab=metasub/weakening]
+             {\\}
+             {\p : (\Theta,\,x : A) \To \Theta}
+\end{mathpar}
+
+The identity substitution $\id$ maps each variable to itself. Composition
+is given by pointwise term substitution, and $\id$ and $\blank\circ\blank$
+yields a category. The weakening substitution $\p$ (the naming comes from
+categories-with-families terminology \cite{dybjer1995internal}) can be defined
+as dropping the last entry from $\id : (\Theta,\,x : A) \To (\Theta,\,x : A)$.
+
+\subsection{Fresh Metavariables}
+
+Using \emph{contextual metavariables} is a standard practice in the
+implementation of dependently typed languages. This means that every ``hole'' in
+the surface language is represented as an unknown function which abstracts over
+all bound variables in the scope of a hole. Unlike \cite{nanevski2008contextual}
+and similarly to \cite{gundry2013type}, we do not have a first-class notion of
+contextual types, and instead reuse the standard dependent function type to
+abstract over enclosing contexts.
+
+\begin{definition}[Closing type] For each $\Theta|\Gamma \vdash A : \U$, we define
+$\Gamma \To A$ by recursion on $\Gamma$ such that $\Theta|\emptycon\vdash \Gamma
+\To A : \U$.
+  \begin{alignat*}{3}
+    &((\Gamma,\, x : A) \To B)     && :\equiv (\Gamma \To ((x : A) \to B))\\
+    &((\Gamma,\, x : A = t) \To B) && :\equiv (\Gamma \To B[x\mapsto t])\\
+    &(\emptycon \To B)             && :\equiv B
+  \end{alignat*}
+\end{definition}
+
+\begin{definition}[Contextualization] For each $\Theta|\Gamma \vdash t : \Gamma\To A$,
+we define $t\,\overline{\id_{\Gamma}}$ by recursion on $\Gamma$ such that
+$\Theta|\Gamma\vdash t\,\overline{\id_{\Gamma}} : A$. Informally, this is $t$
+applied to all bound variables in $\Gamma$.
+  \begin{alignat*}{3}
+    &(t\,\overline{\id_{\Gamma,\,x:A}})   && :\equiv (t\,\overline{\id_{\Gamma}})\,x \\
+    &(t\,\overline{\id_{\Gamma,\,x:A=t}}) && :\equiv (t\,\overline{\id_{\Gamma}}) \\
+    &(t\,\overline{\id_{\emptycon}})     && :\equiv t
+  \end{alignat*}
+\end{definition}
+
+\begin{example} If we have $\Gamma \equiv (\emptycon,\,A : \U,\,B : A \to \U)$, then
+$(\Gamma \To \U) \equiv ((A : \U)(B : A \to \U) \to \U)$ and
+$t\,\overline{\id_{\Gamma}} \equiv t\,A\,B$.
+\end{example}
+
+\begin{definition}[Fresh meta creation] We specify $\fresh_A$ as follows:
+  \begin{mathpar}
+  \inferrule*{\Theta|\Gamma\vdash A : \U}
+             {\fresh_A \in \{(\Theta',\,\theta,\,t)\,|\,(\theta : \Theta' \To \Theta)\,\land\,(\Theta'|\Gamma[\theta]\vdash t : A[\theta])\}}
+  \end{mathpar}
+The definition $\fresh_A :\equiv ((\Theta,\,\alpha:\Gamma\To
+A),\,\p,\,\alpha\,\overline{\id_{\Gamma}})$, where $\alpha$ is fresh in
+$\Theta$, satisfies this specification. We extend $\Theta$ with a fresh meta,
+which has the closing type $\Gamma \To A$. The $\p$ weakening relates the new
+metacontext to the old one, by ``dropping'' the new entry. Lastly,
+$\alpha\,\overline{\id_{\Gamma}}$ is the new meta
+applied to all bound variables.
+\end{definition}
+
+\subsection{Unification}
+
+We assume that there is a partial unification procedure, which returns a unifying
+metasubstitution on success. We only have \emph{homogeneous} unification, i.e.\ the
+two terms to be unified must have the same type. The specification is as follows:
+\begin{mathpar}
+\inferrule*{\Theta|\Gamma\vdash t : A \\ \Theta|\Gamma\vdash u : A}
+           {\unify\,t\,u \in \{(\Theta',\,\theta)\,|\,(\theta : \Theta' \To \Theta)
+             \,\land\,(\Theta'|\Gamma[\theta]\vdash
+             t[\theta] \equiv u[\theta] : A[\theta])\}\,\cup\,\{\fail\}}
+\end{mathpar}
+
+Here, we do not require that unification returns most general unifiers, nor do
+we go into the details of how unification is implemented. Gundry describes
+unification in detail in \cite[Chapter~4]{gundry2013type} for a similar syntax,
+with a similar (though more featureful) setup for metacontexts. Note that our
+unification algorithm does not support \emph{constraint postponing}, since we
+have not specified constraints. In our concrete implementation, unification supports
+basic higher-order pattern unification and metavariable pruning \cite{TODO}.
+
+\subsection{Elaboration}
+
+Elaboration consists of two (partial) functions, checking and inferring, which
+are defined by mutual induction on surface syntax. They are specified as
+follows:
+
+\begin{mathpar}
+\inferrule*[lab=checking]
+           {\text{$t$ is a surface expression} \\ \Theta|\Gamma \vdash A : \U}
+           {\echeck{t}{\Theta}{\Gamma}{A} \in
+             \{(\Theta',\,\theta,\,t')\,|\,(\theta : \Theta' \To \Theta)\,\land\,
+               (\Theta'|\Gamma[\theta]\vdash t' : A[\theta])\}\cup\{\fail\}
+           }
+
+\inferrule*[lab=inferring]
+           {\text{$t$ is a surface expression} \\ \Theta|\Gamma \vdash}
+           {\einfer{t}{\Theta}{\Gamma} \in
+             \{(\Theta',\,\theta,\,t',\,A)\,|\,(\theta : \Theta' \To \Theta)\,\land\,
+               (\Theta'|\Gamma[\theta]\vdash t' : A)\}\cup\{\fail\}
+           }
+\end{mathpar}
+In the following, we use a monadic pseudocode notation, where the side effect is
+failure.
+
+\begin{alignat*}{3}
+  &\echeck{\lambda\,x.\,t}{\Theta}{\Gamma}{((x : A)\to B)} :\equiv \edo \\
+  &\hspace{2em}(\Theta',\,\theta,\,t') \leftarrow \echeck{t}{\Theta}{(\Gamma,\,x:A)} B\\
+  &\hspace{2em}\ereturn\,(\Theta',\,\theta,\,\lambda\,x.\,t')\\
+  &\echeck{\lambda\,x.\,t}{\Theta}{\Gamma}{((x : A)\to B)} :\equiv \edo \\
+\end{alignat*}
 
 
 
