@@ -59,31 +59,12 @@
 
 %% ------------------------------------------------------------
 
-%% \usepackage{fontspec}
-%% \fontspec[
-%%   Path = fonts/,
-%%   BoldFont = *-Bold,
-%%   ItalicFont = *-Oblique,
-%%   BoldItalicFont = *-BoldOblique]
-%%   {DejaVuSansMono}
-\setmonofont[Colour=blue,Scale=0.8]{DejaVuSansMono}
-\usepackage{fancyvrb}
 \usepackage{xcolor}
 \usepackage{mathpartir}
 \usepackage{todonotes}
 \presetkeys{todonotes}{inline}{}
 \usepackage{scalerel}
-
-%% \newcommand{\blue}[1]{\textcolor{blue}{#1}}
-%% \newcommand{\red}[1]{\textcolor{red}{#1}}
-%% \newcommand{\green}[1]{\textcolor{ForestGreen}{#1}}
-%% \newcommand{\purple}[1]{\textcolor{purple}{#1}}
-%% \newcommand{\ASet}{\blue{Set}}
-%% \newcommand{\CDefinition}{\blue{Definition}}
-%% \newcommand{\CType}{\blue{Type}}
-%% \newcommand{\Hforall}{\blue{forall}}
-%% \newcommand{\Cforall}{\blue{forall}}
-%% \newcommand{\HStar}{\blue{*}}
+\usepackage{cleveref}
 
 \newcommand{\slet}{\boldsymbol{\mathsf{let}}}
 \renewcommand{\sin}{\boldsymbol{\mathsf{in}}}
@@ -96,7 +77,7 @@
 \newcommand{\freshMeta}[3]{\mathsf{freshMeta}\,#1\,#2\,#3}
 \newcommand{\unify}{\mathsf{unify}}
 \newcommand{\fail}{\mathsf{fail}}
-
+\newcommand{\kw}[1]{{\mathsf{#1}}}
 
 \newcommand{\echeckblank}{\llbracket\blank\rrbracket\!\Downarrow}
 \newcommand{\einferblank}{\llbracket\blank\rrbracket\!\Uparrow}
@@ -114,6 +95,7 @@
 \newcommand{\true}{\mathsf{true}}
 \newcommand{\false}{\mathsf{false}}
 \newcommand{\einsert}[5]{\mathsf{insert}\,#1\,#2\,#3\,#4\,#5}
+\newcommand{\Set}{\mathsf{Set}}
 
 \newcommand{\Nat}{\mathsf{Nat}}
 \newcommand{\zero}{\mathsf{zero}}
@@ -150,7 +132,7 @@ surface language. Implicit functions in Agda are an archetypal example. In the
 Haskell language as implemented by the Glasgow Haskell Compiler (GHC),
 polymorphic types are another example. Implicit function types are
 \emph{first-class} if they are treated as any other type in the surface
-language. This is true in Agda and partially true in GHC. Inference and
+language. This holds in Agda and partially holds in GHC. Inference and
 elaboration in the presence of first-class implicit functions poses a challenge;
 in the context of GHC and ML-like languages, this has been dubbed
 ``impredicative instantiation'' or ``impredicative inference''. We propose a new
@@ -208,77 +190,76 @@ where to try filling in details on its own.
 \textbf{Implicit function types} are a common mechanism for conveying to the
 compiler that particular function arguments should be inferred by default. In
 Agda and Coq, one can use bracketed function domains for this purpose:
-\begin{Verbatim}[commandchars=\\\{\}]
-          -- Agda                     (* Coq *)
-          id : \{A : Set\} → A → A      Definition id \{A : Type\}(x : A) := x.
-          id x = x
-\end{Verbatim}
-In GHC, one can use \texttt{forall} to define implicit function
+\begin{alignat*}{3}
+  & id : \{A : \kw{Set}\}\to A \to A \hspace{5em} \kw{Definition}\,id\,\{A : \kw{Type}\}(x : A) := x.\\
+  & id\,x = x
+\end{alignat*}
+In GHC, one can use $\kw{forall}$ to define implicit function
 types\footnote{This notation requires language extensions
-  \texttt{KindSignatures} and \texttt{RankNTypes}; one could also write the type
-  \texttt{a -> a} and GHC would silently insert the quantification.}
-\begin{Verbatim}[commandchars=\\\{\}]
-                         id :: forall (a :: *). a -> a
-                         id x = x
-\end{Verbatim}
-
-In all of the above cases, if we apply \texttt{id} to an argument, the implicit
-type argument is provided by elaboration. For example, in Agda, \texttt{id true}
-is elaborated to \texttt{id \{Bool\} true}, and analogously in GHC and Coq. In all
-three systems, there is also a way to explicitly specify implicit arguments: in
-Agda we may put arguments in brackets as we have seen, in Coq we can prefix a
-name with \texttt{@} to make every implicit argument explicit, as in \texttt{@id
-  bool true}, and in GHC we can enable the language extension
-\texttt{TypeApplications} and write \texttt{id @Bool True}.
+  $\mathsf{KindSignatures}$ and $\mathsf{RankNTypes}$; one could also write the type
+  $a \to a$ and GHC would silently insert the quantification.}
+\begin{alignat*}{3}
+  & id :: \kw{forall}\,(a :: \kw{*}).\,a \to a\\
+  & id\,x = x
+\end{alignat*}
+In all of the above cases, if we apply $id$ to an argument, the implicit type
+argument is provided by elaboration. For example, in Agda, $id\,true$ is
+elaborated to $id\,Bool\,true$, and analogously in GHC and Coq. In all three
+systems, there is also a way to explicitly specify implicit arguments: in Agda
+we may put arguments in brackets as we have seen, in Coq we can prefix a name
+with $\kw{@}$ to make every implicit argument explicit, as in
+$\kw{@}id\,bool\,true$, and in GHC we can enable the language extension
+$\mathsf{TypeApplications}$ and write $id\,\kw{@}Bool\,True$.
 
 Implicit functions are \textbf{first-class} if they can be manipulated like any
 other type. Coq is an example for a system where this is \emph{not} the case.
 In Coq, the core language does not have an actual implicit function type,
 instead, implicitness is tied to particular \emph{names}, and while we can write
-\texttt{List (forall \{A : Type\}, A -> A)}, the brackets here are simply
-ignored by Coq and we get a plain function type. For example, Coq accepts the
-following definition:
-\begin{Verbatim}[commandchars=\\\{\}]
-      Definition poly : forall (f : forall \{A : Type\}, A -> A), bool * nat :=
-        fun f => (f bool true, f nat 0).
-\end{Verbatim}
-This is a higher-rank polymorphic function which returns a pair. Note that
-\texttt{f} is applied to two arguments, because the implicitness in
-\texttt{forall \{A : Type\}, A -> A} is silently dropped.
+$list\,(\kw{forall}\,\{A : \kw{Type}\},\,A\to A)$ for a list type of polymorphic
+functions, the brackets here are simply ignored by Coq and we get a plain
+function type. For example, Coq accepts the following definition:
+\begin{alignat*}{3}
+  & \kw{Definition}\,poly\,: \kw{forall}\,(f : \kw{forall}\,\{A : \kw{Type}\},\,A\to A),\,bool\,*\,nat :=\\
+  & \quad \kw{fun}\,f \Rightarrow (f\,bool\,true,\,f\,nat\,0)
+\end{alignat*}
+This is a higher-rank polymorphic function which returns a pair. Note that $f$
+is applied to two arguments, because the implicitness in $\kw{forall}\,\{A :
+\kw{Type}\},\,A\to A$ is silently dropped.
 
-In GHC Haskell, \texttt{forall} types are more flexible. We can write
-the following, with \texttt{RankNTypes} enabled:
-\begin{Verbatim}[commandchars=\\\{\}]
-                     poly :: (forall a. a -> a) -> (Bool, Int)
-                     poly f = (f True, f 0)
-\end{Verbatim}
+In GHC Haskell, $\kw{forall}$ types are more flexible. We can write the
+following, with $\kw{RankNTypes}$ enabled:
+\begin{alignat*}{3}
+  & poly :: (\kw{forall}\,a.\,a \to a) \to (Bool,\,Int) \\
+  & poly\,f = (f\,True,\,f\,0)
+\end{alignat*}
 However, polymorphic types are only supported in function domains and as fields
 of algebraic data constructors. We cannot instantiate an arbitrary type
-parameter to a \texttt{forall}, as in \texttt{[forall a. a -> a]} for a list
-type with polymorphic elements. While this type is technically allowed by the
-\texttt{ImpredicativeTypes} language extension, as of GHC 8.8 this extension is
+parameter to a $\kw{forall}$, as in $[\kw{forall}\,a.\,a\to a]$ for a list type
+with polymorphic elements. While this type is technically allowed by the
+$\kw{ImpredicativeTypes}$ language extension, as of GHC 8.8 this extension is
 deprecated and is not particularly usable in practice.
 
 In Agda, implicit functions are truly a first-class notion, and we may have
-\texttt{List (\{A : Set\} → A → A)} without issue. However, Agda's elaboration
+$List\,(\{A : \kw{Set}\}\to A \to A)$ without issue. However, Agda's elaboration
 still has limitations when it comes to handling implicit functions. Assume that
-we have \texttt{[]} for the empty list and \texttt{\_∷\_} for list extension,
+we have $[]$ for the empty list and $\blank::\blank$ for list extension,
 and consider the following code:
-\begin{Verbatim}[commandchars=\\\{\}]
-                     polyList : List (\{A : Set\} → A → A)
-                     polyList = (λ x → x) ∷ []
-\end{Verbatim}
-Agda 2.6.0.1 does not accept this. However, it does accept \texttt{polyList = (λ
-  \{A\} x → x) ∷ []}. The issue is the following. Agda first \emph{infers} a
-type for \texttt{(λ x → x) ∷ []}, then tries to unify the inferred type with the
-given \texttt{List (\{A : Set\} → A → A)} annotation. However, when Agda
-elaborates \texttt{λ x → x}, it does not yet know anything about the element
-type of the list; it is an undetermined unification variable. Hence, Agda does
-not know whether it should insert an extra \texttt{λ\{A\}} or not. If the
-element type is later found to be an implicit function, then it should, otherwise it
-should not. To solve this conundrum, Agda simply assumes that any unknown type
-is \emph{not} an implicit function type, and elects to not insert a lambda. This
-assumption is often correct, but sometimes --- as in the current case --- it is not.
+\begin{alignat*}{3}
+  & polyList : List\,(\{A : \kw{Set}\}\to A \to A)\\
+  & polyList = (\lambda\,x \to x)\,::\,[]
+\end{alignat*}
+Agda 2.6.0.1 does not accept this. However, it does accept $polyList =
+(\lambda\,\{A\}\,x \to x)\,::\,[]$. The issue is the following. Agda first
+\emph{infers} a type for $(\lambda\,x \to x)\,::\,[]$, then tries to unify the
+inferred type with the given $List\,(\{A : \kw{Set}\}\to A \to A)$
+annotation. However, when Agda elaborates $\lambda\,x \to x$, it does not yet
+know anything about the element type of the list; it is an undetermined
+unification variable. Hence, Agda does not know whether it should insert an
+extra $\lambda\,\{A\}$ or not. If the element type is later found to be an
+implicit function, then it should, otherwise it should not. To solve this
+conundrum, Agda simply assumes that any unknown type is \emph{not} an implicit
+function type, and elects to not insert a lambda. This assumption is often
+correct, but sometimes --- as in the current case --- it is not.
 
 There is significant literature on type inference in the presence of first-class
 polymorphic types, mainly in relation to GHC and ML-like languages \cite{TODO}.
@@ -290,10 +271,9 @@ with other language features.
 The solution presented in this paper is to gradually accummulate information
 about implicit insertions, and to have a setup where insertions can be refined
 and performed at any time after a particular expression is elaborated. In the
-current example, our algorithm wraps \texttt{λ x → x} in an implicit lambda with
-unknown arity, and the domain type is later refined to be \texttt{A : Set} when
-the inferred type is unified with the annotation.
-
+current example, our algorithm wraps $\lambda\,x\to x$ in an implicit lambda
+with unknown arity, whose domain is later refined to be $A : \kw{Set}$ when the
+inferred type is unified with the annotation.
 
 \subsection{Contributions}
 \begin{itemize}
@@ -315,7 +295,7 @@ the inferred type is unified with the annotation.
     this paper.
 \end{itemize}
 
-\subsubsection{Note on Terminology}
+\subsubsection{Note on terminology}
 
 We prefer to avoid the term ``impredicative inference'' in order to avoid
 confusion with impredicativity in type theory. The two notions historically
@@ -328,13 +308,12 @@ types. In particular, we have that
   \item Agda has type-theory-predicative universes, but implements
     type-inference-impredicative elaboration with first-class implicit function
     types.
-  \item Coq has type-theory-impredicative \texttt{Prop} universe (and
-    optionally also \texttt{Set}), but implements
-    type-inference-predicative elaboration, because of the lack of implicit
-    function types.
-  \item GHC is type-theory-impredicative with \texttt{RankNTypes} enabled
-    and \texttt{ImpredicativeTypes} disabled, as we have
-    \texttt{(forall (a :: *). a -> a) :: *}.
+  \item Coq has type-theory-impredicative $\kw{Prop}$ universe (and optionally
+    also $\kw{Set}$), but implements type-inference-predicative elaboration,
+    because of the lack of implicit function types.
+  \item GHC is type-theory-impredicative with $\kw{RankNTypes}$ enabled and
+    $\kw{ImpredicativeTypes}$ disabled, as we have $(\kw{forall}\,(a :: *).\, a
+    \to a) :: *$.
 \end{itemize}
 
 \section{Basic Bidirectional Elaboration}
@@ -570,7 +549,7 @@ of types, by mapping over the list $cons\,\U\,(cons\,\U\,nil)$.
   & map\,\{\U\}\,\{\U\}\,(\lambda\,A.\, A \to A)\,(\lambda\,L\,cons\,nil.\,cons\,\U\,(cons\,\U\,nil))
 \end{alignat*}
 In the core syntax, all applications must be explicit, so using implicit
-function type for $map$ above does not make much difference in optics.
+function type for $map$ above does not make much difference in notation.
 \end{example}
 
 \subsection{Metasubstitutions}
@@ -693,8 +672,8 @@ $id\,\{\alpha\}$, where $\alpha$ is a fresh metavariable.
 \end{mathpar}
 We have an additional $ins \in \{\true,\,\false\}$ parameter, which simply
 toggles whether any insertion is to be performed. We will use this in the
-definition of elaboration. Insertion is defined by recursion on the $A$ core
-type, as follows.
+definition of elaboration. Insertion is defined by recursion on $ins$ and the
+$A$ type, as follows.
 \begin{alignat*}{3}
   &\einsert{\false}{\Theta}{\Gamma}{t}{A} && :\equiv\,\,&& (\Theta,\,\id,\,t,\,A)\\
   &\einsert{\true\,}{\Theta}{\Gamma}{t}{(\{x : A\}\to B)} && :\equiv&&
@@ -705,9 +684,10 @@ type, as follows.
 
 \subsection{Unification}
 
-We assume that there is a partial unification procedure, which returns a unifying
-metasubstitution on success. We only have \emph{homogeneous} unification, i.e.\ the
-two terms to be unified must have the same type. The specification is as follows:
+We assume that there is a unification procedure, which returns a unifying
+metasubstitution on success. We only have \emph{homogeneous} unification,
+i.e.\ the two terms to be unified must have the same type. The specification is
+as follows:
 \begin{mathpar}
 \inferrule*{\Theta|\Gamma\vdash t : A \\ \Theta|\Gamma\vdash u : A}
            {\unify\,t\,u \in \{(\Theta',\,\theta)\,|\,(\theta : \Theta' \To \Theta)
@@ -720,7 +700,7 @@ we go into the details of how unification is implemented. Gundry describes
 unification in detail in \cite[Chapter~4]{gundry2013type} for a similar syntax,
 with a similar (though more featureful) setup for metacontexts.
 
-\todo{example for meta solution, more references}
+\todo{example for meta solution, more references, describe at least pattern unif and pruning briefly}
 
 Note that our unification algorithm does not support \emph{constraint
   postponing}, since we have not specified constraints. In our concrete
@@ -928,7 +908,7 @@ for the $\slet$ body. For $\einfer{\_}{ins}{\Theta}{\Gamma}$, we create a fresh 
 for the type of the hole, and another fresh meta for the hole itself.
 
 \subsubsection{On soundness, completeness, and other properties}
-We briefly discuss what we can and cannot say about the currently presented
+We briefly discuss what we can and cannot say about the presented
 elaborator. First, elaboration is \emph{sound} in the sense that it never
 produces malformed core syntax.
 
@@ -953,12 +933,11 @@ implicit applications. However, our elaborator targets a far stronger theory,
 and it is beyond our reach to succinctly characterize which annotations are
 inferable in the surface language.
 
-We can still say something about what kind of work our elaborator does. For
-this, we consider a translation from core terms to surface terms, the obvious
-``forgetful'' translation, which maps terms to surface counterparts. Now, this
-is an ``evil'' construction on core terms, since it does not preserve
-definitional equality. We shall only use this evil notion in the following
-statement.
+We can still say something about the behavior of our elaborator. For this, we
+consider a translation from core terms to surface terms, the obvious forgetful
+translation, which maps core terms to surface counterparts. Now, this is an
+``evil'' construction on core terms, since it does not preserve definitional
+equality. We shall only use this evil notion in the following statement.
 
 \begin{theorem}[Conservativity]
 Elaboration is conservative over the surface syntax, in the sense that for any
@@ -970,6 +949,8 @@ translation of $t'$ differs from $t$ only by
   \end{itemize}
 This follows by straightforward induction on surface syntax. \qed
 \end{theorem}
+
+\todo{Say something about termination of elab?}
 
 Also, note that we do not support \emph{let-generalization}. This is an open
 research topic in settings with dependent types, and we make no attempt at
