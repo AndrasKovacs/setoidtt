@@ -1,299 +1,185 @@
 
-module Evaluation (
-    apply
-  , applyM
-  , close
-  , closeM
-  , eval
-  , evalM
-  , force
-  , forceM
-  , forceSp
-  , forceSpM
-  , fresh
-  , hlamM
-  , nf
-  , nfM
-  , quote
-  , quoteM
-  , runEval
-  , vApp
-  , vAppM
-  , zonk
-  , zonkM
-  ) where
-
-import Control.Monad.Reader
-import Lens.Micro.Platform
-import qualified Data.IntMap.Strict as M
+module Evaluation where
 
 import Types
+import ElabState
 
---------------------------------------------------------------------------------
-
-runEval :: EvalM a -> MCxt -> Vals -> a
-runEval ma ms vs = runReader ma (EvalEnv ms vs)
-
-embedEvalM :: HasVals cxt Vals => EvalM a -> M cxt a
-embedEvalM ma = runEval ma <$> use mcxt <*> view vals
-
-vProj1 :: Val -> EvalM Val
-vProj1 (VTcons t u)    = pure t
-vProj1 (VNe h sp)      = pure $ VNe h (SProj1 sp)
-vProj1 (VLamTel x a t) = vProj1 =<< vLamTel pure x a t
+vProj1 :: Val -> Val
+vProj1 (VTcons t u)    = t
+vProj1 (VNe h sp)      = VNe h (SProj1 sp)
+vProj1 (VLamTel x a t) = vProj1 (vLamTel id x a t)
 vProj1 _               = error "impossible"
 
-vProj2 :: Val -> EvalM Val
-vProj2 (VTcons t u)    = pure u
-vProj2 (VNe h sp)      = pure $ VNe h (SProj2 sp)
-vProj2 (VLamTel x a t) = vProj2 =<< vLamTel pure x a t
+vProj2 :: Val -> Val
+vProj2 (VTcons t u)    = u
+vProj2 (VNe h sp)      = VNe h (SProj2 sp)
+vProj2 (VLamTel x a t) = vProj2 (vLamTel id x a t)
 vProj2 _               = error "impossible"
 
-vVar :: Name -> EvalM Val
-vVar x = do
-  vs <- view vals
-  case (lookup x vs) of
-    Nothing -> pure (VVar x) -- error $ "impossible: " ++ x ++ " not in scope"
-    Just mv -> pure $ maybe (VVar x) id mv
+vVar :: Ix -> Vals -> Val
+vVar 0 (VDef vs v) = v
+vVar 0 (VSkip vs)  = VVar (valsLen vs)
+vVar x (VDef vs _) = vVar (x - 1) vs
+vVar x (VSkip vs)  = vVar (x - 1) vs
+vVar _ _           = error "impossible"
 
-lookupMeta :: MId -> EvalM MetaEntry
-lookupMeta m = do
-  ms <- view mcxt
-  case M.lookup m ms of
-    Just e  -> pure e
-    Nothing -> error "impossible"
+vMeta :: MId -> Val
+vMeta m = case lookupMeta m of
+  Unsolved{} -> VMeta m
+  Solved v   -> v
+  _          -> error "impossible"
 
-vMeta :: MId -> EvalM Val
-vMeta m = lookupMeta m >>= \case
-  Solved v -> pure v
-  _        -> pure (VMeta m)
-
-defining :: Name -> Val -> EvalM a -> EvalM a
-defining x ~v ma = local (vals %~ ((x, Just v):)) ma
-
-hlam :: (Val -> EvalM Val) -> EvalM Closure
-hlam t = do
-  vs <- view vals
-  pure $ \ms ~v -> runEval (t v) ms vs
-
-hlamM :: HasVals cxt Vals => (Val -> EvalM Val) -> M cxt Closure
-hlamM t = embedEvalM (hlam t)
-
-close :: Name -> Tm -> EvalM Closure
-close x t = hlam (\ ~v -> defining x v $ eval t)
-
-closeM :: HasVals cxt Vals => Name -> Tm -> M cxt Closure
-closeM x t = embedEvalM (close x t)
-
-apply :: Closure -> Val -> EvalM Val
-apply cl ~u = cl <$> view mcxt <*> pure u
-
-applyM :: HasVals cxt Vals => Closure -> Val -> M cxt Val
-applyM t ~u = embedEvalM (apply t u)
-
-vAppSp :: Val -> Spine -> EvalM Val
-vAppSp h = go where
-  go SNil             = pure h
-  go (SApp sp u i)    = do {sp <- go sp; vApp sp u i}
-  go (SAppTel a sp u) = do {sp <- go sp; vAppTel a sp u}
-  go (SProj1 sp)      = vProj1 =<< go sp
-  go (SProj2 sp)      = vProj2 =<< go sp
-
--- | Force the outermost constructor in a value. Does not force the spine
+-- | Force the outermost constructor in a value, do not force the spine
 --   of a neutral value.
-force :: Val -> EvalM Val
+force :: Val -> Val
 force = \case
-  v@(VNe (HMeta m) sp) -> lookupMeta m >>= \case
-    Unsolved{} -> pure v
-    Solved v   -> force =<< vAppSp v sp
+  v@(VNe (HMeta m) sp) -> case lookupMeta m of
+    Unsolved{} -> v
+    Solved v   -> force (vAppSp v sp)
     _          -> error "impossible"
-
   VPiTel x a b  -> vPiTel force x a b
   VLamTel x a t -> vLamTel force x a t
-  v             -> pure v
-
-forceM :: HasVals cxt Vals => Val -> M cxt Val
-forceM v = embedEvalM (force v)
+  v             -> v
 
 -- | Force a spine, computing telescope applications where possible.
-forceSp :: Spine -> EvalM Spine
-forceSp sp = vAppSp (VVar "_") sp >>= \case
-  VNe _ sp -> pure sp
-  _        -> error "impossible"
+forceSp :: Spine -> Spine
+forceSp sp =
+  -- This a cheeky hack, the point is that (VVar (-1)) blocks computation, and
+  -- we get back the new spine.  We use (-1) in order to make the hack clear in
+  -- potential debugging situations.
+  case vAppSp (VVar (-1)) sp of
+    VNe _ sp -> sp
+    _        -> error "impossible"
 
-forceSpM :: HasVals cxt Vals => Spine -> M cxt Spine
-forceSpM sp = embedEvalM (forceSp sp)
-
--- We parameterize vPiTel and vLamTel with a continuation, because
--- sometimes we additionally want to force the result.
-vPiTel :: (Val -> EvalM Val) -> Name -> VTy -> Closure -> EvalM Val
-vPiTel k x a b = force a >>= \case
-  VTEmpty        -> k =<< apply b VTempty
-  VTCons x1 a as ->
-    VPi x1 Impl a <$> hlam (\ ~x1 ->
-      join (vPiTel pure (x ++ "2") <$> apply as x1 <*> hlam (\ ~x2 ->
-        apply b (VTcons x1 x2)
-        )))
-  a -> pure (VPiTel x a b)
-
-vLamTel :: (Val -> EvalM Val) -> Name -> VTy -> Closure -> EvalM Val
-vLamTel k x a t = force a >>= \case
-  VTEmpty        -> k =<< apply t VTempty
-  VTCons x1 a as ->
-    VLam x1 Impl <$> hlam (\ ~x1 ->
-      join (vLamTel k (x ++ "2") <$> apply as x1 <*> hlam (\ ~x2 ->
-        apply t (VTcons x1 x2)
-        )))
-  a -> pure (VLamTel x a t)
-
-vAppTel ::  VTy -> Val -> Val -> EvalM Val
-vAppTel a t ~u =
-  force a >>= \case
-    VTEmpty       -> pure t
-    VTCons _ a as -> do
-      ~v1 <- vProj1 u
-      join (vAppTel <$> apply as v1 <*> vApp t v1 Impl <*> vProj2 u)
-    a -> case t of
-      VLamTel _ _ t -> apply t u
-      VNe h sp      -> pure $ VNe h (SAppTel a sp u)
-      _             -> error "impossible"
-
-vApp :: Val -> Val -> Icit -> EvalM Val
-vApp (VLam _ _ t   ) ~u i = apply t u
-vApp (VNe h sp     ) ~u i = pure $ VNe h (SApp sp u i)
-vApp (VLamTel x a t) ~u i = do {t <- vLamTel pure x a t; vApp t u i}
+vApp :: Val -> Val -> Icit -> Val
+vApp (VLam _ _ _ t)  ~u i = t u
+vApp (VNe h sp)      ~u i = VNe h (SApp sp u i)
+vApp (VLamTel x a t) ~u i = vApp (vLamTel id x a t) u i
 vApp _                _ _ = error "impossible"
 
-vAppM :: HasVals cxt Vals => Val -> Val -> Icit -> M cxt Val
-vAppM t ~u i = embedEvalM (vApp t u i)
+vPiTel :: (Val -> Val) -> Name -> VTy -> (Val -> Val) -> Val
+vPiTel k x a b = case force a of
+  VTEmpty        -> k (b VTempty)
+  VTCons x1 a as -> let x1 = x ++ "1"
+                        x2 = x ++ "2"
+                    in VPi x1 Impl a $ \ ~x1 ->
+                       vPiTel id x2 (as x1) $ \ ~x2 -> b (VTcons x1 x2)
+  a -> VPiTel x a b
 
-eval :: Tm -> EvalM Val
-eval t = go t where
-  go :: Tm -> EvalM Val
-  go = \case
-    Var x        -> vVar x
-    Let x _ t u  -> do {~v <- go t; defining x v $ go u}
-    Assume x _ t -> local (vals %~ ((x, Nothing):)) $ go t
-    U            -> pure VU
-    Meta m       -> vMeta m
-    Pi x i a b   -> VPi x i <$> go a <*> close x b
-    Lam x i t    -> VLam x i <$> close x t
-    App t u i    -> join (vApp <$> go t <*> go u <*> pure i)
-    Tel          -> pure VTel
-    TEmpty       -> pure VTEmpty
-    TCons x a b  -> VTCons x <$> go a <*> close x b
-    Rec a        -> VRec <$> go a
-    Tempty       -> pure VTempty
-    Tcons t u    -> VTcons <$> go t <*> go u
-    Proj1 t      -> vProj1 =<< go t
-    Proj2 t      -> vProj2 =<< go t
-    PiTel x a b  -> join (vPiTel pure x <$> go a <*> close x b)
-    AppTel a t u -> join (vAppTel <$> go a <*> go t <*> go u)
-    LamTel x a t -> join (vLamTel pure x <$> go a <*> close x t)
+vLamTel :: (Val -> Val) -> Name -> VTy -> (Val -> Val) -> Val
+vLamTel k x a t = case force a of
+  VTEmpty       -> k (t VTEmpty)
+  VTCons _ a as -> let x1 = x ++ "1"
+                       x2 = x ++ "2"
+                   in VLam x1 Impl a $ \ ~x1 ->
+                      vLamTel id x2 (as x1) $ \ ~x2 -> t (VTcons x1 x2)
+  a             -> VLamTel x a t
 
-evalM :: HasVals cxt Vals => Tm -> M cxt Val
-evalM t = embedEvalM (eval t)
+vAppTel ::  VTy -> Val -> Val -> Val
+vAppTel a ~t ~u = case force a of
+  VTEmpty       -> t
+  VTCons _ a as -> let u1 = vProj1 u in vAppTel (as u1) (vApp t u1 Impl) (vProj2 u)
+  a             -> case t of
+                     VLamTel _ _ t -> t u
+                     VNe h sp      -> VNe h (SAppTel a sp u)
+                     _             -> error "impossible"
 
-fresh :: Vals -> Name -> Name
-fresh vs "_" = "_"
-fresh vs x = case lookup x vs of
-  Just _  -> fresh vs (x ++ "'")
-  Nothing -> x
+vAppSp :: Val -> Spine -> Val
+vAppSp h = go where
+  go SNil             = h
+  go (SApp sp u i)    = vApp (go sp) u i
+  go (SAppTel a sp u) = vAppTel a (go sp) u
+  go (SProj1 sp)      = vProj1 (go sp)
+  go (SProj2 sp)      = vProj2 (go sp)
 
-quote :: Val -> EvalM Tm
-quote = go where
+eval :: Vals -> Tm -> Val
+eval vs = \case
+  Var x        -> vVar x vs
+  Let x _ t u  -> eval (VDef vs (eval vs t)) u
+  U            -> VU
+  Meta m       -> vMeta m
+  Pi x i a b   -> VPi x i (eval vs a) $ \x -> eval (VDef vs x) b
+  Lam x i a t  -> VLam x i (eval vs a) $ \x -> eval (VDef vs x) t
+  App t u i    -> vApp (eval vs t) (eval vs u) i
+  Tel          -> VTel
+  TEmpty       -> VTEmpty
+  TCons x a b  -> VTCons x (eval vs a) $ \x -> eval (VDef vs x) b
+  Rec a        -> VRec (eval vs a)
+  Tempty       -> VTempty
+  Tcons t u    -> VTcons (eval vs t) (eval vs u)
+  Proj1 t      -> vProj1 (eval vs t)
+  Proj2 t      -> vProj2 (eval vs t)
+  PiTel x a b  -> vPiTel id x (eval vs a) $ \x -> eval (VDef vs x) b
+  AppTel a t u -> vAppTel (eval vs a) (eval vs t) (eval vs u)
+  LamTel x a t -> vLamTel id x (eval vs a) $ \x -> eval (VDef vs x) t
 
-  goBind :: Name -> Closure -> EvalM Tm
-  goBind x t =
-    local (vals %~ ((x, Nothing):)) (go =<< apply t (VVar x))
+quote :: Lvl -> Val -> Tm
+quote d v = case force v of
+  VNe h sp ->
+    let go SNil = case h of
+          HMeta m -> Meta m
+          HVar x  -> Var x
+        go (SApp sp u i)    = App (go sp) (quote d u) i
+        go (SAppTel a sp u) = AppTel (quote d a) (go sp) (quote d u)
+        go (SProj1 sp)      = Proj1 (go sp)
+        go (SProj2 sp)      = Proj2 (go sp)
+    in go (forceSp sp)
 
-  go :: Val -> EvalM Tm
-  go v = do
-    fresh <- fresh <$> view vals
-    force v >>= \case
-      VNe h sp -> do
-        let goSp :: Spine -> EvalM Tm
-            goSp SNil = case h of
-              HMeta x    -> pure $ Meta x
-              HVar x     -> pure $ Var x
-            goSp (SApp sp u i)    = App <$> goSp sp <*> go u <*> pure i
-            goSp (SAppTel a sp u) = AppTel <$> go a <*> goSp sp <*> go u
-            goSp (SProj1 sp)      = Proj1 <$> goSp sp
-            goSp (SProj2 sp)      = Proj2 <$> goSp sp
-        goSp =<< forceSp sp
+  VLam x i a t  -> Lam x i (quote d a) (quote (d + 1) (t (VVar d)))
+  VPi x i a b   -> Pi x i (quote d a) (quote (d + 1) (b (VVar d)))
+  VU            -> U
+  VTel          -> Tel
+  VRec a        -> Rec (quote d a)
+  VTEmpty       -> TEmpty
+  VTCons x a as -> TCons x (quote d a) (quote (d + 1) (as (VVar d)))
+  VTempty       -> Tempty
+  VTcons t u    -> Tcons (quote d t) (quote d u)
+  VPiTel x a b  -> PiTel x (quote d a) (quote (d + 1) (b (VVar d)))
+  VLamTel x a t -> LamTel x (quote d a) (quote (d + 1) (t (VVar d)))
 
-      VLam (fresh -> x) i t    -> Lam x i <$> goBind x t
-      VPi (fresh -> x) i a b   -> Pi x i <$> go a <*> goBind x b
-      VU                       -> pure U
-      VTel                     -> pure Tel
-      VRec a                   -> Rec <$> go a
-      VTEmpty                  -> pure TEmpty
-      VTCons (fresh -> x) a as -> TCons x <$> go a <*> goBind x as
-      VTempty                  -> pure Tempty
-      VTcons t u               -> Tcons <$> go t <*> go u
-      VPiTel (fresh -> x) a b  -> PiTel x <$> go a <*> goBind x b
-      VLamTel (fresh -> x) a t -> LamTel x <$> go a <*> goBind x t
+nf :: Vals -> Tm -> Tm
+nf vs t = quote (valsLen vs) (eval vs t)
 
-quoteM :: HasVals cxt Vals => Val -> M cxt Tm
-quoteM v = embedEvalM (quote v)
-
-nf :: Tm -> EvalM Tm
-nf t = quote =<< eval t
-
-nfM :: HasVals cxt Vals => Tm -> M cxt Tm
-nfM t = embedEvalM (nf t)
-
-
+-- zonking
 --------------------------------------------------------------------------------
 
--- | Inlines meta solutions but does not compute telescopes.
-zonk :: Tm -> EvalM Tm
-zonk = go where
+zonkSp :: Vals -> Tm -> Either Val Tm
+zonkSp vs = \case
+  Meta m       -> case lookupMeta m of
+                    Solved v -> Left v
+                    _        -> Right (Meta m)
+  App t u ni   -> case zonkSp vs t of
+                    Left t  -> Left (vApp t (eval vs u) ni)
+                    Right t -> Right $ App t (zonk vs u) ni
+  AppTel a t u -> case zonkSp vs t of
+                    Left t  -> Left (vAppTel (eval vs a) t (eval vs u))
+                    Right t -> Right $ AppTel (zonk vs a) t (zonk vs u)
+  t            -> Right (zonk vs t)
 
-  goSp :: Tm -> EvalM (Either Val Tm)
-  goSp = \case
-    Meta m       -> lookupMeta m >>= \case
-                      Solved v -> pure $ Left v
-                      _        -> pure $ Right (Meta m)
-    App t u ni   -> goSp t >>= \case
-                      Left t  -> do {u <- eval u; Left <$> vApp t u ni}
-                      Right t -> do {u <- go u; pure $ Right $ App t u ni}
-    AppTel a t u -> goSp t >>= \case
-                      Left t  -> do {a <- eval a; u <- eval u; Left <$> vAppTel a t u}
-                      Right t -> do {a <- go a; u <- go u; pure $ Right $ AppTel a t u}
-    t            -> Right <$> go t
-
-  goBind :: Name -> Tm -> EvalM Tm
-  goBind x t = local (vals %~ ((x, Nothing):)) (go t)
-
-  go :: Tm -> EvalM Tm
-  go = \case
-    Var x        -> pure $ Var x
-    Meta m       -> lookupMeta m >>= \case
-                      Solved v   -> quote v
-                      Unsolved{} -> pure (Meta m)
-                      _          -> error "impossible"
-    U            -> pure U
-    Pi x i a b   -> Pi x i <$> go a <*> goBind x b
-    App t u ni   -> goSp t >>= \case
-                      Left t  -> do {u <- eval u; quote =<< vApp t u ni}
-                      Right t -> do {u <- go u; pure $ App t u ni}
-    Lam x i t    -> Lam x i <$> goBind x t
-    Let x a t u  -> Let x <$> go a <*> go t <*> goBind x u
-    Assume x a t -> Assume x <$> go a <*> goBind x t
-    Tel          -> pure Tel
-    TEmpty       -> pure TEmpty
-    TCons x t u  -> TCons x <$> go t <*> goBind x u
-    Rec a        -> Rec <$> go a
-    Tempty       -> pure Tempty
-    Tcons t u    -> Tcons <$> go t <*> go u
-    Proj1 t      -> Proj1 <$> go t
-    Proj2 t      -> Proj2 <$> go t
-    PiTel x a b  -> PiTel x <$> go a <*> goBind x b
-    AppTel a t u -> goSp t >>= \case
-                      Left t  -> do {a <- eval a; u <- eval u; quote =<< vAppTel a t u}
-                      Right t -> do {a <- go a; u <- go u; pure $ AppTel a t u}
-    LamTel x a b -> LamTel x <$> go a <*> goBind x b
-
-zonkM :: HasVals cxt Vals => Tm -> M cxt Tm
-zonkM t = embedEvalM (zonk t)
+zonk :: Vals -> Tm -> Tm
+zonk vs = \case
+  Var x        -> Var x
+  Meta m       -> case lookupMeta m of
+                    Solved v   -> quote (valsLen vs) v
+                    Unsolved{} -> Meta m
+                    _          -> error "impossible"
+  U            -> U
+  Pi x i a b   -> Pi x i (zonk vs a) (zonk (VSkip vs) b)
+  App t u ni   -> case zonkSp vs t of
+                    Left t  -> quote (valsLen vs) (vApp t (eval vs u) ni)
+                    Right t -> App t (zonk vs u) ni
+  Lam x i a t  -> Lam x i (zonk vs a) (zonk (VSkip vs) t)
+  Let x a t u  -> Let x (zonk vs a) (zonk vs t) (zonk (VSkip vs) u)
+  Tel          -> Tel
+  TEmpty       -> TEmpty
+  TCons x t u  -> TCons x (zonk vs t) (zonk (VSkip vs) u)
+  Rec a        -> Rec (zonk vs a)
+  Tempty       -> Tempty
+  Tcons t u    -> Tcons (zonk vs t) (zonk vs u)
+  Proj1 t      -> Proj1 (zonk vs t)
+  Proj2 t      -> Proj2 (zonk vs t)
+  PiTel x a b  -> PiTel x (zonk vs a) (zonk (VSkip vs) b)
+  AppTel a t u -> case zonkSp vs t of
+                    Left t  -> quote (valsLen vs) (vAppTel (eval vs a) t (eval vs u))
+                    Right t -> AppTel (zonk vs a) t (zonk vs u)
+  LamTel x a b -> LamTel x (zonk vs a) (zonk (VSkip vs) b)

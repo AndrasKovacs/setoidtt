@@ -50,21 +50,17 @@ pAtom  =
                <|> (RHole <$ char '_'))
   <|> parens pTm
 
-pArg :: Parser (Maybe (Either Name Icit, Raw))
-pArg = (Nothing <$ char '!')
-  <|>  (Just <$> (
-           (try $ braces $ do {x <- pIdent; char '='; t <- pTm; pure (Left x, t)})
-       <|> ((Right Impl,) <$> (char '{' *> pTm <* char '}'))
-       <|> ((Right Expl,) <$> pAtom)))
+pArg :: Parser (Either Name Icit, Raw)
+pArg =
+      (try $ braces $ do {x <- pIdent; char '='; t <- pTm; pure (Left x, t)})
+  <|> ((Right Impl,) <$> (char '{' *> pTm <* char '}'))
+  <|> ((Right Expl,) <$> pAtom)
 
 pSpine :: Parser Raw
 pSpine = do
   h <- pAtom
   args <- many pArg
-  pure $ foldl
-    (\t -> \case Nothing     -> RStopInsertion t
-                 Just (i, u) -> RApp t u i)
-    h args
+  pure $ foldl (\t (i, u) -> RApp t u i) h args
 
 pLamBinder :: Parser (Name, Maybe Raw, Either Name Icit)
 pLamBinder =
@@ -112,17 +108,8 @@ pLet = do
   u <- pTm
   pure $ RLet x (maybe RHole id ann) t u
 
-pAssume :: Parser Raw
-pAssume = do
-  symbol "assume"
-  x <- pIdent
-  ann <- char ':' *> pTm
-  symbol "in"
-  u <- pTm
-  pure $ RAssume x ann u
-
 pTm :: Parser Raw
-pTm = withPos (pLam <|> pLet <|> pAssume <|> try pPi <|> pFunOrSpine)
+pTm = withPos (pLam <|> pLet <|> try pPi <|> pFunOrSpine)
 
 pSrc :: Parser Raw
 pSrc = ws *> pTm <* eof

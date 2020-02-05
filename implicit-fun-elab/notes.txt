@@ -1,4 +1,27 @@
 
+Notes for paper
+------------------------------------------------------------
+
+- possibly annotated lambdas
+- unification:
+  - pattern unify
+  - simple pruning
+
+
+- Use top IORef for 1) mcxt 2) fresh meta id
+- Use exception for error
+- Use try/catch decoration for error source positions
+
+- eval needs only val env
+- unify need vals and types
+- elab needs vals, types, nametable
+- mcxt needs types (for pruning)
+
+TODO:
+- pretty printing with
+
+
+
 Problems with out-of date values
 ------------------------------------------------------------
 

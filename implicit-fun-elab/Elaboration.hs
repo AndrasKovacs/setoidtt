@@ -1,7 +1,11 @@
-
 {-# options_ghc -Wno-type-defaults #-}
 
 module Elaboration where
+
+
+
+{-
+
 
 import Control.Monad
 import Control.Monad.Except
@@ -685,3 +689,4 @@ infer ins t = case t of
     nty <- quoteM (snd res)
     debugM ("inferred", fst res, nty)
     pure res
+-}
