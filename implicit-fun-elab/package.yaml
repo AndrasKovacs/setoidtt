@@ -22,8 +22,8 @@ default-extensions:
 - MultiParamTypeClasses
 - NoMonomorphismRestriction
 - OverloadedStrings
-- PatternSynonyms
 - PartialTypeSignatures
+- PatternSynonyms
 - RankNTypes
 - RecordWildCards
 - ScopedTypeVariables
@@ -31,6 +31,8 @@ default-extensions:
 - Strict
 - TemplateHaskell
 - TupleSections
+- TypeApplications
+- TypeInType
 - ViewPatterns
 
 ghc-options:

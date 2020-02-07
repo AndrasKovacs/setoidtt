@@ -298,8 +298,8 @@ inferred type is unified with the annotation.
 \subsubsection{Note on terminology}
 
 We prefer to avoid the term ``impredicative inference'' in order to avoid
-confusion with impredicativity in type theory. The two notions historically
-coincided, but has since diverged to the point of being orthogonal. In type
+confusion with impredicativity in type theory. The two notions sometimes
+coincided historically, but currently they are largely orthogonal. In type
 theory, impredicativity is a property of a universe, i.e.\ closure of a universe
 under arbitrary products. In the type inference literature, impredicativity
 means the ability to instantiate type variables and metavariables to polymorphic
@@ -312,7 +312,7 @@ types. In particular, we have that
     also $\kw{Set}$), but implements type-inference-predicative elaboration,
     because of the lack of implicit function types.
   \item GHC is type-theory-impredicative with $\kw{RankNTypes}$ enabled and
-    $\kw{ImpredicativeTypes}$ disabled, as we have $(\kw{forall}\,(a :: *).\, a
+    $\kw{ImpredicativeTypes}$ \emph{disabled}, as we have $(\kw{forall}\,(a :: *).\, a
     \to a) :: *$.
 \end{itemize}
 
@@ -497,21 +497,21 @@ elaboration from an algebraic perspective.
 
 \todo{how to refer to mathpartir rules from text?}
 
-\emph{Metacontexts} are used to record metavariables which are created during
+Metacontexts are used to record metavariables which are created during
 elaboration. In our case, metacontexts are simply a context prefix, and we have
-variables pointing into it, but we do not support contextual modality e.g.\ as
-in \cite{nanevski2008contextual}. The non-meta typing context additionally
-supports \emph{defined variables}, which is used in the typing rule for
-\emph{let-definitions}, and we have that any defined variable is equal to its
-definition. We mainly support this as a convenience feature in the
+variables pointing into it, but we do not support any contextual modality
+e.g.\ as in \cite{nanevski2008contextual}. The non-meta typing context
+additionally supports \emph{defined variables}, which is used in the typing rule
+for \emph{let-definitions}, and we have that any defined variable is equal to
+its definition. We mainly support this as a convenience feature in the
 implementation of our elaborator.
 
-\emph{The universe} $\U$ is Russell-style, and we have the type-in-type rule.
+The universe $\U$ is Russell-style, and we have the type-in-type rule.
 This causes our core syntax to be non-total, and our elaboration algorithm to be
 possibly non-terminating. We use type-in-type to simplify presentation, since
 consistent universe setups are orthogonal to the focus of this work.
 
-\emph{Function types} only differ from each other in notation: implicit
+Function types only differ from each other in notation: implicit
 functions have the same rules as ``explicit'' functions. The primary purpose of
 implicit function types is to \emph{guide elaboration}: the elaborator will at
 times compute a type and branch on whether it is an implicit function.
@@ -526,7 +526,7 @@ Both in the surface and core syntax, we use Agda-like notation:
 \end{itemize}
 \end{notation}
 
-\begin{notation}[Spines]\label{not:spines}
+\begin{notation}\label{not:spines}
   We sometimes use a spine notation for neutral terms. A spine is a list of
   terms, noted as $\overline{t}$, where terms may be wrapped in brackets to
   signal implicit application. For example, if $\overline{u} \equiv
@@ -548,8 +548,9 @@ of types, by mapping over the list $cons\,\U\,(cons\,\U\,nil)$.
   \lambda\,\{A\}\,\{B\}\,f\,as\,L\,cons\,nil.\,as\,L\,(\lambda\,a.\,cons\,(f\,a))\,nil\,\,\sin\\
   & map\,\{\U\}\,\{\U\}\,(\lambda\,A.\, A \to A)\,(\lambda\,L\,cons\,nil.\,cons\,\U\,(cons\,\U\,nil))
 \end{alignat*}
-In the core syntax, all applications must be explicit, so using implicit
-function type for $map$ above does not make much difference in notation.
+In the core syntax, all applications must be explicit. In the surface syntax we
+will be able to omit implicit arguments to $map$.
+
 \end{example}
 
 \subsection{Metasubstitutions}
