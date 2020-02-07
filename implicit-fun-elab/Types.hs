@@ -7,6 +7,7 @@ module Types (
 import Control.Exception
 import Text.Megaparsec (SourcePos(..), unPos, initialPos)
 import Text.Printf
+import Lens.Micro.Platform
 
 import qualified Data.IntMap.Strict as IM
 import qualified Data.IntSet        as IS
@@ -83,16 +84,11 @@ ixType (TBound tys a) x = ixType tys (x - 1)
 lvlType :: Types -> Lvl -> VTy
 lvlType tys x = ixType tys (typesLen tys - x - 1)
 
-data ElabCxt = ElabCxt {
-  elabCxtVals      :: Vals,
-  elabCxtTypes     :: Types,
-  elabCxtNames     :: [Name],
-  elabCxtNameTable :: NameTable}
-
-data UnifyCxt  = UnifyCxt {
-  unifyCxtVals  :: Vals,
-  unifyCxtTypes :: Types,
-  unifyCxtNames :: [Name]}
+data Cxt = Cxt {
+  cxtVals      :: Vals,
+  cxtTypes     :: Types,
+  cxtNames     :: [Name],
+  cxtNameTable :: NameTable}
 
 data Err = Err {
   errNames :: [Name],
@@ -331,3 +327,9 @@ showError ns = \case
      "  %s =? %s")
     (show x)
     (showTm ns lhs) (showTm ns rhs)
+
+-- Lenses
+--------------------------------------------------------------------------------
+
+makeFields ''Cxt
+makeFields ''Err

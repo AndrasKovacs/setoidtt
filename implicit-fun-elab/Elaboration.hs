@@ -1,8 +1,9 @@
 {-# options_ghc -Wno-type-defaults #-}
 
--- 1. implement constancy, pattern unify, but no pruning
--- 2. implement pruning
--- 3. see if we can merge stuff
+-- TODO: - implement simple elab without telescope/pruning
+--       - add pruning
+--       - add telescopes
+
 
 module Elaboration where
 
@@ -65,7 +66,9 @@ occurs d topX = occurs' d mempty where
       VPiTel x a b  -> go a <> goBind b
       VLamTel x a t -> go a <> goBind t
 
-------------------------------------------------------------
+
+-- unification
+--------------------------------------------------------------------------------
 
 -- If (Just l)   : rename to l
 --    Nothing    : nonlinear var (error)
@@ -198,3 +201,13 @@ unify ns tys d topT topT' = go topT topT' where
     (SApp sp u i, SApp sp' u' i') | i == i' -> goSp sp sp' >> go u u'
     (SAppTel a sp u, SAppTel a' sp' u')     -> go a a' >> goSp sp sp' >> go u u'
     _                                       -> report ns $ UnifyError ntopT ntopT'
+
+-- Elaboration
+--------------------------------------------------------------------------------
+
+check :: Cxt -> Raw -> VTy -> IO Tm
+check cxt t a = undefined
+
+
+infer :: Cxt -> Raw -> IO (Tm, VTy)
+infer cxt t = undefined
