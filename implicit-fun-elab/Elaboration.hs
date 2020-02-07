@@ -1,15 +1,18 @@
 {-# options_ghc -Wno-type-defaults #-}
 
--- TODO: - implement simple elab without telescope/pruning
+-- TODO: - Only use elabcxt and unifycxt
+--       - try to decorate errors with info when info is available (catch/rethrow)
+--       - implement simple elab without telescope/pruning
 --       - add pruning
 --       - add telescopes
-
 
 module Elaboration where
 
 import qualified Data.IntSet as IS
 import qualified Data.IntMap as IM
+import qualified Data.Map.Strict as M
 import Data.IORef
+import Lens.Micro.Platform
 
 import Types
 import Evaluation
@@ -76,24 +79,24 @@ occurs d topX = occurs' d mempty where
 type SpineRenaming = IM.IntMap (Maybe Lvl)
 
 -- | Expects a forced spine. Returns a partial renaming and the length of the spine.
-checkSp :: ([Name], Tm, Tm) -> Spine -> (SpineRenaming, Lvl)
-checkSp (report -> report, lhs, rhs) = go where
+checkSp :: UnifyCxt -> (Tm, Tm) -> Spine -> (SpineRenaming, Lvl)
+checkSp cxt (lhs, rhs) = go where
   go :: Spine -> (SpineRenaming, Lvl)
   go = \case
     SNil        -> (mempty, 0)
     SApp sp u i -> case go sp of
       (!r, !d) -> case force u of
         VVar x -> (IM.insert x (if IM.member x r then Nothing else Just d) r, d + 1)
-        _      -> report $ SpineNonVar lhs rhs
+        _      -> report (cxt^.names) $ SpineNonVar lhs rhs
     SAppTel a sp u -> case go sp of
       (!r, !d) -> case force u of
         VVar x -> (IM.insert x (if IM.member x r then Nothing else Just d) r, d + 1)
-        _    -> report $ SpineNonVar lhs rhs
-    SProj1 _ -> report SpineProjection
-    SProj2 _ -> report SpineProjection
+        _    -> report (cxt^.names) $ SpineNonVar lhs rhs
+    SProj1 _ -> report (cxt^.names) SpineProjection
+    SProj2 _ -> report (cxt^.names) SpineProjection
 
-quoteRhs :: ([Name], Tm, Tm) -> MId -> (SpineRenaming, Lvl) -> Val -> Tm
-quoteRhs (topNs, topLhs, topRhs) topMeta = go where
+quoteRhs :: UnifyCxt -> (Tm, Tm) -> MId -> (SpineRenaming, Lvl) -> Val -> Tm
+quoteRhs cxt (topLhs, topRhs) topMeta = go where
 
   go :: (SpineRenaming, Lvl) -> Val -> Tm
   go (!r, !d) v = case (go (r, d),
@@ -101,11 +104,11 @@ quoteRhs (topNs, topLhs, topRhs) topMeta = go where
     (go, goBind) -> case force v of
       VNe h sp ->
         let h' = case h of
-              HMeta m | m == topMeta -> report topNs $ OccursCheck topLhs topRhs
+              HMeta m | m == topMeta -> report (cxt^.names) $ OccursCheck topLhs topRhs
               HMeta m -> Meta m
               HVar x -> case IM.lookup x r of
-                Nothing        -> report topNs $ ScopeError topLhs topRhs (lvlName topNs x)
-                Just Nothing   -> report topNs $ NonLinearSolution topLhs topRhs (lvlName topNs x)
+                Nothing        -> report (cxt^.names) $ ScopeError topLhs topRhs (lvlName (cxt^.names) x)
+                Just Nothing   -> report (cxt^.names) $ NonLinearSolution topLhs topRhs (lvlName (cxt^.names) x)
                 Just (Just x') -> Var (d - x' - 1)
 
             goSp SNil             = h'
@@ -128,12 +131,12 @@ quoteRhs (topNs, topLhs, topRhs) topMeta = go where
       VPiTel x a b  -> PiTel x (go a) (goBind b)
       VLamTel x a t -> LamTel x (go a) (goBind t)
 
-solveMeta :: [Name] -> Lvl -> MId -> Spine -> Val -> IO ()
-solveMeta ns d m sp rhs = do
-  let ~lhst = quote d (VNe (HMeta m) sp)
-      ~rhst = quote d rhs
-  sp  <- pure $ checkSp (ns, lhst, rhst) (forceSp sp)
-  rhs <- pure $ quoteRhs (ns, lhst, rhst) m sp rhs
+solveMeta :: UnifyCxt -> MId -> Spine -> Val -> IO ()
+solveMeta cxt m sp rhs = do
+  let ~lhst = quote (cxt^.len) (VNe (HMeta m) sp)
+      ~rhst = quote (cxt^.len) rhs
+  sp  <- pure $ checkSp  cxt (lhst, rhst) (forceSp sp)
+  rhs <- pure $ quoteRhs cxt (lhst, rhst) m sp rhs
 
   let mty = case lookupMeta m of
         Unsolved _ ty -> ty
@@ -149,9 +152,9 @@ solveMeta ns d m sp rhs = do
   rhs <- pure $ lams (mty, snd sp) 0 rhs
   writeMetaIO m (Solved (eval VNil rhs))
 
-freshMeta :: [Name] -> Types -> VTy -> IO Tm
-freshMeta ns tys a = do
-  a <- pure $ quote (typesLen tys) a
+freshMeta :: UnifyCxt -> VTy -> IO Tm
+freshMeta cxt a = do
+  a <- pure $ quote (cxt^.len) a
   m <- readIORef nextMId
   modifyIORef' nextMId (+1)
 
@@ -165,14 +168,14 @@ freshMeta ns tys a = do
       ty (TBound tys b) (x:ns) vs = VPi x Expl b $ \ ~x -> ty tys ns (VDef vs x)
       ty _              _      _  = error "impossible"
 
-  writeMetaIO m $ Unsolved mempty (ty tys ns VNil)
-  pure $ fst $ term tys
+  writeMetaIO m $ Unsolved mempty (ty (cxt^.types) (cxt^.names) VNil)
+  pure $ fst $ term (cxt^.types)
 
-unify :: [Name] -> Types -> Lvl -> Val -> Val -> IO ()
-unify ns tys d topT topT' = go topT topT' where
+unify :: UnifyCxt -> Val -> Val -> IO ()
+unify cxt topT topT' = go topT topT' where
 
-  ~ntopT  = quote (typesLen tys) topT
-  ~ntopT' = quote (typesLen tys) topT'
+  ~ntopT  = quote (cxt^.len) topT
+  ~ntopT' = quote (cxt^.len) topT'
 
   go t t' = case (force t, force t') of
     (VLam x _ a t, VLam _ _ _ t')             -> goBind x a t t'
@@ -189,25 +192,119 @@ unify ns tys d topT topT' = go topT topT' where
     (VPiTel x a b, VPiTel x' a' b')           -> go a a' >> goBind x a b b'
     (VLamTel x a t, VLamTel x' a' t')         -> goBind x a t t'
     (VNe h sp, VNe h' sp') | h == h'          -> goSp sp sp'
-    (VNe (HMeta m) sp, t')                    -> solveMeta ns d m sp t'
-    (t, VNe (HMeta m') sp')                   -> solveMeta ns d m' sp' t
-    _                                         -> report ns $ UnifyError ntopT ntopT'
+    (VNe (HMeta m) sp, t')                    -> solveMeta cxt m sp t'
+    (t, VNe (HMeta m') sp')                   -> solveMeta cxt m' sp' t
+    _                                         -> report (cxt^.names) $ UnifyError ntopT ntopT'
 
   goBind x a t t' =
-    unify (x:ns) (TBound tys a) (d + 1) (t (VVar d)) (t' (VVar d))
+    let UCxt tys ns d = cxt
+    in unify (UCxt (TBound tys a) (x:ns) (d + 1)) (t (VVar d)) (t' (VVar d))
 
   goSp sp sp' = case (forceSp sp, forceSp sp') of
     (SNil, SNil)                            -> pure ()
     (SApp sp u i, SApp sp' u' i') | i == i' -> goSp sp sp' >> go u u'
     (SAppTel a sp u, SAppTel a' sp' u')     -> go a a' >> goSp sp sp' >> go u u'
-    _                                       -> report ns $ UnifyError ntopT ntopT'
+    _                                       -> report (cxt^.names) $ UnifyError ntopT ntopT'
 
 -- Elaboration
 --------------------------------------------------------------------------------
 
+nil :: Cxt
+nil = Cxt VNil TNil [] mempty 0
+
+bind :: Name -> NameOrigin -> VTy -> Cxt -> Cxt
+bind x origin a (Cxt vs tys ns nt d) =
+  Cxt (VSkip vs) (TBound tys a) (x:ns) (M.insert x (origin, d) nt) (d + 1)
+
+bindSrc :: Name -> VTy -> Cxt -> Cxt
+bindSrc x = bind x NOSource
+
+define :: Name -> VTy -> Val -> Cxt -> Cxt
+define x a ~t (Cxt vs tys ns nt d) =
+  Cxt (VDef vs t) (TDef tys a) (x:ns) (M.insert x (NOSource, d) nt) (d + 1)
+
+insert :: MetaInsertion -> Cxt -> IO (Tm, VTy) -> IO (Tm, VTy)
+insert False cxt act = act
+insert True  cxt act = do
+  (t, va) <- act
+  let go t va = case force va of
+        VPi x Impl a b -> do
+          m <- freshMeta (cxt^.ucxt) a
+          let mv = eval (cxt^.vals) m
+          go (App t m Impl) (b mv)
+        va -> pure (t, va)
+  go t va
+
 check :: Cxt -> Raw -> VTy -> IO Tm
-check cxt t a = undefined
+check cxt topT ~topA = case (topT, force topA) of
+  (RSrcPos p t, a) -> undefined
+  (RLam x ann i t, VPi x' i' a b) | i == i' -> do
+    case ann of
+      Just ann -> do
+        ann <- eval (cxt^.vals) <$> check cxt ann VU
+        unify (cxt^.ucxt) ann a
+      Nothing -> pure ()
+    t <- check (bind x NOSource a cxt) t (b (VVar (cxt^.len)))
+    pure $ Lam x i (quote (cxt^.len) a) t
+  (t, VPi x Impl a b) -> do
+    _
+
+infer :: Cxt -> MetaInsertion -> Raw -> IO (Tm, VTy)
+infer cxt ins t = undefined
 
 
-infer :: Cxt -> Raw -> IO (Tm, VTy)
-infer cxt t = undefined
+
+      --   (RLam x ann ni t, VPi x' i' a b) | either (\x -> x == x' && i' == Impl) (==i') ni -> do
+      --     case ann of
+      --       Just ann -> do {ann <- evalM =<< check ann VU; embedUnifyM (unify ann a)}
+      --       Nothing  -> pure ()
+      --     let x' = fresh x
+      --         v = VVar x'
+      --     local
+      --       (\(ElabCxt vs ts is p isTop) ->
+      --           ElabCxt ((x, Just v):(x', Nothing):vs)
+      --                   ((x, a):(x', a):ts)
+      --                   ((x, Bound BVSrc):(x', Bound BVRenamed):is)
+      --                   p isTop)
+      --       (Lam x i' <$> (check t =<< applyM b v))
+
+      --   (t, VPi x Impl a b) -> do
+      --     let x' = fresh x ++ "%"
+      --     binding x' a $
+      --       Lam x' Impl <$> (check t =<< applyM b (VVar x'))
+
+      --   -- new telescope
+      --   (t, VNe (HMeta _) _) -> do
+      --     x      <- use nextMId <&> \i -> fresh $ "Γ" ++ show i
+      --     tel    <- newMeta
+      --     telv   <- evalM tel
+      --     (t, a) <- telBinding x telv $ infer MIYes t
+      --     a      <- closeM x =<< (telBinding x telv $ quoteM a)
+
+      --     embedUnifyM $ do
+      --       (m, sp) <- case telv of
+      --         VNe (HMeta m) sp -> pure (m, sp)
+      --         _ -> error "impossible"
+      --       newConstancy m sp a
+      --       unify topA (VPiTel x telv a)
+
+      --     pure $ LamTel x tel t
+
+      --   (RLet x a t u, topA) -> do
+      --     a   <- local (isTop .~ False) $ check a VU
+      --     ~va <- evalM a
+      --     t   <- local (isTop .~ False) $ check t va
+      --     ~vt <- evalM t
+      --     u   <- defining x vt va $ check u topA
+      --     pure $ Let x a t u
+
+      --   (RHole, _) ->
+      --     newMeta
+
+      --   _ -> do
+      --     (t, va) <- infer MIYes topT
+      --     embedUnifyM $ unify va topA
+      --     pure t
+
+      -- debugM ("checked", res)
+      -- pure res

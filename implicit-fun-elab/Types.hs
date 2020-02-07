@@ -26,8 +26,8 @@ icit Expl i e = e
 
 data Raw
   = RVar Name
-  | RLam Name (Maybe Raw) (Either Name Icit) Raw
-  | RApp Raw Raw (Either Name Icit)
+  | RLam Name (Maybe Raw) Icit Raw
+  | RApp Raw Raw Icit
   | RU
   | RPi Name Icit Raw Raw
   | RLet Name Raw Raw Raw
@@ -68,11 +68,12 @@ type NameTable  = M.Map Name (NameOrigin, Lvl)
 lvlName :: [Name] -> Lvl -> Name
 lvlName ns x = ns !! (length ns - x - 1)
 
-typesLen :: Types -> Int
-typesLen = go 0 where
-  go acc TNil           = acc
-  go acc (TDef tys _)   = go (acc + 1) tys
-  go acc (TBound tys _) = go (acc + 1) tys
+-- -- clean these up
+-- typesLen :: Types -> Int
+-- typesLen = go 0 where
+--   go acc TNil           = acc
+--   go acc (TDef tys _)   = go (acc + 1) tys
+--   go acc (TBound tys _) = go (acc + 1) tys
 
 ixType :: Types -> Ix -> VTy
 ixType TNil           _ = error "impossible"
@@ -81,14 +82,20 @@ ixType (TBound tys a) 0 = a
 ixType (TDef   tys a) x = ixType tys (x - 1)
 ixType (TBound tys a) x = ixType tys (x - 1)
 
-lvlType :: Types -> Lvl -> VTy
-lvlType tys x = ixType tys (typesLen tys - x - 1)
+-- lvlType :: Types -> Lvl -> VTy
+-- lvlType tys x = ixType tys (typesLen tys - x - 1)
 
 data Cxt = Cxt {
   cxtVals      :: Vals,
   cxtTypes     :: Types,
   cxtNames     :: [Name],
-  cxtNameTable :: NameTable}
+  cxtNameTable :: NameTable,
+  cxtLen       :: Int}
+
+data UnifyCxt = UCxt {
+  unifyCxtTypes :: Types,
+  unifyCxtNames :: [Name],
+  unifyCxtLen   :: Int }
 
 data Err = Err {
   errNames :: [Name],
@@ -134,13 +141,13 @@ valsLen = go 0 where
   go acc (VDef vs _) = go (acc + 1) vs
   go acc (VSkip vs)  = go (acc + 1) vs
 
-spLen :: Spine -> Int
-spLen = go 0 where
-  go n SNil             = n
-  go n (SApp sp _ _)    = go (n + 1) sp
-  go n (SAppTel _ sp _) = go (n + 1) sp
-  go n (SProj1 sp)      = go (n + 1) sp
-  go n (SProj2 sp)      = go (n + 1) sp
+-- spLen :: Spine -> Int
+-- spLen = go 0 where
+--   go n SNil             = n
+--   go n (SApp sp _ _)    = go (n + 1) sp
+--   go n (SAppTel _ sp _) = go (n + 1) sp
+--   go n (SProj1 sp)      = go (n + 1) sp
+--   go n (SProj2 sp)      = go (n + 1) sp
 
 data Head
   = HVar Lvl
@@ -332,4 +339,15 @@ showError ns = \case
 --------------------------------------------------------------------------------
 
 makeFields ''Cxt
+makeFields ''UnifyCxt
 makeFields ''Err
+
+ucxt :: Lens' Cxt UnifyCxt
+ucxt f (Cxt vs tys ns nt d) =
+  (\(UCxt tys ns d) -> Cxt vs tys ns nt d) <$> f (UCxt tys ns d)
+
+instance HasNames     [Name]    [Name]    where names     = id
+instance HasVals      Vals      Vals      where vals      = id
+instance HasTypes     Types     Types     where types     = id
+instance HasLen       Int       Int       where len       = id
+instance HasNameTable NameTable NameTable where nameTable = id

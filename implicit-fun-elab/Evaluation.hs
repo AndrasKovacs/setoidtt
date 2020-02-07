@@ -139,8 +139,8 @@ quote d v = case (quote d, \t -> quote (d + 1) (t (VVar d))) of
     VPiTel x a b  -> PiTel x (quote a) (quoteBind b)
     VLamTel x a t -> LamTel x (quote a) (quoteBind t)
 
-nf :: Vals -> Tm -> Tm
-nf vs t = quote (valsLen vs) (eval vs t)
+nf :: Vals -> Lvl -> Tm -> Tm
+nf vs d t = quote d (eval vs t)
 
 -- zonking
 --------------------------------------------------------------------------------

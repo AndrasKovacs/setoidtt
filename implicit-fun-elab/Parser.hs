@@ -25,13 +25,13 @@ ws = L.space C.space1 (L.skipLineComment "--") (L.skipBlockComment "{-" "-}")
 withPos :: Parser Raw -> Parser Raw
 withPos p = RSrcPos <$> getSourcePos <*> p
 
-lexeme     = L.lexeme ws
-symbol s   = lexeme (C.string s)
-char c     = lexeme (C.char c)
-parens p   = char '(' *> p <* char ')'
-braces p   = char '{' *> p <* char '}'
-pArrow     = symbol "→" <|> symbol "->"
-pBind      = pIdent <|> symbol "_"
+lexeme   = L.lexeme ws
+symbol s = lexeme (C.string s)
+char c   = lexeme (C.char c)
+parens p = char '(' *> p <* char ')'
+braces p = char '{' *> p <* char '}'
+pArrow   = symbol "→" <|> symbol "->"
+pBind    = pIdent <|> symbol "_"
 
 keyword :: String -> Bool
 keyword x =
@@ -50,11 +50,10 @@ pAtom  =
                <|> (RHole <$ char '_'))
   <|> parens pTm
 
-pArg :: Parser (Either Name Icit, Raw)
+pArg :: Parser (Icit, Raw)
 pArg =
-      (try $ braces $ do {x <- pIdent; char '='; t <- pTm; pure (Left x, t)})
-  <|> ((Right Impl,) <$> (char '{' *> pTm <* char '}'))
-  <|> ((Right Expl,) <$> pAtom)
+      ((Impl,) <$> (char '{' *> pTm <* char '}'))
+  <|> ((Expl,) <$> pAtom)
 
 pSpine :: Parser Raw
 pSpine = do
@@ -62,12 +61,11 @@ pSpine = do
   args <- many pArg
   pure $ foldl (\t (i, u) -> RApp t u i) h args
 
-pLamBinder :: Parser (Name, Maybe Raw, Either Name Icit)
+pLamBinder :: Parser (Name, Maybe Raw, Icit)
 pLamBinder =
-      ((,Nothing,Right Expl) <$> pBind)
-  <|> parens ((,,Right Expl) <$> pBind <*> optional (char ':' *> pTm))
-  <|> try (braces ((,,Right Impl) <$> pBind <*> optional (char ':' *> pTm)))
-  <|> braces (do {x <- pIdent; char '='; y <- pBind; pure (y, Nothing, Left x)})
+      ((,Nothing,Expl) <$> pBind)
+  <|> parens ((,,Expl) <$> pBind <*> optional (char ':' *> pTm))
+  <|> (braces ((,,Impl) <$> pBind <*> optional (char ':' *> pTm)))
 
 pLam :: Parser Raw
 pLam = do
