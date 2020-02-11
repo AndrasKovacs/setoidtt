@@ -11,8 +11,6 @@ import Lens.Micro.Platform
 
 import qualified Data.IntMap.Strict as IM
 import qualified Data.IntSet        as IS
-import qualified Data.Map.Strict    as M
-
 
 -- Raw syntax
 --------------------------------------------------------------------------------
@@ -62,8 +60,10 @@ type Ty    = Tm
 type VTy   = Val
 type MCxt  = IM.IntMap MetaEntry
 
-data NameOrigin = NOSource | NOInserted
-type NameTable  = M.Map Name (NameOrigin, Lvl)
+pattern TSnoc :: Types -> VTy -> Types
+pattern TSnoc as a <- ((\case TBound as a -> Just (as, a)
+                              TDef as a   -> Just (as, a)
+                              TNil        -> Nothing) -> Just (as, a))
 
 lvlName :: [Name] -> Lvl -> Name
 lvlName ns x = ns !! (length ns - x - 1)
@@ -85,12 +85,14 @@ ixType (TBound tys a) x = ixType tys (x - 1)
 -- lvlType :: Types -> Lvl -> VTy
 -- lvlType tys x = ixType tys (typesLen tys - x - 1)
 
+data NameOrigin = NOSource | NOInserted
+
 data Cxt = Cxt {
-  cxtVals      :: Vals,
-  cxtTypes     :: Types,
-  cxtNames     :: [Name],
-  cxtNameTable :: NameTable,
-  cxtLen       :: Int}
+  cxtVals       :: Vals,
+  cxtTypes      :: Types,
+  cxtNames      :: [Name],
+  cxtNameOrigin :: [NameOrigin],
+  cxtLen        :: Int}
 
 data UnifyCxt = UCxt {
   unifyCxtTypes :: Types,
@@ -127,6 +129,10 @@ data Tm
 
   | U
   | Meta MId
+
+-- deriving instance Show Tm
+instance Show Tm where show = showTm []
+
 
 data Spine
   = SNil
@@ -208,12 +214,13 @@ prettyTm :: Int -> [Name] -> Tm -> ShowS
 prettyTm prec = go (prec /= 0) where
 
   fresh :: [Name] -> Name -> Name
+  fresh _ "_" = "_"
   fresh ns n | elem n ns = fresh ns (n++"'")
              | otherwise = n
 
   goVar :: [Name] -> Ix -> ShowS
   goVar ns topX = go ns topX where
-    go []     _ = (show topX++)
+    go []     _ = (show topX ++)
     go (n:ns) 0 = (n++)
     go (n:ns) x = go ns (x - 1)
 
@@ -238,14 +245,14 @@ prettyTm prec = go (prec /= 0) where
 
   goPi :: [Name] -> Bool -> Tm -> ShowS
   goPi ns p (Pi (fresh ns -> x) i a b)
-    | x /= "_" = goPiBind ns x i a . goPi ns True b
+    | x /= "_" = goPiBind ns x i a . goPi (x:ns) True b
     | otherwise =
        (if p then (" → "++) else id) .
        go (case a of App{} -> False; AppTel{} -> False; _ -> True) ns a .
        (" → "++) . go False (x:ns) b
 
   goPi ns p (PiTel (fresh ns -> x) a b)
-    | x /= "_" = goPiBind ns x Impl a . goPi ns True b
+    | x /= "_" = goPiBind ns x Impl a . goPi (x:ns) True b
     | otherwise =
        (if p then (" → "++) else id) .
        go (case a of App{} -> False; AppTel{} -> False; _ -> True) ns a .
@@ -343,11 +350,10 @@ makeFields ''UnifyCxt
 makeFields ''Err
 
 ucxt :: Lens' Cxt UnifyCxt
-ucxt f (Cxt vs tys ns nt d) =
-  (\(UCxt tys ns d) -> Cxt vs tys ns nt d) <$> f (UCxt tys ns d)
+ucxt f (Cxt vs tys ns no d) =
+  (\(UCxt tys ns d) -> Cxt vs tys ns no d) <$> f (UCxt tys ns d)
 
-instance HasNames     [Name]    [Name]    where names     = id
-instance HasVals      Vals      Vals      where vals      = id
-instance HasTypes     Types     Types     where types     = id
-instance HasLen       Int       Int       where len       = id
-instance HasNameTable NameTable NameTable where nameTable = id
+instance HasNames  [Name]  [Name]  where names = id
+instance HasVals   Vals    Vals    where vals  = id
+instance HasTypes  Types   Types   where types = id
+instance HasLen    Int     Int     where len   = id

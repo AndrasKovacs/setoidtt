@@ -44,7 +44,7 @@ force = \case
 -- | Force a spine, computing telescope applications where possible.
 forceSp :: Spine -> Spine
 forceSp sp =
-  -- This a cheeky hack, the point is that (VVar (-1)) blocks computation, and
+  -- This is a cheeky hack, the point is that (VVar (-1)) blocks computation, and
   -- we get back the new spine.  We use (-1) in order to make the hack clear in
   -- potential debugging situations.
   case vAppSp (VVar (-1)) sp of
@@ -120,7 +120,7 @@ quote d v = case (quote d, \t -> quote (d + 1) (t (VVar d))) of
     VNe h sp ->
       let go SNil = case h of
             HMeta m -> Meta m
-            HVar x  -> Var x
+            HVar x  -> Var (d - x - 1)
           go (SApp sp u i)    = App (go sp) (quote u) i
           go (SAppTel a sp u) = AppTel (quote a) (go sp) (quote u)
           go (SProj1 sp)      = Proj1 (go sp)
@@ -138,9 +138,6 @@ quote d v = case (quote d, \t -> quote (d + 1) (t (VVar d))) of
     VTcons t u    -> Tcons (quote t) (quote u)
     VPiTel x a b  -> PiTel x (quote a) (quoteBind b)
     VLamTel x a t -> LamTel x (quote a) (quoteBind t)
-
-nf :: Vals -> Lvl -> Tm -> Tm
-nf vs d t = quote d (eval vs t)
 
 -- zonking
 --------------------------------------------------------------------------------

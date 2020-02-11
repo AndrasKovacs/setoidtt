@@ -2,8 +2,7 @@
 module Main where
 
 import Text.Printf
-import Control.Monad.State.Strict
-import Control.Monad.Reader
+import Control.Exception
 import System.Exit
 import System.Environment
 
@@ -11,6 +10,7 @@ import Types
 import Evaluation
 import Elaboration
 import Parser
+import ElabState
 
 helpMsg = unlines [
   "usage: holes [--help|nf|type]",
@@ -19,53 +19,43 @@ helpMsg = unlines [
   "  nf     : read & elaborate expression from stdin, print its normal form",
   "  type   : read & elaborate expression from stdin, print its type"]
 
-displayError :: String -> Err -> IO ()
-displayError file (Err msg (SourcePos path (unPos -> linum) (unPos -> colnum))) = do
+displayError :: String -> Err -> IO a
+displayError file (Err ns err (Just (SourcePos path (unPos -> linum) (unPos -> colnum)))) = do
   let lnum = show linum
       lpad = map (const ' ') lnum
   printf "%s:%d:%d:\n" path linum colnum
   printf "%s |\n"    lpad
   printf "%s | %s\n" lnum (lines file !! (linum - 1))
   printf "%s | %s\n" lpad (replicate (colnum - 1) ' ' ++ "^")
-  printf "%s\n\n" (show msg)
+  printf "%s\n\n" (showError ns err)
+  exitSuccess
+displayError file (Err _ _ Nothing) =
+  error "impossible"
 
-elabCxt0 :: ElabCxt
-elabCxt0 = ElabCxt [] [] [] (initialPos "(stdin)") True
-
-st0 :: St
-st0 = St 0 mempty
-
-runElab0 :: ElabM a -> Either Err a
-runElab0 ma = evalStateT (runReaderT ma elabCxt0) st0
 
 mainWith :: IO [String] -> IO (Raw, String) -> IO ()
 mainWith getOpt getTm = do
-
   let elab :: IO (Tm, Tm, Tm)
       elab = do
+        reset
         (t, src) <- getTm
-        let res = runElab0 $ do
-              (t, a) <- infer MIYes t
-              t      <- zonkM t
-              -- traceShowM "inferred"
-              nt     <- nfM t
-              na     <- quoteM a
-              pure (t, nt, na)
-        case res of
-          Left err -> displayError src err >> exitSuccess
-          Right x  -> pure x
+        (t, a) <- infer emptyCxt True t `catch` displayError src
+        t <- pure $ zonk VNil t
+        let ~nt = quote 0 $ eval VNil t
+        let ~na = quote 0 a
+        pure (t, nt, na)
 
   getOpt >>= \case
     ["--help"] -> putStrLn helpMsg
     ["nf"] -> do
       (t, nt, na) <- elab
-      print nt
+      putStrLn $ show nt
     ["type"] -> do
       (t, nt, na) <- elab
-      print na
+      putStrLn $ show na
     ["elab"] -> do
       (t, nt, na) <- elab
-      print t
+      putStrLn $ show t
     _ -> putStrLn helpMsg
 
 main :: IO ()
@@ -76,6 +66,13 @@ main' :: String -> String -> IO ()
 main' mode src = mainWith (pure [mode]) ((,src) <$> parseString src)
 
 
+test = main' "elab" $ unlines [
+  "let Nat : U",
+  "    = (N : U) -> (N -> N) -> N -> N in",
+  "let zero : Nat = λ _ s z. z in",
+  "let inc : Nat → Nat = λ n N s z. s (n _ s z) in",
+  "inc"
+  ]
 
 -- example for when a telescope cannot depend on local A% B% vars.
 -- this would only work with let generalization!
