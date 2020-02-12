@@ -7,6 +7,7 @@
 
 module Elaboration where
 
+import Data.Foldable
 import Control.Exception
 import Control.Monad
 import qualified Data.IntSet as IS
@@ -20,7 +21,7 @@ import ElabState
 
 import Debug.Trace
 
--- occurrence check for the purpose of constancy
+-- occurrence check for constancy
 ------------------------------------------------------------
 
 data Occurs = Rigid | Flex IS.IntSet | None deriving (Eq, Show)
@@ -71,6 +72,22 @@ occurs d topX = occurs' d mempty where
       VPiTel x a b  -> go a <> goBind b
       VLamTel x a t -> go a <> goBind t
 
+-- pruning
+--------------------------------------------------------------------------------
+
+-- l in map   : rename to l
+-- not in map : out-of-scope (error)
+type PruneRenaming = IM.IntMap Lvl
+
+
+-- quote meta spine
+-- we check whether it's all vars
+--    if no, proceed
+--    if yes
+--      if OK, proceed
+--      if not OK, prune
+
+
 
 -- unification
 --------------------------------------------------------------------------------
@@ -78,12 +95,12 @@ occurs d topX = occurs' d mempty where
 -- If (Just l)   : rename to l
 --    Nothing    : nonlinear var (error)
 --    not in map : out-of-scope (error)
-type SpineRenaming = IM.IntMap (Maybe Lvl)
+type RhsRenaming = IM.IntMap (Maybe Lvl)
 
 -- | Expects a forced spine. Returns a partial renaming and the length of the spine.
-checkSp :: UnifyCxt -> (Tm, Tm) -> Spine -> (SpineRenaming, Lvl)
+checkSp :: UnifyCxt -> (Tm, Tm) -> Spine -> (RhsRenaming, Lvl)
 checkSp cxt (lhs, rhs) = go where
-  go :: Spine -> (SpineRenaming, Lvl)
+  go :: Spine -> (RhsRenaming, Lvl)
   go = \case
     SNil        -> (mempty, 0)
     SApp sp u i -> case go sp of
@@ -97,10 +114,38 @@ checkSp cxt (lhs, rhs) = go where
     SProj1 _ -> report (cxt^.names) SpineProjection
     SProj2 _ -> report (cxt^.names) SpineProjection
 
-quoteRhs :: UnifyCxt -> (Tm, Tm) -> MId -> (SpineRenaming, Lvl) -> Val -> Tm
+
+quoteRhs :: UnifyCxt -> (Tm, Tm) -> MId -> (RhsRenaming, Lvl) -> Val -> Tm
 quoteRhs cxt (topLhs, topRhs) topMeta (r, splen) = go (cxt^.len) splen r where
 
-  go :: Lvl -> Lvl -> SpineRenaming -> Val -> Tm
+  prune :: Spine -> RhsRenaming -> Maybe (IM.IntMap Lvl)
+  prune sp topRen = do
+    let vars :: Spine -> Maybe [Lvl]
+        vars = go [] where
+          go acc SNil                    = pure acc
+          go acc (SApp sp (VVar x) _)    = go (x:acc) sp
+          go acc (SAppTel _ sp (VVar x)) = go (x:acc) sp
+          go _   _                       = Nothing
+
+    xs <- vars sp
+    let l = length xs
+
+    let rename :: [Lvl] -> IM.IntMap Lvl
+        rename = go 0 0 mempty where
+          go d d' r []     = r
+          go d d' r (x:xs) = case IM.lookup x topRen of
+            Nothing       -> _
+            Just Nothing  -> _
+            Just (Just{}) -> go (d + 1) (d' + 1) (IM.insert d d' r) xs
+
+
+    _
+
+
+
+
+
+  go :: Lvl -> Lvl -> RhsRenaming -> Val -> Tm
   go d d' r v = case (go d d' r,
                      \t -> go (d+1) (d'+1) (IM.insert d (Just d') r) (t (VVar d))) of
     (go, goBind) -> case force v of
@@ -118,6 +163,8 @@ quoteRhs cxt (topLhs, topRhs) topMeta (r, splen) = go (cxt^.len) splen r where
             goSp (SAppTel a sp u) = AppTel (go a) (goSp sp) (go u)
             goSp (SProj1 sp)      = Proj1 (goSp sp)
             goSp (SProj2 sp)      = Proj2 (goSp sp)
+
+
 
          in goSp (forceSp sp)
 
