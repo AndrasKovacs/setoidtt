@@ -23,7 +23,7 @@ ws :: Parser ()
 ws = L.space C.space1 (L.skipLineComment "--") (L.skipBlockComment "{-" "-}")
 
 withPos :: Parser Raw -> Parser Raw
-withPos p = RSrcPos <$> getSourcePos <*> p
+withPos p = RSrcPos <$> (SPos <$> getSourcePos) <*> p
 
 lexeme   = L.lexeme ws
 symbol s = lexeme (C.string s)

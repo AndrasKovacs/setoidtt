@@ -15,8 +15,15 @@ import qualified Data.IntSet        as IS
 -- Raw syntax
 --------------------------------------------------------------------------------
 
+newtype SPos = SPos SourcePos deriving (Eq, Ord, Read)
+instance Show SPos where show _ = ""
+
 type Name = String
-data Icit = Impl | Expl deriving (Eq, Show)
+data Icit = Impl | Expl deriving (Eq)
+
+instance Show Icit where
+  show Expl = "explicit"
+  show Impl = "implicit"
 
 icit :: Icit -> a -> a -> a
 icit Impl i e = i
@@ -30,9 +37,10 @@ data Raw
   | RPi Name Icit Raw Raw
   | RLet Name Raw Raw Raw
   | RHole
-  | RSrcPos SourcePos Raw
+  | RSrcPos SPos Raw
 
 deriving instance Show Raw
+
 
 -- Types
 --------------------------------------------------------------------------------
@@ -102,7 +110,7 @@ data UnifyCxt = UCxt {
 data Err = Err {
   errNames :: [Name],
   errErr   :: ElabError,
-  errPos   :: Maybe SourcePos}
+  errPos   :: Maybe SPos}
 
 data Tm
   = Var Ix
@@ -129,10 +137,6 @@ data Tm
 
   | U
   | Meta MId
-
--- deriving instance Show Tm
-instance Show Tm where show = showTm []
-
 
 data Spine
   = SNil
@@ -188,15 +192,14 @@ pattern VMeta m = VNe (HMeta m) SNil
 data ElabError
   = SpineNonVar Tm Tm                    -- ^ lhs, rhs
   | SpineProjection
-  | ScopeError Tm Tm Name                -- ^ Lhs, rhs, offending variable
+  | ScopeError Tm Tm Lvl                 -- ^ Lhs, rhs, offending variable
   | OccursCheck Tm Tm                    -- ^ Lhs, rhs
   | UnifyError Tm Tm                     -- ^ Lhs, rhs
+  | UnifyErrorWhile Tm Tm Tm Tm
   | NameNotInScope Name
   | ExpectedFunction Tm                  -- ^ Inferred type.
-  | NoNamedImplicitArg Name
-  | CannotInferNamedLam
   | IcitMismatch Icit Icit
-  | NonLinearSolution Tm Tm Name         -- ^ Lhs, rhs, offending variable
+  | NonLinearSolution Tm Tm Lvl          -- ^ Lhs, rhs, offending variable
 
 instance Show Err where
   show _ = "Error"
@@ -219,8 +222,9 @@ prettyTm prec = go (prec /= 0) where
              | otherwise = n
 
   goVar :: [Name] -> Ix -> ShowS
+  -- goVar ns topX = (show topX++)
   goVar ns topX = go ns topX where
-    go []     _ = (show topX ++)
+    go []     _ = error "impossible"
     go (n:ns) 0 = (n++)
     go (n:ns) x = go ns (x - 1)
 
@@ -303,6 +307,10 @@ prettyTm prec = go (prec /= 0) where
 
 showTm :: [Name] -> Tm -> String
 showTm ns t = prettyTm 0 ns t []
+-- showTm ns t = show t
+
+-- deriving instance Show Tm
+instance Show Tm where show = showTm []
 
 showError :: [Name] -> ElabError -> String
 showError ns = \case
@@ -314,7 +322,7 @@ showError ns = \case
   ScopeError lhs rhs x -> printf (
     "Variable %s is out of scope in equation\n\n" ++
     "  %s =? %s")
-    (show x) (showTm ns lhs) (showTm ns rhs)
+    (lvlName ns x) (showTm ns lhs) (showTm ns rhs)
   OccursCheck lhs rhs -> printf (
     "Meta occurs cyclically in its solution candidate in equation:\n\n" ++
     "  %s =? %s")
@@ -325,21 +333,27 @@ showError ns = \case
      "with\n\n" ++
      "  %s")
     (showTm ns lhs) (showTm ns rhs)
+  UnifyErrorWhile lhs rhs lhs' rhs' -> printf
+    ("Cannot unify\n\n" ++
+     "  %s\n\n" ++
+     "with\n\n" ++
+     "  %s\n\n" ++
+     "while trying to unify\n\n" ++
+     "  %s\n\n" ++
+     "with\n\n" ++
+     "  %s")
+    (showTm ns lhs') (showTm ns rhs') (showTm ns lhs) (showTm ns rhs)
   NameNotInScope x ->
     "Name not in scope: " ++ x
   ExpectedFunction ty ->
     "Expected a function type, instead inferred:\n\n  " ++ showTm ns ty
-  NoNamedImplicitArg x -> printf
-    "No named implicit argument with name %s." x
-  CannotInferNamedLam ->
-    "No type can be inferred for lambda with named implicit argument."
   IcitMismatch i i' -> printf (
     "Function icitness mismatch: expected %s, got %s.")
     (show i) (show i')
   NonLinearSolution lhs rhs x -> printf
     ("Nonlinear variable %s in meta spine in equation\n\n" ++
      "  %s =? %s")
-    (show x)
+    (lvlName ns x)
     (showTm ns lhs) (showTm ns rhs)
 
 -- Lenses
