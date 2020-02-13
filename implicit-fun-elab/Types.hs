@@ -199,7 +199,7 @@ data ElabError
   | NameNotInScope Name
   | ExpectedFunction Tm                  -- ^ Inferred type.
   | IcitMismatch Icit Icit
-  | NonLinearSolution Tm Tm Lvl          -- ^ Lhs, rhs, offending variable
+  | NonLinearSpine Tm Tm Lvl          -- ^ Lhs, rhs, offending variable
 
 instance Show Err where
   show _ = "Error"
@@ -350,7 +350,7 @@ showError ns = \case
   IcitMismatch i i' -> printf (
     "Function icitness mismatch: expected %s, got %s.")
     (show i) (show i')
-  NonLinearSolution lhs rhs x -> printf
+  NonLinearSpine lhs rhs x -> printf
     ("Nonlinear variable %s in meta spine in equation\n\n" ++
      "  %s =? %s")
     (lvlName ns x)

@@ -122,12 +122,12 @@ test = main' "elab" $ unlines [
   "let not : Bool → Bool",
   "   = λ b B t f. b B f t in",
 
-  "let poly : ({A} → A → A) → Pair Nat Bool = λ f. pair (f zero) (f true) in",
+  -- "let poly : ({A} → A → A) → Pair Nat Bool = λ f. pair (f zero) (f true) in",
   "let auto : ({A} → A → A) → ({A} → A → A) = id in",
   "let app  : {A B} → (A → B) → A → B = λ f a. f a in",
   "let revapp : {A B} → A → (A → B) → B = λ a f. f a in",
 
-  "let t5 = λ xs. poly (head xs) in", -- pruning
+  -- "let t5 = λ xs. poly (head xs) in", -- pruning
 
   "not"
   ]

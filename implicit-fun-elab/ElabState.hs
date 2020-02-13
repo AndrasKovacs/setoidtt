@@ -7,12 +7,15 @@ import qualified Data.IntMap.Strict as IM
 
 import Types
 
+runIO :: IO a -> a
+runIO = unsafeDupablePerformIO
+
 mcxt :: IORef MCxt
-mcxt = unsafeDupablePerformIO (newIORef mempty)
+mcxt = runIO (newIORef mempty)
 {-# noinline mcxt #-}
 
 nextMId :: IORef Int
-nextMId = unsafeDupablePerformIO (newIORef 0)
+nextMId = runIO (newIORef 0)
 {-# noinline nextMId #-}
 
 lookupMetaIO :: MId -> IO MetaEntry
@@ -23,7 +26,7 @@ lookupMetaIO m = do
     _      -> error "impossible"
 
 lookupMeta :: MId -> MetaEntry
-lookupMeta m = unsafeDupablePerformIO (lookupMetaIO m)
+lookupMeta m = runIO (lookupMetaIO m)
 
 writeMetaIO :: MId -> MetaEntry -> IO ()
 writeMetaIO m e = modifyIORef' mcxt (IM.insert m e)

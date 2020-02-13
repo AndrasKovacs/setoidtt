@@ -5,6 +5,8 @@
 --       - add pruning
 --       - add telescopes
 
+-- ISSUE : don't have any nonlinear solutions!
+
 module Elaboration where
 
 import Data.Foldable
@@ -22,7 +24,7 @@ import ElabState
 import Debug.Trace
 
 -- occurrence check for constancy
-------------------------------------------------------------
+--------------------------------------------------------------------------------
 
 data Occurs = Rigid | Flex IS.IntSet | None deriving (Eq, Show)
 
@@ -75,98 +77,108 @@ occurs d topX = occurs' d mempty where
 -- pruning
 --------------------------------------------------------------------------------
 
--- l in map   : rename to l
--- not in map : out-of-scope (error)
-type PruneRenaming = IM.IntMap Lvl
-
-
--- quote meta spine
--- we check whether it's all vars
---    if no, proceed
---    if yes
---      if OK, proceed
---      if not OK, prune
-
-
+-- | A partial mapping from levels to levels. Undefined domain reresents
+--   out-of-scope or "illegal" variables.
+type Renaming = IM.IntMap Lvl
 
 -- unification
 --------------------------------------------------------------------------------
 
--- If (Just l)   : rename to l
---    Nothing    : nonlinear var (error)
---    not in map : out-of-scope (error)
-type RhsRenaming = IM.IntMap (Maybe Lvl)
-
 -- | Expects a forced spine. Returns a partial renaming and the length of the spine.
-checkSp :: UnifyCxt -> (Tm, Tm) -> Spine -> (RhsRenaming, Lvl)
+--   Nonlinear spine is always an error.
+checkSp :: UnifyCxt -> (Tm, Tm) -> Spine -> (Renaming, Lvl)
 checkSp cxt (lhs, rhs) = go where
-  go :: Spine -> (RhsRenaming, Lvl)
+  go :: Spine -> (Renaming, Lvl)
   go = \case
     SNil        -> (mempty, 0)
     SApp sp u i -> case go sp of
       (!r, !d) -> case force u of
-        VVar x -> (IM.insert x (if IM.member x r then Nothing else Just d) r, d + 1)
+        VVar x | IM.member x r -> report (cxt^.names) $ NonLinearSpine lhs rhs x
+               | otherwise     -> (IM.insert x d r, d + 1)
         _      -> report (cxt^.names) $ SpineNonVar lhs rhs
     SAppTel a sp u -> case go sp of
       (!r, !d) -> case force u of
-        VVar x -> (IM.insert x (if IM.member x r then Nothing else Just d) r, d + 1)
+        VVar x | IM.member x r -> report (cxt^.names) $ NonLinearSpine lhs rhs x
+               | otherwise     -> (IM.insert x d r, d + 1)
         _    -> report (cxt^.names) $ SpineNonVar lhs rhs
     SProj1 _ -> report (cxt^.names) SpineProjection
     SProj2 _ -> report (cxt^.names) SpineProjection
 
 
-quoteRhs :: UnifyCxt -> (Tm, Tm) -> MId -> (RhsRenaming, Lvl) -> Val -> Tm
+quoteRhs :: UnifyCxt -> (Tm, Tm) -> MId -> (Renaming, Lvl) -> Val -> Tm
 quoteRhs cxt (topLhs, topRhs) topMeta (r, splen) = go (cxt^.len) splen r where
 
-  prune :: Spine -> RhsRenaming -> Maybe (IM.IntMap Lvl)
-  prune sp topRen = do
-    let vars :: Spine -> Maybe [Lvl]
-        vars = go [] where
-          go acc SNil                    = pure acc
-          go acc (SApp sp (VVar x) _)    = go (x:acc) sp
-          go acc (SAppTel _ sp (VVar x)) = go (x:acc) sp
-          go _   _                       = Nothing
+  -- | Return a pruned spine and a pruning renaming.
+  spPruning :: Spine -> Renaming -> Maybe (Spine, Renaming)
+  spPruning sp topRen = do
 
-    xs <- vars sp
-    let l = length xs
-
-    let rename :: [Lvl] -> IM.IntMap Lvl
-        rename = go 0 0 mempty where
-          go d d' r []     = r
-          go d d' r (x:xs) = case IM.lookup x topRen of
-            Nothing       -> _
-            Just Nothing  -> _
-            Just (Just{}) -> go (d + 1) (d' + 1) (IM.insert d d' r) xs
-
-
-    _
+    let getRenaming :: Spine -> Maybe (Lvl, Lvl, Renaming, Spine)
+        getRenaming = go where
+          go SNil = pure (0, 0, mempty, SNil)
+          go (SApp sp (VVar x) i) = do
+            (d, d', r, sp) <- go sp
+            case IM.lookup x topRen of
+              Nothing -> _
+              Just{}  -> _
 
 
 
 
+    undefined
+          -- go d d' r SNil   = pure r
+          -- go
+          -- go d d' r (x:xs) = case IM.lookup x topRen of
+          --   Nothing       -> go (d + 1) d'       r                  xs
+          --   Just{}        -> go (d + 1) (d' + 1) (IM.insert d d' r) xs
 
-  go :: Lvl -> Lvl -> RhsRenaming -> Val -> Tm
+    -- -- spine must contain only of vars
+    -- let vars :: Spine -> Maybe [Lvl]
+    --     vars = go [] where
+    --       go acc SNil                    = pure acc
+    --       go acc (SApp sp (VVar x) _)    = go (x:acc) sp
+    --       go acc (SAppTel _ sp (VVar x)) = go (x:acc) sp
+    --       go _   _                       = Nothing
+
+    -- xs <- vars sp
+
+    -- let getRenaming :: [Lvl] -> Renaming
+    --     getRenaming = go 0 0 mempty where
+
+
+    -- let r = getRenaming xs
+    -- -- if the renaming is total, we don't need to prune
+    -- guard $ length xs /= length r
+    -- pure r
+
+  goSp :: Lvl -> Lvl -> Renaming -> Tm -> Spine -> Tm
+  goSp d d' r h = goSp' where
+    goSp' SNil             = h
+    goSp' (SApp sp u i)    = App (goSp' sp) (go d d' r u) i
+    goSp' (SAppTel a sp u) = AppTel (go d d' r a) (goSp' sp) (go d d' r u)
+    goSp' (SProj1 sp)      = Proj1 (goSp' sp)
+    goSp' (SProj2 sp)      = Proj2 (goSp' sp)
+
+  go :: Lvl -> Lvl -> Renaming -> Val -> Tm
   go d d' r v = case (go d d' r,
-                     \t -> go (d+1) (d'+1) (IM.insert d (Just d') r) (t (VVar d))) of
+                     \t -> go (d+1) (d'+1) (IM.insert d d' r) (t (VVar d))) of
     (go, goBind) -> case force v of
-      VNe h sp ->
-        let h' = case h of
-              HMeta m | m == topMeta -> report (cxt^.names) $ OccursCheck topLhs topRhs
-              HMeta m -> Meta m
-              HVar x -> case IM.lookup x r of
-                Nothing        -> report (cxt^.names) $ ScopeError topLhs topRhs x
-                Just Nothing   -> report (cxt^.names) $ NonLinearSolution topLhs topRhs x
-                Just (Just x') -> Var (d' - x' - 1)
-
-            goSp SNil             = h'
-            goSp (SApp sp u i)    = App (goSp sp) (go u) i
-            goSp (SAppTel a sp u) = AppTel (go a) (goSp sp) (go u)
-            goSp (SProj1 sp)      = Proj1 (goSp sp)
-            goSp (SProj2 sp)      = Proj2 (goSp sp)
+      VNe (HVar x) sp -> case IM.lookup x r of
+        Nothing -> report (cxt^.names) $ ScopeError topLhs topRhs x
+        Just x' -> goSp d d' r (Var (d' - x' - 1)) (forceSp sp)
+      VNe (HMeta m) sp -> case spPruning sp r of
+        Nothing -> goSp d d' r (Meta m) (forceSp sp)
+        Just pr -> undefined
 
 
+      -- VNe h sp ->
+      --   let h' = case h of
+      --         HMeta m | m == topMeta -> report (cxt^.names) $ OccursCheck topLhs topRhs
+      --         HMeta m -> Meta m
+      --         HVar x -> case IM.lookup x r of
+      --           Nothing        -> report (cxt^.names) $ ScopeError topLhs topRhs x
+      --           Just x'        -> Var (d' - x' - 1)
 
-         in goSp (forceSp sp)
+      --    in goSp d d' r h' (forceSp sp)
 
       VPi x i a b   -> Pi x i (go a) (goBind b)
       VLam x i a t  -> Lam x i (go a) (goBind t)
