@@ -7,6 +7,7 @@
 
 module Elaboration where
 
+import Data.Foldable
 import Control.Exception
 import Control.Monad
 import qualified Data.IntSet as IS
@@ -116,6 +117,33 @@ checkSp cxt (lhs, rhs) = go where
 
 quoteRhs :: UnifyCxt -> (Tm, Tm) -> MId -> (RhsRenaming, Lvl) -> Val -> Tm
 quoteRhs cxt (topLhs, topRhs) topMeta (r, splen) = go (cxt^.len) splen r where
+
+  prune :: Spine -> RhsRenaming -> Maybe (IM.IntMap Lvl)
+  prune sp topRen = do
+    let vars :: Spine -> Maybe [Lvl]
+        vars = go [] where
+          go acc SNil                    = pure acc
+          go acc (SApp sp (VVar x) _)    = go (x:acc) sp
+          go acc (SAppTel _ sp (VVar x)) = go (x:acc) sp
+          go _   _                       = Nothing
+
+    xs <- vars sp
+    let l = length xs
+
+    let rename :: [Lvl] -> IM.IntMap Lvl
+        rename = go 0 0 mempty where
+          go d d' r []     = r
+          go d d' r (x:xs) = case IM.lookup x topRen of
+            Nothing       -> _
+            Just Nothing  -> _
+            Just (Just{}) -> go (d + 1) (d' + 1) (IM.insert d d' r) xs
+
+
+    _
+
+
+
+
 
   go :: Lvl -> Lvl -> RhsRenaming -> Val -> Tm
   go d d' r v = case (go d d' r,
