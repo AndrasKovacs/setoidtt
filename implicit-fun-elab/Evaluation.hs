@@ -93,94 +93,103 @@ vAppSp h = go where
   go (SProj2 sp)      = vProj2 (go sp)
 
 eval :: Vals -> Tm -> Val
-eval vs t = case (eval vs, \t x -> eval (VDef vs x) t) of
-  (eval, evalBind) -> case t of
+eval vs = go where
+  go = \case
     Var x        -> vVar x vs
-    Let x _ t u  -> evalBind u (eval t)
+    Let x _ t u  -> goBind u (go t)
     U            -> VU
     Meta m       -> vMeta m
-    Pi x i a b   -> VPi x i (eval a) (evalBind b)
-    Lam x i a t  -> VLam x i (eval a) (evalBind t)
-    App t u i    -> vApp (eval t) (eval u) i
+    Pi x i a b   -> VPi x i (go a) (goBind b)
+    Lam x i a t  -> VLam x i (go a) (goBind t)
+    App t u i    -> vApp (go t) (go u) i
     Tel          -> VTel
     TEmpty       -> VTEmpty
-    TCons x a b  -> VTCons x (eval a) (evalBind b)
-    Rec a        -> VRec (eval a)
+    TCons x a b  -> VTCons x (go a) (goBind b)
+    Rec a        -> VRec (go a)
     Tempty       -> VTempty
-    Tcons t u    -> VTcons (eval t) (eval u)
-    Proj1 t      -> vProj1 (eval t)
-    Proj2 t      -> vProj2 (eval t)
-    PiTel x a b  -> vPiTel id x (eval a) (evalBind b)
-    AppTel a t u -> vAppTel (eval a) (eval t) (eval u)
-    LamTel x a t -> vLamTel id x (eval a) (evalBind t)
+    Tcons t u    -> VTcons (go t) (go u)
+    Proj1 t      -> vProj1 (go t)
+    Proj2 t      -> vProj2 (go t)
+    PiTel x a b  -> vPiTel id x (go a) (goBind b)
+    AppTel a t u -> vAppTel (go a) (go t) (go u)
+    LamTel x a t -> vLamTel id x (go a) (goBind t)
+
+  goBind t x = eval (VDef vs x) t
+
 
 quote :: Lvl -> Val -> Tm
-quote d v = case (quote d, \t -> quote (d + 1) (t (VVar d))) of
-  (quote, quoteBind) -> case force v of
+quote d = go where
+
+  go v = case force v of
     VNe h sp ->
-      let go SNil = case h of
+      let goSp SNil = case h of
             HMeta m -> Meta m
             HVar x  -> Var (d - x - 1)
-          go (SApp sp u i)    = App (go sp) (quote u) i
-          go (SAppTel a sp u) = AppTel (quote a) (go sp) (quote u)
-          go (SProj1 sp)      = Proj1 (go sp)
-          go (SProj2 sp)      = Proj2 (go sp)
-      in go (forceSp sp)
+          goSp (SApp sp u i)    = App (goSp sp) (go u) i
+          goSp (SAppTel a sp u) = AppTel (go a) (goSp sp) (go u)
+          goSp (SProj1 sp)      = Proj1 (goSp sp)
+          goSp (SProj2 sp)      = Proj2 (goSp sp)
+      in goSp (forceSp sp)
 
-    VLam x i a t  -> Lam x i (quote a) (quoteBind t)
-    VPi x i a b   -> Pi x i (quote a) (quoteBind b)
+    VLam x i a t  -> Lam x i (go a) (goBind t)
+    VPi x i a b   -> Pi x i (go a) (goBind b)
     VU            -> U
     VTel          -> Tel
-    VRec a        -> Rec (quote a)
+    VRec a        -> Rec (go a)
     VTEmpty       -> TEmpty
-    VTCons x a as -> TCons x (quote a) (quoteBind as)
+    VTCons x a as -> TCons x (go a) (goBind as)
     VTempty       -> Tempty
-    VTcons t u    -> Tcons (quote t) (quote u)
-    VPiTel x a b  -> PiTel x (quote a) (quoteBind b)
-    VLamTel x a t -> LamTel x (quote a) (quoteBind t)
+    VTcons t u    -> Tcons (go t) (go u)
+    VPiTel x a b  -> PiTel x (go a) (goBind b)
+    VLamTel x a t -> LamTel x (go a) (goBind t)
+
+  goBind t = quote (d + 1) (t (VVar d))
+
 
 -- zonking
 --------------------------------------------------------------------------------
 
-zonkSp :: Vals -> Tm -> Either Val Tm
-zonkSp vs t = case zonkSp vs of
-  zonkSp -> case t of
+zonk :: Vals -> Tm -> Tm
+zonk vs t = go t where
+
+  goSp :: Tm -> Either Val Tm
+  goSp = \case
     Meta m       -> case lookupMeta m of
                       Solved v -> Left v
                       _        -> Right (Meta m)
-    App t u ni   -> case zonkSp t of
+    App t u ni   -> case goSp t of
                       Left t  -> Left (vApp t (eval vs u) ni)
-                      Right t -> Right $ App t (zonk vs u) ni
-    AppTel a t u -> case zonkSp t of
+                      Right t -> Right $ App t (go u) ni
+    AppTel a t u -> case goSp t of
                       Left t  -> Left (vAppTel (eval vs a) t (eval vs u))
-                      Right t -> Right $ AppTel (zonk vs a) t (zonk vs u)
+                      Right t -> Right $ AppTel (go a) t (go u)
     t            -> Right (zonk vs t)
 
-zonk :: Vals -> Tm -> Tm
-zonk vs t = case (zonk vs, \t -> zonk (VSkip vs) t) of
-  (zonk, zonkBind) -> case t of
+  goBind = zonk (VSkip vs)
+
+  go = \case
     Var x        -> Var x
     Meta m       -> case lookupMeta m of
                       Solved v   -> quote (valsLen vs) v
                       Unsolved{} -> Meta m
                       _          -> error "impossible"
     U            -> U
-    Pi x i a b   -> Pi x i (zonk a) (zonkBind b)
-    App t u ni   -> case zonkSp vs t of
+    Pi x i a b   -> Pi x i (go a) (goBind b)
+    App t u ni   -> case goSp t of
                       Left t  -> quote (valsLen vs) (vApp t (eval vs u) ni)
-                      Right t -> App t (zonk u) ni
-    Lam x i a t  -> Lam x i (zonk a) (zonkBind t)
-    Let x a t u  -> Let x (zonk a) (zonk t) (zonkBind u)
+                      Right t -> App t (go u) ni
+    Lam x i a t  -> Lam x i (go a) (goBind t)
+    Let x a t u  -> Let x (go a) (go t) (goBind u)
     Tel          -> Tel
     TEmpty       -> TEmpty
-    TCons x t u  -> TCons x (zonk t) (zonkBind u)
-    Rec a        -> Rec (zonk a)
+    TCons x t u  -> TCons x (go t) (goBind u)
+    Rec a        -> Rec (go a)
     Tempty       -> Tempty
-    Tcons t u    -> Tcons (zonk t) (zonk u)
-    Proj1 t      -> Proj1 (zonk t)
-    Proj2 t      -> Proj2 (zonk t)
-    PiTel x a b  -> PiTel x (zonk a) (zonkBind b)
-    AppTel a t u -> case zonkSp vs t of
+    Tcons t u    -> Tcons (go t) (go u)
+    Proj1 t      -> Proj1 (go t)
+    Proj2 t      -> Proj2 (go t)
+    PiTel x a b  -> PiTel x (go a) (goBind b)
+    AppTel a t u -> case goSp t of
                       Left t  -> quote (valsLen vs) (vAppTel (eval vs a) t (eval vs u))
-                      Right t -> AppTel (zonk a) t (zonk u)
-    LamTel x a b -> LamTel x (zonk a) (zonkBind b)
+                      Right t -> AppTel (go a) t (go u)
+    LamTel x a b -> LamTel x (go a) (goBind b)

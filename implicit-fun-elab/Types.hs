@@ -107,11 +107,6 @@ data UnifyCxt = UCxt {
   unifyCxtNames :: [Name],
   unifyCxtLen   :: Int }
 
-data Err = Err {
-  errNames :: [Name],
-  errErr   :: ElabError,
-  errPos   :: Maybe SPos}
-
 data Tm
   = Var Ix
   | Let Name Ty Tm Tm
@@ -189,17 +184,33 @@ pattern VVar x = VNe (HVar x) SNil
 pattern VMeta :: MId -> Val
 pattern VMeta m = VNe (HMeta m) SNil
 
-data ElabError
-  = SpineNonVar Tm Tm                    -- ^ lhs, rhs
+data SpineError
+  = SpineNonVar
   | SpineProjection
-  | ScopeError Tm Tm Lvl                 -- ^ Lhs, rhs, offending variable
-  | OccursCheck Tm Tm                    -- ^ Lhs, rhs
-  | UnifyError Tm Tm                     -- ^ Lhs, rhs
-  | UnifyErrorWhile Tm Tm Tm Tm
+  | NonLinearSpine Lvl
+  deriving (Show, Exception)
+
+data StrengtheningError
+  = ScopeError Lvl
+  | OccursCheck
+  deriving (Show, Exception)
+
+data UnifyError
+  = UnifyError [Name] Tm Tm
+  deriving (Show, Exception)
+
+data ElabError
+  = StrengtheningError Tm Tm StrengtheningError
+  | SpineError Tm Tm SpineError
+  | UnifyErrorWhile Tm Tm UnifyError
   | NameNotInScope Name
-  | ExpectedFunction Tm                  -- ^ Inferred type.
+  | ExpectedFunction Tm
   | IcitMismatch Icit Icit
-  | NonLinearSpine Tm Tm Lvl          -- ^ Lhs, rhs, offending variable
+
+data Err = Err {
+  errNames :: [Name],
+  errErr   :: ElabError,
+  errPos   :: Maybe SPos}
 
 instance Show Err where
   show _ = "Error"
@@ -314,26 +325,28 @@ instance Show Tm where show = showTm []
 
 showError :: [Name] -> ElabError -> String
 showError ns = \case
-  SpineNonVar lhs rhs -> printf (
-    "Non-bound-variable value in meta spine in equation:\n\n" ++
-    "  %s =? %s")
-    (showTm ns lhs) (showTm ns rhs)
-  SpineProjection -> "Projection in meta spine"
-  ScopeError lhs rhs x -> printf (
-    "Variable %s is out of scope in equation\n\n" ++
-    "  %s =? %s")
-    (lvlName ns x) (showTm ns lhs) (showTm ns rhs)
-  OccursCheck lhs rhs -> printf (
-    "Meta occurs cyclically in its solution candidate in equation:\n\n" ++
-    "  %s =? %s")
-    (showTm ns lhs) (showTm ns rhs)
-  UnifyError lhs rhs -> printf
-    ("Cannot unify\n\n" ++
-     "  %s\n\n" ++
-     "with\n\n" ++
-     "  %s")
-    (showTm ns lhs) (showTm ns rhs)
-  UnifyErrorWhile lhs rhs lhs' rhs' -> printf
+  SpineError lhs rhs e -> case e of
+    SpineNonVar -> printf (
+      "Non-bound-variable value in meta spine in equation:\n\n" ++
+      "  %s =? %s")
+      (showTm ns lhs) (showTm ns rhs)
+    SpineProjection ->
+      "Projection in meta spine"
+    NonLinearSpine x -> printf
+      ("Nonlinear variable %s in meta spine in equation\n\n" ++
+       "  %s =? %s")
+      (lvlName ns x)
+      (showTm ns lhs) (showTm ns rhs)
+  StrengtheningError lhs rhs e -> case e of
+    ScopeError x -> printf (
+      "Variable %s is out of scope in equation\n\n" ++
+      "  %s =? %s")
+      (lvlName ns x) (showTm ns lhs) (showTm ns rhs)
+    OccursCheck -> printf (
+      "Meta occurs cyclically in its solution candidate in equation:\n\n" ++
+      "  %s =? %s")
+      (showTm ns lhs) (showTm ns rhs)
+  UnifyErrorWhile lhs rhs (UnifyError ns' lhs' rhs') -> printf
     ("Cannot unify\n\n" ++
      "  %s\n\n" ++
      "with\n\n" ++
@@ -342,7 +355,7 @@ showError ns = \case
      "  %s\n\n" ++
      "with\n\n" ++
      "  %s")
-    (showTm ns lhs') (showTm ns rhs') (showTm ns lhs) (showTm ns rhs)
+    (showTm ns' lhs') (showTm ns' rhs') (showTm ns lhs) (showTm ns rhs)
   NameNotInScope x ->
     "Name not in scope: " ++ x
   ExpectedFunction ty ->
@@ -350,11 +363,7 @@ showError ns = \case
   IcitMismatch i i' -> printf (
     "Function icitness mismatch: expected %s, got %s.")
     (show i) (show i')
-  NonLinearSpine lhs rhs x -> printf
-    ("Nonlinear variable %s in meta spine in equation\n\n" ++
-     "  %s =? %s")
-    (lvlName ns x)
-    (showTm ns lhs) (showTm ns rhs)
+
 
 -- Lenses
 --------------------------------------------------------------------------------

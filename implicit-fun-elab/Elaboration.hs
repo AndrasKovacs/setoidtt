@@ -84,113 +84,103 @@ type Renaming = IM.IntMap Lvl
 -- unification
 --------------------------------------------------------------------------------
 
--- | Expects a forced spine. Returns a partial renaming and the length of the spine.
---   Nonlinear spine is always an error.
-checkSp :: UnifyCxt -> (Tm, Tm) -> Spine -> (Renaming, Lvl)
-checkSp cxt (lhs, rhs) = go where
+-- | Returns a partial renaming and the length of the spine.
+--   Nonlinear spine is always an error. Throws SpineError.
+checkSp :: Spine -> (Renaming, Lvl)
+checkSp = go . forceSp where
   go :: Spine -> (Renaming, Lvl)
   go = \case
     SNil        -> (mempty, 0)
     SApp sp u i -> case go sp of
       (!r, !d) -> case force u of
-        VVar x | IM.member x r -> report (cxt^.names) $ NonLinearSpine lhs rhs x
+        VVar x | IM.member x r -> throw $ NonLinearSpine x
                | otherwise     -> (IM.insert x d r, d + 1)
-        _      -> report (cxt^.names) $ SpineNonVar lhs rhs
+        _      -> throw SpineNonVar
     SAppTel a sp u -> case go sp of
       (!r, !d) -> case force u of
-        VVar x | IM.member x r -> report (cxt^.names) $ NonLinearSpine lhs rhs x
+        VVar x | IM.member x r -> throw $ NonLinearSpine x
                | otherwise     -> (IM.insert x d r, d + 1)
-        _    -> report (cxt^.names) $ SpineNonVar lhs rhs
-    SProj1 _ -> report (cxt^.names) SpineProjection
-    SProj2 _ -> report (cxt^.names) SpineProjection
+        _    -> throw SpineNonVar
+    SProj1 _ -> throw SpineProjection
+    SProj2 _ -> throw SpineProjection
 
 
-quoteRhs :: UnifyCxt -> (Tm, Tm) -> MId -> (Renaming, Lvl) -> Val -> Tm
-quoteRhs cxt (topLhs, topRhs) topMeta (r, splen) = go (cxt^.len) splen r where
+data Str = Str {
+  _strDom :: Lvl,           -- ^ size of renaming domain
+  _strCod :: Lvl,           -- ^ size of renaming codomain
+  _strRen :: IM.IntMap Lvl, -- ^ partial renaming
+  _strOcc :: Maybe MId      -- ^ meta for occurs strengthening
+  }
 
-  -- | Return a pruned spine and a pruning renaming.
-  spPruning :: Spine -> Renaming -> Maybe (Spine, Renaming)
-  spPruning sp topRen = do
+makeFields ''Str
 
-    let getRenaming :: Spine -> Maybe (Lvl, Lvl, Renaming, Spine)
-        getRenaming = go where
-          go SNil = pure (0, 0, mempty, SNil)
-          go (SApp sp (VVar x) i) = do
-            (d, d', r, sp) <- go sp
-            case IM.lookup x topRen of
-              Nothing -> _
-              Just{}  -> _
+strengthen :: Str -> Val -> Tm
+strengthen (Str d c r occurs) = go where
 
+  prune m sp = Nothing
 
+  go t = case force t of
+    VNe (HVar x) sp  -> case IM.lookup x r of
+                          Nothing -> throw $ ScopeError x
+                          Just x' -> goSp (Var (d - x' - 1)) (forceSp sp)
+    VNe (HMeta m) sp -> if Just m == occurs then
+                          throw OccursCheck
+                        else case prune m sp of
+                          Nothing -> goSp (Meta m) (forceSp sp)
+                          Just t  -> t
+    VPi x i a b      -> Pi x i (go a) (goBind b)
+    VLam x i a t     -> Lam x i (go a) (goBind t)
+    VU               -> U
+    VTel             -> Tel
+    VRec a           -> Rec (go a)
+    VTEmpty          -> TEmpty
+    VTCons x a b     -> TCons x (go a) (goBind b)
+    VTempty          -> Tempty
+    VTcons t u       -> Tcons (go t) (go u)
+    VPiTel x a b     -> PiTel x (go a) (goBind b)
+    VLamTel x a t    -> LamTel x (go a) (goBind t)
 
+  goBind t =
+    strengthen (Str (d+1) (c+1) (IM.insert c d r) occurs) (t (VVar c))
 
-    undefined
-          -- go d d' r SNil   = pure r
-          -- go
-          -- go d d' r (x:xs) = case IM.lookup x topRen of
-          --   Nothing       -> go (d + 1) d'       r                  xs
-          --   Just{}        -> go (d + 1) (d' + 1) (IM.insert d d' r) xs
-
-    -- -- spine must contain only of vars
-    -- let vars :: Spine -> Maybe [Lvl]
-    --     vars = go [] where
-    --       go acc SNil                    = pure acc
-    --       go acc (SApp sp (VVar x) _)    = go (x:acc) sp
-    --       go acc (SAppTel _ sp (VVar x)) = go (x:acc) sp
-    --       go _   _                       = Nothing
-
-    -- xs <- vars sp
-
-    -- let getRenaming :: [Lvl] -> Renaming
-    --     getRenaming = go 0 0 mempty where
-
-
-    -- let r = getRenaming xs
-    -- -- if the renaming is total, we don't need to prune
-    -- guard $ length xs /= length r
-    -- pure r
-
-  goSp :: Lvl -> Lvl -> Renaming -> Tm -> Spine -> Tm
-  goSp d d' r h = goSp' where
-    goSp' SNil             = h
-    goSp' (SApp sp u i)    = App (goSp' sp) (go d d' r u) i
-    goSp' (SAppTel a sp u) = AppTel (go d d' r a) (goSp' sp) (go d d' r u)
-    goSp' (SProj1 sp)      = Proj1 (goSp' sp)
-    goSp' (SProj2 sp)      = Proj2 (goSp' sp)
-
-  go :: Lvl -> Lvl -> Renaming -> Val -> Tm
-  go d d' r v = case (go d d' r,
-                     \t -> go (d+1) (d'+1) (IM.insert d d' r) (t (VVar d))) of
-    (go, goBind) -> case force v of
-      VNe (HVar x) sp -> case IM.lookup x r of
-        Nothing -> report (cxt^.names) $ ScopeError topLhs topRhs x
-        Just x' -> goSp d d' r (Var (d' - x' - 1)) (forceSp sp)
-      VNe (HMeta m) sp -> case spPruning sp r of
-        Nothing -> goSp d d' r (Meta m) (forceSp sp)
-        Just pr -> undefined
+  goSp h = \case
+    SNil           -> h
+    SApp sp u i    -> App (goSp h sp) (go u) i
+    SAppTel a sp u -> AppTel (go a) (goSp h sp) (go u)
+    SProj1 sp      -> Proj1 (goSp h sp)
+    SProj2 sp      -> Proj2 (goSp h sp)
 
 
-      -- VNe h sp ->
-      --   let h' = case h of
-      --         HMeta m | m == topMeta -> report (cxt^.names) $ OccursCheck topLhs topRhs
-      --         HMeta m -> Meta m
-      --         HVar x -> case IM.lookup x r of
-      --           Nothing        -> report (cxt^.names) $ ScopeError topLhs topRhs x
-      --           Just x'        -> Var (d' - x' - 1)
+-- quoteRhs = undefined
+-- quoteRhs :: UnifyCxt -> (Tm, Tm) -> MId -> (Renaming, Lvl) -> Val -> Tm
+-- quoteRhs cxt (topLhs, topRhs) topMeta (r, splen) = rename (cxt^.len) splen r where
 
-      --    in goSp d d' r h' (forceSp sp)
+--   -- | Return a pruned and quoted meta-headed term
+--   prune :: MId -> Spine -> Renaming -> Maybe Tm
+--   prune m sp topRen = do
 
-      VPi x i a b   -> Pi x i (go a) (goBind b)
-      VLam x i a t  -> Lam x i (go a) (goBind t)
-      VU            -> U
-      VTel          -> Tel
-      VRec a        -> Rec (go a)
-      VTEmpty       -> TEmpty
-      VTCons x a b  -> TCons x (go a) (goBind b)
-      VTempty       -> Tempty
-      VTcons t u    -> Tcons (go t) (go u)
-      VPiTel x a b  -> PiTel x (go a) (goBind b)
-      VLamTel x a t -> LamTel x (go a) (goBind t)
+--     let getRenaming :: Spine -> Maybe (Lvl, Lvl, Renaming)
+--         getRenaming = go where
+--           go SNil = pure (0, 0, mempty)
+--           go (SApp sp (VVar x) i) = do
+--             (d, d', r) <- go sp
+--             case IM.lookup x topRen of
+--               Nothing -> pure (d+1, d', r)
+--               Just{}  -> pure (d+1, d'+1, IM.insert d d' r)
+--           go _ = Nothing
+
+--     (d, d', r) <- getRenaming sp
+--     guard $ d /= d'
+
+--     let pruneTy :: VTy -> Tm
+--         pruneTy = go 0 where
+--           go i a | i == d = rename d d' r a
+--           go i a = case force a of
+--             VPi x i a b  -> _
+--             VPiTel x a b -> _
+--             _ -> error "impossible"
+
+--     undefined
 
 solveMeta :: UnifyCxt -> MId -> Spine -> Val -> IO ()
 solveMeta cxt m sp rhs = do
@@ -198,9 +188,9 @@ solveMeta cxt m sp rhs = do
 
   let ~lhst = quote (cxt^.len) (VNe (HMeta m) sp)
       ~rhst = quote (cxt^.len) rhs
-  sp  <- pure $ checkSp  cxt (lhst, rhst) (forceSp sp)
-  rhs <- pure $ quoteRhs cxt (lhst, rhst) m sp rhs
-  -- traceShowM ("rhs", sp, rhs)
+  (r, d) <- pure $ checkSp sp
+  rhs <- pure (strengthen (Str d (cxt^.len) r (Just m)) rhs)
+         `catch` \e -> report (cxt^.names) $ StrengtheningError lhst rhst e
 
   let mty = case lookupMeta m of
         Unsolved _ ty -> ty
@@ -213,7 +203,7 @@ solveMeta cxt m sp rhs = do
         VPiTel x a b -> LamTel x (quote d a) $ lams (b (VVar d), splen-1) (d + 1) rhs
         _            -> error "impossible"
 
-  rhs <- pure $ lams (mty, snd sp) 0 rhs
+  rhs <- pure $ lams (mty, d) 0 rhs
   -- traceShowM ("solved", rhs)
   writeMetaIO m (Solved (eval VNil rhs))
 
@@ -241,8 +231,8 @@ freshMeta cxt a = do
 unify :: UnifyCxt -> Val -> Val -> IO ()
 unify cxt topT topT' = go topT topT' where
 
-  ~ntopT  = quote (cxt^.len) topT
-  ~ntopT' = quote (cxt^.len) topT'
+  ~report =
+    throw $ UnifyError (cxt^.names) (quote (cxt^.len) topT) (quote (cxt^.len) topT')
 
   go t t' = case (force t, force t') of
     (VLam x _ a t, VLam _ _ _ t')             -> goBind x a t t'
@@ -258,20 +248,20 @@ unify cxt topT topT' = go topT topT' where
     (VTcons t u, VTcons t' u')                -> go t t' >> go u u'
     (VPiTel x a b, VPiTel x' a' b')           -> go a a' >> goBind x a b b'
     (VLamTel x a t, VLamTel x' a' t')         -> goBind x a t t'
-    (VNe h sp, VNe h' sp') | h == h'          -> goSp sp sp'
+    (VNe h sp, VNe h' sp') | h == h'          -> goSp (forceSp sp) (forceSp sp')
     (VNe (HMeta m) sp, t')                    -> solveMeta cxt m sp t'
     (t, VNe (HMeta m') sp')                   -> solveMeta cxt m' sp' t
-    _                                         -> report (cxt^.names) $ UnifyError ntopT ntopT'
+    _                                         -> report
 
   goBind x a t t' =
     let UCxt tys ns d = cxt
     in unify (UCxt (TBound tys a) (x:ns) (d + 1)) (t (VVar d)) (t' (VVar d))
 
-  goSp sp sp' = case (forceSp sp, forceSp sp') of
+  goSp sp sp' = case (sp, sp') of
     (SNil, SNil)                            -> pure ()
     (SApp sp u i, SApp sp' u' i') | i == i' -> goSp sp sp' >> go u u'
     (SAppTel a sp u, SAppTel a' sp' u')     -> go a a' >> goSp sp sp' >> go u u'
-    _                                       -> report (cxt^.names) $ UnifyError ntopT ntopT'
+    _                                       -> report
 
 -- Elaboration
 --------------------------------------------------------------------------------
@@ -351,12 +341,10 @@ check cxt topT ~topA = do
       unify (cxt^.ucxt) va topA
         `catch`
         \case
-          (Err ns (UnifyError lhs' rhs') p) -> do
+          (e :: UnifyError) -> do
             let na    = quote (cxt^.len) va
                 ntopA = quote (cxt^.len) topA
-            throw (Err ns (UnifyErrorWhile na ntopA lhs' rhs') p)
-          err ->
-            throw err
+            report (cxt^.names) $ UnifyErrorWhile na ntopA e
 
       pure t
 

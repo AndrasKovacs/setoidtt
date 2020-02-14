@@ -13,6 +13,7 @@ description:         "Small implementation of elaboration for first-class implic
 default-extensions:
 - BangPatterns
 - ConstraintKinds
+- DeriveAnyClass
 - EmptyCase
 - ExplicitNamespaces
 - FlexibleContexts

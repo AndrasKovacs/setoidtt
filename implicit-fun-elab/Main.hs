@@ -77,12 +77,10 @@ test = main' "elab" $ unlines [
   "let zero : Nat = λ _ s z. z in",
   "let inc : Nat → Nat = λ n _ s z. s (n _ s z) in",
   "let mul : Nat -> Nat -> Nat",
-  "    = \\a b N s z. a _ (b _ s) z in",
+  "    = \\a b N s z. a _ (b N s) z in",
   "let ten : Nat",
   "    = \\N s z. s (s (s (s (s (s (s (s (s (s z))))))))) in",
   "let hundred = mul ten ten in",
-
-
 
   "let List : U -> U",
   "    = \\A. (L : U) -> (A -> L -> L) -> L -> L in",
