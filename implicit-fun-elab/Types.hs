@@ -197,11 +197,11 @@ data StrengtheningError
 
 data UnifyError
   = UnifyError [Name] Tm Tm
+  | StrengtheningError [Name] Tm Tm StrengtheningError
   deriving (Show, Exception)
 
 data ElabError
-  = StrengtheningError Tm Tm StrengtheningError
-  | SpineError Tm Tm SpineError
+  = SpineError Tm Tm SpineError
   | UnifyErrorWhile Tm Tm UnifyError
   | NameNotInScope Name
   | ExpectedFunction Tm
@@ -325,6 +325,7 @@ instance Show Tm where show = showTm []
 
 showError :: [Name] -> ElabError -> String
 showError ns = \case
+
   SpineError lhs rhs e -> case e of
     SpineNonVar -> printf (
       "Non-bound-variable value in meta spine in equation:\n\n" ++
@@ -337,25 +338,30 @@ showError ns = \case
        "  %s =? %s")
       (lvlName ns x)
       (showTm ns lhs) (showTm ns rhs)
-  StrengtheningError lhs rhs e -> case e of
-    ScopeError x -> printf (
-      "Variable %s is out of scope in equation\n\n" ++
-      "  %s =? %s")
-      (lvlName ns x) (showTm ns lhs) (showTm ns rhs)
-    OccursCheck -> printf (
-      "Meta occurs cyclically in its solution candidate in equation:\n\n" ++
-      "  %s =? %s")
-      (showTm ns lhs) (showTm ns rhs)
-  UnifyErrorWhile lhs rhs (UnifyError ns' lhs' rhs') -> printf
-    ("Cannot unify\n\n" ++
-     "  %s\n\n" ++
-     "with\n\n" ++
-     "  %s\n\n" ++
-     "while trying to unify\n\n" ++
-     "  %s\n\n" ++
-     "with\n\n" ++
-     "  %s")
-    (showTm ns' lhs') (showTm ns' rhs') (showTm ns lhs) (showTm ns rhs)
+
+  UnifyErrorWhile lhs rhs e ->
+    let err1 = case e of
+          UnifyError ns' lhs' rhs' -> printf
+            ("Cannot unify\n\n" ++
+             "  %s\n\n" ++
+             "with\n\n" ++
+             "  %s\n\n")
+            (showTm ns' lhs') (showTm ns' rhs')
+          StrengtheningError ns lhs rhs e -> case e of
+            ScopeError x -> printf (
+              "Variable %s is out of scope in equation\n\n" ++
+              "  %s =? %s")
+              (lvlName ns x) (showTm ns lhs) (showTm ns rhs)
+            OccursCheck -> printf (
+              "Meta occurs cyclically in its solution candidate in equation:\n\n" ++
+              "  %s =? %s")
+              (showTm ns lhs) (showTm ns rhs)
+    in err1 ++ printf
+         ("while trying to unify\n\n" ++
+         "  %s\n\n" ++
+         "with\n\n" ++
+         "  %s") (showTm ns lhs) (showTm ns rhs)
+
   NameNotInScope x ->
     "Name not in scope: " ++ x
   ExpectedFunction ty ->

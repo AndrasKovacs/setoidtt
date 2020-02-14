@@ -127,7 +127,7 @@ test = main' "elab" $ unlines [
 
   -- "let t5 = λ xs. poly (head xs) in", -- pruning
 
-  "not"
+  "hundred"
   ]
 
 -- example for when a telescope cannot depend on local A% B% vars.

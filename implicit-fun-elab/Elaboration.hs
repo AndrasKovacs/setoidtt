@@ -190,7 +190,7 @@ solveMeta cxt m sp rhs = do
       ~rhst = quote (cxt^.len) rhs
   (r, d) <- pure $ checkSp sp
   rhs <- pure (strengthen (Str d (cxt^.len) r (Just m)) rhs)
-         `catch` \e -> report (cxt^.names) $ StrengtheningError lhst rhst e
+         `catch` \e -> throw $ StrengtheningError (cxt^.names) lhst rhst e
 
   let mty = case lookupMeta m of
         Unsolved _ ty -> ty
@@ -231,7 +231,7 @@ freshMeta cxt a = do
 unify :: UnifyCxt -> Val -> Val -> IO ()
 unify cxt topT topT' = go topT topT' where
 
-  ~report =
+  ~unifyError =
     throw $ UnifyError (cxt^.names) (quote (cxt^.len) topT) (quote (cxt^.len) topT')
 
   go t t' = case (force t, force t') of
@@ -251,7 +251,7 @@ unify cxt topT topT' = go topT topT' where
     (VNe h sp, VNe h' sp') | h == h'          -> goSp (forceSp sp) (forceSp sp')
     (VNe (HMeta m) sp, t')                    -> solveMeta cxt m sp t'
     (t, VNe (HMeta m') sp')                   -> solveMeta cxt m' sp' t
-    _                                         -> report
+    _                                         -> unifyError
 
   goBind x a t t' =
     let UCxt tys ns d = cxt
@@ -261,7 +261,7 @@ unify cxt topT topT' = go topT topT' where
     (SNil, SNil)                            -> pure ()
     (SApp sp u i, SApp sp' u' i') | i == i' -> goSp sp sp' >> go u u'
     (SAppTel a sp u, SAppTel a' sp' u')     -> go a a' >> goSp sp sp' >> go u u'
-    _                                       -> report
+    _                                       -> unifyError
 
 -- Elaboration
 --------------------------------------------------------------------------------
