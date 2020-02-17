@@ -24,7 +24,7 @@ vVar x (VSkip vs)  = vVar (x - 1) vs
 vVar _ _           = error "impossible"
 
 vMeta :: MId -> Val
-vMeta m = case lookupMeta m of
+vMeta m = case runLookupMeta m of
   Unsolved{} -> VMeta m
   Solved v   -> v
   _          -> error "impossible"
@@ -33,7 +33,7 @@ vMeta m = case lookupMeta m of
 --   of a neutral value.
 force :: Val -> Val
 force = \case
-  v@(VNe (HMeta m) sp) -> case lookupMeta m of
+  v@(VNe (HMeta m) sp) -> case runLookupMeta m of
     Unsolved{} -> v
     Solved v   -> force (vAppSp v sp)
     _          -> error "impossible"
@@ -155,7 +155,7 @@ zonk vs t = go t where
 
   goSp :: Tm -> Either Val Tm
   goSp = \case
-    Meta m       -> case lookupMeta m of
+    Meta m       -> case runLookupMeta m of
                       Solved v -> Left v
                       _        -> Right (Meta m)
     App t u ni   -> case goSp t of
@@ -170,7 +170,7 @@ zonk vs t = go t where
 
   go = \case
     Var x        -> Var x
-    Meta m       -> case lookupMeta m of
+    Meta m       -> case runLookupMeta m of
                       Solved v   -> quote (valsLen vs) v
                       Unsolved{} -> Meta m
                       _          -> error "impossible"

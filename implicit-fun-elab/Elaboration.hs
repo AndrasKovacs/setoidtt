@@ -9,14 +9,14 @@
 
 module Elaboration where
 
-import Data.Foldable
 import Control.Exception
 import Control.Monad
-import qualified Data.IntSet as IS
-import qualified Data.IntMap as IM
+import Data.Foldable
 import Data.IORef
-import Lens.Micro.Platform
 import Data.Maybe
+import Lens.Micro.Platform
+import qualified Data.IntMap as IM
+import qualified Data.IntSet as IS
 
 import Types
 import Evaluation
@@ -24,7 +24,8 @@ import ElabState
 
 import Debug.Trace
 
--- occurrence check for constancy
+
+-- Telescope constancy
 --------------------------------------------------------------------------------
 
 data Occurs = Rigid | Flex IS.IntSet | None deriving (Eq, Show)
@@ -76,12 +77,62 @@ occurs d topX = occurs' d mempty where
       VLamTel x a t -> go a <> goBind t
 
 
--- unification
---------------------------------------------------------------------------------
+-- newConstancy :: MId -> Spine -> Closure -> IO ()
+-- newConstancy telMeta sp cl = do
+--   x <- fresh <$> view vals <*> pure "_"
+--   ~codomain <- applyM cl (VVar x)
+--   constM <- newMetaEntry (Constancy telMeta sp x codomain mempty)
+--   tryConstancy constM
 
--- | A partial mapping from levels to levels. Undefined domain reresents
---   out-of-scope or "illegal" variables.
-type Renaming = IM.IntMap Lvl
+-- | Attempt to solve a constancy constraint.
+tryConstancy :: MId -> IO ()
+tryConstancy constM = lookupMeta constM >>= \case
+  Constancy cxt telMeta sp codomain blockers -> do
+
+    -- clear blockers
+    forM_ (IS.toList blockers) $ \m -> do
+      modifyMeta m $ \case
+        Unsolved ms a -> Unsolved (IS.delete constM ms) a
+        Solved t      -> Solved t
+        Constancy{}   -> error "impossible"
+
+    writeMeta constM $ Constancy cxt telMeta sp codomain mempty
+
+    lookupMeta telMeta >>= \case
+      Constancy{} -> error "impossible"
+      Solved{}    -> pure ()
+      Unsolved{}  ->
+        case occurs (cxt^.len + 1) (cxt^.len) codomain of
+          None    -> solveMeta cxt telMeta sp VTEmpty   -- no dependency, tel is empty
+          Rigid   -> pure ()                            -- certain dependency
+          Flex ms -> do   -- update blockers
+
+            -- set new blockers
+            forM_ (IS.toList ms) $ \m ->
+              modifyMeta m $ \case
+                Unsolved ms a -> Unsolved (IS.insert constM ms) a
+                _             -> error "impossible"
+
+            writeMeta constM $ Constancy cxt telMeta sp codomain ms
+
+  _ -> error "impossible"
+
+
+newConstancy :: UnifyCxt -> MId -> Spine -> (Val -> Val) -> IO ()
+newConstancy cxt telMeta sp b = do
+  let ~codomain = b (VVar (cxt^.len))
+  undefined
+
+-- newConstancy :: MId -> Spine -> Closure -> UnifyM ()
+-- newConstancy telMeta sp cl = do
+--   x <- fresh <$> view vals <*> pure "_"
+--   ~codomain <- applyM cl (VVar x)
+--   constM <- newMetaEntry (Constancy telMeta sp x codomain mempty)
+--   tryConstancy constM
+
+
+-- Unification
+--------------------------------------------------------------------------------
 
 -- | Checks that a spine consists only of distinct bound vars.
 --   Returns a partial variable renaming on success, alongside the size
@@ -94,35 +145,17 @@ checkSp = go . forceSp where
     SApp sp u i -> do
       (!r, !d) <- go sp
       case force u of
-        VVar x | IM.member x r -> throw $ NonLinearSpine x
+        VVar x | IM.member x r -> throwIO $ NonLinearSpine x
                | otherwise     -> pure (IM.insert x d r, d + 1)
-        _      -> throw SpineNonVar
+        _      -> throwIO SpineNonVar
     SAppTel a sp u -> do
       (!r, !d) <- go sp
       case force u of
-        VVar x | IM.member x r -> throw $ NonLinearSpine x
+        VVar x | IM.member x r -> throwIO $ NonLinearSpine x
                | otherwise     -> pure (IM.insert x d r, d + 1)
-        _    -> throw SpineNonVar
-    SProj1 _ -> throw SpineProjection
-    SProj2 _ -> throw SpineProjection
-
--- | A strengthening. We use this for pruning and checking meta solution
---   candidates.
-data Str = Str {
-  _strDom :: Lvl,        -- ^ size of renaming domain
-  _strCod :: Lvl,        -- ^ size of renaming codomain
-  _strRen :: Renaming,   -- ^ partial renaming
-  _strOcc :: Maybe MId   -- ^ meta for occurs strengthening
-  }
-makeFields ''Str
-
--- | Lift over a bound variable.
-liftStr :: Str -> Str
-liftStr (Str c d r occ) = Str (c + 1) (d + 1) (IM.insert d c r) occ
-
--- | Skip a bound variable.
-skipStr :: Str -> Str
-skipStr (Str c d r occ) = Str c (d + 1) r occ
+        _    -> throwIO SpineNonVar
+    SProj1 _ -> throwIO SpineProjection
+    SProj2 _ -> throwIO SpineProjection
 
 -- | Close a type in a cxt by wrapping it in Pi types and explicit weakenings.
 closingTy :: UnifyCxt -> Ty -> Ty
@@ -163,10 +196,9 @@ strengthen str = go where
       Just pruning | and pruning -> pure ()  -- no pruneable vars
       Just pruning               -> do
 
-        let metaTy :: VTy
-            metaTy = case lookupMeta m of
-                  Unsolved _ a -> a
-                  _            -> error "impossible"
+        metaTy <- lookupMeta m >>= \case
+          Unsolved _ a -> pure a
+          _            -> error "impossible"
 
         -- note: this can cause recursive pruning of metas in types
         (prunedTy :: Ty) <- do
@@ -184,11 +216,9 @@ strengthen str = go where
 
           go pruning (Str 0 0 mempty Nothing) metaTy
 
-        m' <- readIORef nextMId
-        modifyIORef' nextMId (+1)
+        m' <- newMetaEntry $ Unsolved mempty (eval VNil prunedTy)
 
         let argNum = length pruning
-
             body = go pruning metaTy (Meta m') 0 where
               go [] a acc d = acc
               go (True:pr) (force -> VPi x i a b) acc d =
@@ -202,18 +232,15 @@ strengthen str = go where
               go _ _ _ _ = error "impossible"
 
         let rhs = closingTm (metaTy, argNum) body
-
-        traceShowM ("pruned", pruning, quote 0 metaTy, prunedTy, rhs)
-
-        writeMetaIO m' $ Unsolved mempty (eval VNil prunedTy)
-        writeMetaIO m  $ Solved (eval VNil rhs)
+        -- traceShowM ("pruned", pruning, quote 0 metaTy, prunedTy, rhs)
+        writeMeta m $ Solved (eval VNil rhs)
 
   go t = case force t of
     VNe (HVar x) sp  -> case IM.lookup x (str^.ren) of
-                          Nothing -> throw $ ScopeError x
+                          Nothing -> throwIO $ ScopeError x
                           Just x' -> goSp (Var (str^.dom - x' - 1)) (forceSp sp)
     VNe (HMeta m) sp -> if Just m == str^.occ then
-                          throw OccursCheck
+                          throwIO OccursCheck
                         else do
                           prune m sp
                           case force (VNe (HMeta m) sp) of
@@ -249,32 +276,32 @@ solveMeta cxt m sp rhs = do
       ~topRhs = quote (cxt^.len) rhs
 
   (ren, spLen) <- checkSp sp
-         `catch` (throw . SpineError (cxt^.names) topLhs topRhs)
+         `catch` (throwIO . SpineError (cxt^.names) topLhs topRhs)
 
   rhs <- strengthen (Str spLen (cxt^.len) ren (Just m)) rhs
-         `catch` (throw . StrengtheningError (cxt^.names) topLhs topRhs)
+         `catch` (throwIO . StrengtheningError (cxt^.names) topLhs topRhs)
 
-  let metaTy = case lookupMeta m of
-        Unsolved _ a -> a
-        _            -> error "impossible"
+  (blocked, metaTy) <- lookupMeta m >>= \case
+    Unsolved blocked a -> pure (blocked, a)
+    _                  -> error "impossible"
 
   let closedRhs = closingTm (metaTy, spLen) rhs
-  writeMetaIO m (Solved (eval VNil closedRhs))
+  writeMeta m (Solved (eval VNil closedRhs))
+
+  -- try solving unblocked constraints
+  forM_ (IS.toList blocked) tryConstancy
+
 
 freshMeta :: UnifyCxt -> VTy -> IO Tm
 freshMeta cxt (quote (cxt^.len) -> a) = do
-
-  m <- readIORef nextMId
-  modifyIORef' nextMId (+1)
+  let metaTy = closingTy cxt a
+  m <- newMetaEntry $ Unsolved mempty (eval VNil metaTy)
 
   -- apply meta to bound vars
   let appVars TNil                           = (Meta m, 0)
       appVars (TDef   (appVars -> (t, d)) _) = (t, d + 1)
       appVars (TBound (appVars -> (t, d)) _) = (App t (Var (cxt^.len - d - 1)) Expl, d + 1)
 
-  let metaTy = closingTy cxt a
-
-  writeMetaIO m $ Unsolved mempty (eval VNil metaTy)
   pure $ fst $ appVars (cxt^.types)
 
 unify :: Cxt -> Val -> Val -> IO ()
@@ -286,27 +313,27 @@ unify cxt l r =
   where
   unify' cxt l r = go l r where
 
-    ~unifyError =
-      throw $ UnifyError (cxt^.names) (quote (cxt^.len) l) (quote (cxt^.len) r)
+    unifyError =
+      throwIO $ UnifyError (cxt^.names) (quote (cxt^.len) l) (quote (cxt^.len) r)
 
     go t t' = case (force t, force t') of
-      (VLam x _ a t, VLam _ _ _ t')             -> goBind x a t t'
-      (VLam x i a t, t')                        -> goBind x a t (\v -> vApp t' v i)
-      (t, VLam x' i' a' t')                     -> goBind x' a' (\v -> vApp t v i') t'
-      (VPi x i a b, VPi x' i' a' b') | i == i'  -> go a a' >> goBind x a b b'
-      (VU, VU)                                  -> pure ()
-      (VTel, VTel)                              -> pure ()
-      (VRec a, VRec a')                         -> go a a'
-      (VTEmpty, VTEmpty)                        -> pure ()
-      (VTCons x a b, VTCons x' a' b')           -> go a a' >> goBind x a b b'
-      (VTempty, VTempty)                        -> pure ()
-      (VTcons t u, VTcons t' u')                -> go t t' >> go u u'
-      (VPiTel x a b, VPiTel x' a' b')           -> go a a' >> goBind x a b b'
-      (VLamTel x a t, VLamTel x' a' t')         -> goBind x a t t'
-      (VNe h sp, VNe h' sp') | h == h'          -> goSp (forceSp sp) (forceSp sp')
-      (VNe (HMeta m) sp, t')                    -> solveMeta cxt m sp t'
-      (t, VNe (HMeta m') sp')                   -> solveMeta cxt m' sp' t
-      _                                         -> unifyError
+      (VLam x _ a t, VLam _ _ _ t')            -> goBind x a t t'
+      (VLam x i a t, t')                       -> goBind x a t (\v -> vApp t' v i)
+      (t, VLam x' i' a' t')                    -> goBind x' a' (\v -> vApp t v i') t'
+      (VPi x i a b, VPi x' i' a' b') | i == i' -> go a a' >> goBind x a b b'
+      (VU, VU)                                 -> pure ()
+      (VTel, VTel)                             -> pure ()
+      (VRec a, VRec a')                        -> go a a'
+      (VTEmpty, VTEmpty)                       -> pure ()
+      (VTCons x a b, VTCons x' a' b')          -> go a a' >> goBind x a b b'
+      (VTempty, VTempty)                       -> pure ()
+      (VTcons t u, VTcons t' u')               -> go t t' >> go u u'
+      (VPiTel x a b, VPiTel x' a' b')          -> go a a' >> goBind x a b b'
+      (VLamTel x a t, VLamTel x' a' t')        -> goBind x a t t'
+      (VNe h sp, VNe h' sp') | h == h'         -> goSp (forceSp sp) (forceSp sp')
+      (VNe (HMeta m) sp, t')                   -> solveMeta cxt m sp t'
+      (t, VNe (HMeta m') sp')                  -> solveMeta cxt m' sp' t
+      _                                        -> unifyError
 
     goBind x a t t' =
       let UCxt tys ns d = cxt
@@ -325,6 +352,9 @@ unify cxt l r =
 
 emptyCxt :: Cxt
 emptyCxt = Cxt VNil TNil [] [] 0
+
+emptyUCxt :: UnifyCxt
+emptyUCxt = UCxt TNil [] 0
 
 bind :: Name ->  NameOrigin -> VTy -> Cxt -> Cxt
 bind x o a (Cxt vs tys ns no d) =
@@ -349,8 +379,8 @@ insert cxt True  act = do
 addSrcPos :: SPos -> IO a -> IO a
 addSrcPos p act = act `catch` \(e::Err) ->
   case e^.pos of
-    Nothing -> throw (e & pos .~ Just p)
-    _       -> throw e
+    Nothing -> throwIO (e & pos .~ Just p)
+    _       -> throwIO e
 
 check :: Cxt -> Raw -> VTy -> IO Tm
 check cxt topT ~topA = do

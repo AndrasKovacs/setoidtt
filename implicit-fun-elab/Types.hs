@@ -58,7 +58,31 @@ data MetaEntry
 
   -- | Telescope constancy constraint. When the closure becomes constant,
   --   we unify the telescope with the empty telescope.
-  | Constancy MId Spine Name Val BlockedBy
+  --   Constancy context (telescope meta) (meta spine) codomain blockers
+  | Constancy UnifyCxt MId Spine Val BlockedBy
+
+
+-- | A partial mapping from levels to levels. Undefined domain reresents
+--   out-of-scope or "illegal" variables.
+type Renaming = IM.IntMap Lvl
+
+-- | A strengthening. We use this for pruning and checking meta solution
+--   candidates.
+data Str = Str {
+  _strDom :: Lvl,        -- ^ size of renaming domain
+  _strCod :: Lvl,        -- ^ size of renaming codomain
+  _strRen :: Renaming,   -- ^ partial renaming
+  _strOcc :: Maybe MId   -- ^ meta for occurs strengthening
+  }
+
+-- | Lift over a bound variable.
+liftStr :: Str -> Str
+liftStr (Str c d r occ) = Str (c + 1) (d + 1) (IM.insert d c r) occ
+
+-- | Skip a bound variable.
+skipStr :: Str -> Str
+skipStr (Str c d r occ) = Str c (d + 1) r occ
+
 
 data Vals  = VNil | VDef Vals ~Val | VSkip Vals
 data Types = TNil | TDef Types ~VTy | TBound Types ~VTy
@@ -366,12 +390,13 @@ showError ns = \case
 makeFields ''Cxt
 makeFields ''UnifyCxt
 makeFields ''Err
+makeFields ''Str
 
 ucxt :: Lens' Cxt UnifyCxt
 ucxt f (Cxt vs tys ns no d) =
   (\(UCxt tys ns d) -> Cxt vs tys ns no d) <$> f (UCxt tys ns d)
 
-instance HasNames  [Name]  [Name]  where names = id
-instance HasVals   Vals    Vals    where vals  = id
-instance HasTypes  Types   Types   where types = id
-instance HasLen    Int     Int     where len   = id
+-- instance HasNames  [Name]  [Name]  where names = id
+-- instance HasVals   Vals    Vals    where vals  = id
+-- instance HasTypes  Types   Types   where types = id
+-- instance HasLen    Int     Int     where len   = id
