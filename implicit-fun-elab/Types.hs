@@ -133,6 +133,8 @@ data Tm
   | U
   | Meta MId
 
+  | Skip Tm  -- explicit weakening (convenience feature for fresh meta gen)
+
 data Spine
   = SNil
   | SApp Spine ~Val Icit
@@ -144,6 +146,12 @@ valsLen :: Vals -> Int
 valsLen = go 0 where
   go acc VNil        = acc
   go acc (VDef vs _) = go (acc + 1) vs
+  go acc (VSkip vs)  = go (acc + 1) vs
+
+boundVars :: Vals -> Int
+boundVars = go 0 where
+  go acc VNil        = acc
+  go acc (VDef vs _) = go acc vs
   go acc (VSkip vs)  = go (acc + 1) vs
 
 -- spLen :: Spine -> Int
@@ -197,12 +205,12 @@ data StrengtheningError
 
 data UnifyError
   = UnifyError [Name] Tm Tm
+  | SpineError Tm Tm SpineError
   | StrengtheningError [Name] Tm Tm StrengtheningError
   deriving (Show, Exception)
 
 data ElabError
-  = SpineError Tm Tm SpineError
-  | UnifyErrorWhile Tm Tm UnifyError
+  = UnifyErrorWhile Tm Tm UnifyError
   | NameNotInScope Name
   | ExpectedFunction Tm
   | IcitMismatch Icit Icit
@@ -235,7 +243,8 @@ prettyTm prec = go (prec /= 0) where
   goVar :: [Name] -> Ix -> ShowS
   -- goVar ns topX = (show topX++)
   goVar ns topX = go ns topX where
-    go []     _ = error "impossible"
+    -- go []     _ = error "impossible"
+    go []     _ = (show topX++)
     go (n:ns) 0 = (n++)
     go (n:ns) x = go ns (x - 1)
 
@@ -316,6 +325,8 @@ prettyTm prec = go (prec /= 0) where
     LamTel x a t -> showParen p (("λ"++)
                    . bracket ((x++) . (" : "++) . go False ns a) . goLam ns t)
 
+    Skip t -> go p ("_":ns) t
+
 showTm :: [Name] -> Tm -> String
 showTm ns t = prettyTm 0 ns t []
 -- showTm ns t = show t
@@ -326,35 +337,34 @@ instance Show Tm where show = showTm []
 showError :: [Name] -> ElabError -> String
 showError ns = \case
 
-  SpineError lhs rhs e -> case e of
-    SpineNonVar -> printf (
-      "Non-bound-variable value in meta spine in equation:\n\n" ++
-      "  %s =? %s")
-      (showTm ns lhs) (showTm ns rhs)
-    SpineProjection ->
-      "Projection in meta spine"
-    NonLinearSpine x -> printf
-      ("Nonlinear variable %s in meta spine in equation\n\n" ++
-       "  %s =? %s")
-      (lvlName ns x)
-      (showTm ns lhs) (showTm ns rhs)
-
   UnifyErrorWhile lhs rhs e ->
     let err1 = case e of
-          UnifyError ns' lhs' rhs' -> printf
+          UnifyError ns lhs rhs -> printf
             ("Cannot unify\n\n" ++
              "  %s\n\n" ++
              "with\n\n" ++
              "  %s\n\n")
-            (showTm ns' lhs') (showTm ns' rhs')
+            (showTm ns lhs) (showTm ns rhs)
           StrengtheningError ns lhs rhs e -> case e of
             ScopeError x -> printf (
               "Variable %s is out of scope in equation\n\n" ++
-              "  %s =? %s")
+              "  %s =? %s\n\n")
               (lvlName ns x) (showTm ns lhs) (showTm ns rhs)
             OccursCheck -> printf (
               "Meta occurs cyclically in its solution candidate in equation:\n\n" ++
-              "  %s =? %s")
+              "  %s =? %s\n\n")
+              (showTm ns lhs) (showTm ns rhs)
+          SpineError lhs rhs e -> case e of
+            SpineNonVar -> printf (
+              "Non-bound-variable value in meta spine in equation:\n\n" ++
+              "  %s =? %s\n\n")
+              (showTm ns lhs) (showTm ns rhs)
+            SpineProjection ->
+              "Projection in meta spine\n\n"
+            NonLinearSpine x -> printf
+              ("Nonlinear variable %s in meta spine in equation\n\n" ++
+               "  %s =? %s\n\n")
+              (lvlName ns x)
               (showTm ns lhs) (showTm ns rhs)
     in err1 ++ printf
          ("while trying to unify\n\n" ++

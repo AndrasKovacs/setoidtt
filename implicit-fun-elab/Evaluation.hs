@@ -113,6 +113,7 @@ eval vs = go where
     PiTel x a b  -> vPiTel id x (go a) (goBind b)
     AppTel a t u -> vAppTel (go a) (go t) (go u)
     LamTel x a t -> vLamTel id x (go a) (goBind t)
+    Skip t       -> eval (VSkip vs) t
 
   goBind t x = eval (VDef vs x) t
 
@@ -193,3 +194,4 @@ zonk vs t = go t where
                       Left t  -> quote (valsLen vs) (vAppTel (eval vs a) t (eval vs u))
                       Right t -> AppTel (go a) t (go u)
     LamTel x a b -> LamTel x (go a) (goBind b)
+    Skip t       -> Skip (goBind t)

@@ -65,6 +65,19 @@ main = mainWith getArgs parseStdin
 main' :: String -> String -> IO ()
 main' mode src = mainWith (pure [mode]) ((,src) <$> parseString src)
 
+pruneTest = main' "elab" $ unlines [
+  "λ (Bool : U)(not : Bool → Bool → Bool)(true : Bool).",
+  "λ f (x : Bool). not (f x)"
+  ]
+
+test0 = main' "elab" $ unlines [
+  "let Nat : U",
+  "    = (N : U) -> (N -> N) -> N -> N in",
+  "let zero : Nat = λ _ s z. z in",
+  "let id : {A} → A → A = λ x. x in",
+  "let id2 : {A} → A → A = id in",
+  "id zero"
+  ]
 
 test = main' "elab" $ unlines [
   "let the : (A : U) → A → A = \\A x.x in",
@@ -75,7 +88,8 @@ test = main' "elab" $ unlines [
   "let Nat : U",
   "    = (N : U) -> (N -> N) -> N -> N in",
   "let zero : Nat = λ _ s z. z in",
-  "let inc : Nat → Nat = λ n _ s z. s (n _ s z) in",
+  "let inc : Nat → Nat = λ n N s z. s (n _ s z) in",
+
   "let mul : Nat -> Nat -> Nat",
   "    = \\a b N s z. a _ (b N s) z in",
   "let ten : Nat",
@@ -118,9 +132,9 @@ test = main' "elab" $ unlines [
   "let false : Bool",
   "    = \\B t f. f in",
   "let not : Bool → Bool",
-  "   = λ b B t f. b B f t in",
+  "   = λ b B t f. b _ f t in",
 
-  -- "let poly : ({A} → A → A) → Pair Nat Bool = λ f. pair (f zero) (f true) in",
+  "let poly : ({A} → A → A) → Pair Nat Bool = λ f. pair (f zero) (f true) in",
   "let auto : ({A} → A → A) → ({A} → A → A) = id in",
   "let app  : {A B} → (A → B) → A → B = λ f a. f a in",
   "let revapp : {A B} → A → (A → B) → B = λ a f. f a in",
@@ -138,19 +152,19 @@ outOfScopeTelRefinement = main' "elab" $ unlines [
   "the ({A B} → A → B → A) f"
   ]
 
-issue = main' "elab" $ unlines [
- "assume Nat : U in",
- "assume Dec : U → U in",
- "assume meh : {A} → Dec A in",
- "assume True : {A} → Dec A → U in",
- "assume fromWitness : {P}{Q : Dec P} → P → True Q in",
- "assume T : Nat → U in",
- "let Coprime = {i} → T i in",
- "assume coprime : Dec Coprime in",
- "let bla : Coprime → True coprime",
- "    = λ c. fromWitness c in",
- "U"
-  ]
+-- issue = main' "elab" $ unlines [
+--  "assume Nat : U in",
+--  "assume Dec : U → U in",
+--  "assume meh : {A} → Dec A in",
+--  "assume True : {A} → Dec A → U in",
+--  "assume fromWitness : {P}{Q : Dec P} → P → True Q in",
+--  "assume T : Nat → U in",
+--  "let Coprime = {i} → T i in",
+--  "assume coprime : Dec Coprime in",
+--  "let bla : Coprime → True coprime",
+--  "    = λ c. fromWitness c in",
+--  "U"
+--   ]
 
 
 ex1 = main' "elab" $ unlines [
@@ -183,7 +197,7 @@ ex1 = main' "elab" $ unlines [
   "let single : {A} → A → List A = λ a L cons nil. cons a nil in",
   "let length : {A} → List A → Nat = λ as _ s z. as _ (λ _.s) z in",
 
-  -- pruning plz
+  -- -- pruning plz
   -- "let List : U -> U",
   -- "    = \\A. {L} -> (A -> L -> L) -> L -> L in",
   -- "let nil : {A} -> List A",

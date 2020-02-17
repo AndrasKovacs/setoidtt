@@ -499,8 +499,9 @@ elaboration from an algebraic perspective.
 
 Metacontexts are used to record metavariables which are created during
 elaboration. In our case, metacontexts are simply a context prefix, and we have
-variables pointing into it, but we do not support any contextual modality
-e.g.\ as in \cite{nanevski2008contextual}. The non-meta typing context
+variables pointing into it. This corresponds to a particularly simple variant of
+\emph{crisp type theory} \cite{licata2018internal}, where we do not have modal
+type operators or functions with crisp (``meta'') domain. The non-meta typing context
 additionally supports \emph{defined variables}, which is used in the typing rule
 for \emph{let-definitions}, and we have that any defined variable is equal to
 its definition. We mainly support this as a convenience feature in the
