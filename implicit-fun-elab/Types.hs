@@ -76,13 +76,6 @@ pattern TSnoc as a <- ((\case TBound as a -> Just (as, a)
 lvlName :: [Name] -> Lvl -> Name
 lvlName ns x = ns !! (length ns - x - 1)
 
--- -- clean these up
--- typesLen :: Types -> Int
--- typesLen = go 0 where
---   go acc TNil           = acc
---   go acc (TDef tys _)   = go (acc + 1) tys
---   go acc (TBound tys _) = go (acc + 1) tys
-
 ixType :: Types -> Ix -> VTy
 ixType TNil           _ = error "impossible"
 ixType (TDef   tys a) 0 = a
@@ -90,10 +83,9 @@ ixType (TBound tys a) 0 = a
 ixType (TDef   tys a) x = ixType tys (x - 1)
 ixType (TBound tys a) x = ixType tys (x - 1)
 
--- lvlType :: Types -> Lvl -> VTy
--- lvlType tys x = ixType tys (typesLen tys - x - 1)
-
 data NameOrigin = NOSource | NOInserted
+
+type MetaInsertion = Bool
 
 data Cxt = Cxt {
   cxtVals       :: Vals,
@@ -148,20 +140,6 @@ valsLen = go 0 where
   go acc (VDef vs _) = go (acc + 1) vs
   go acc (VSkip vs)  = go (acc + 1) vs
 
-boundVars :: Vals -> Int
-boundVars = go 0 where
-  go acc VNil        = acc
-  go acc (VDef vs _) = go acc vs
-  go acc (VSkip vs)  = go (acc + 1) vs
-
--- spLen :: Spine -> Int
--- spLen = go 0 where
---   go n SNil             = n
---   go n (SApp sp _ _)    = go (n + 1) sp
---   go n (SAppTel _ sp _) = go (n + 1) sp
---   go n (SProj1 sp)      = go (n + 1) sp
---   go n (SProj2 sp)      = go (n + 1) sp
-
 data Head
   = HVar Lvl
   | HMeta MId
@@ -184,13 +162,14 @@ data Val
   | VPiTel Name ~Val (Val -> Val)
   | VLamTel Name ~Val (Val -> Val)
 
-type MetaInsertion = Bool
-
 pattern VVar :: Lvl -> Val
 pattern VVar x = VNe (HVar x) SNil
 
 pattern VMeta :: MId -> Val
 pattern VMeta m = VNe (HMeta m) SNil
+
+-- Errors
+--------------------------------------------------------------------------------
 
 data SpineError
   = SpineNonVar
@@ -205,7 +184,7 @@ data StrengtheningError
 
 data UnifyError
   = UnifyError [Name] Tm Tm
-  | SpineError Tm Tm SpineError
+  | SpineError [Name] Tm Tm SpineError
   | StrengtheningError [Name] Tm Tm StrengtheningError
   deriving (Show, Exception)
 
@@ -228,10 +207,10 @@ instance Exception Err
 report :: [Name] -> ElabError -> a
 report ns e = throw (Err ns e Nothing)
 
+
 -- Pretty printing
 --------------------------------------------------------------------------------
 
--- | Assumption: the `[Name]` input does not have shadowing.
 prettyTm :: Int -> [Name] -> Tm -> ShowS
 prettyTm prec = go (prec /= 0) where
 
@@ -354,7 +333,7 @@ showError ns = \case
               "Meta occurs cyclically in its solution candidate in equation:\n\n" ++
               "  %s =? %s\n\n")
               (showTm ns lhs) (showTm ns rhs)
-          SpineError lhs rhs e -> case e of
+          SpineError ns lhs rhs e -> case e of
             SpineNonVar -> printf (
               "Non-bound-variable value in meta spine in equation:\n\n" ++
               "  %s =? %s\n\n")

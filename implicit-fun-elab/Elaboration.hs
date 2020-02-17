@@ -16,6 +16,7 @@ import qualified Data.IntSet as IS
 import qualified Data.IntMap as IM
 import Data.IORef
 import Lens.Micro.Platform
+import Data.Maybe
 
 import Types
 import Evaluation
@@ -74,18 +75,17 @@ occurs d topX = occurs' d mempty where
       VPiTel x a b  -> go a <> goBind b
       VLamTel x a t -> go a <> goBind t
 
--- pruning
+
+-- unification
 --------------------------------------------------------------------------------
 
 -- | A partial mapping from levels to levels. Undefined domain reresents
 --   out-of-scope or "illegal" variables.
 type Renaming = IM.IntMap Lvl
 
--- unification
---------------------------------------------------------------------------------
-
--- | Returns a partial renaming and the length of the spine.
---   Nonlinear spine is always an error. Throws SpineError.
+-- | Checks that a spine consists only of distinct bound vars.
+--   Returns a partial variable renaming on success, alongside the size
+--   of the spine.
 checkSp :: Spine -> IO (Renaming, Lvl)
 checkSp = go . forceSp where
   go :: Spine -> IO (Renaming, Lvl)
@@ -106,32 +106,43 @@ checkSp = go . forceSp where
     SProj1 _ -> throw SpineProjection
     SProj2 _ -> throw SpineProjection
 
-
+-- | A strengthening. We use this for pruning and checking meta solution
+--   candidates.
 data Str = Str {
-  _strDom :: Lvl,           -- ^ size of renaming domain
-  _strCod :: Lvl,           -- ^ size of renaming codomain
-  _strRen :: IM.IntMap Lvl, -- ^ partial renaming
-  _strOcc :: Maybe MId      -- ^ meta for occurs strengthening
+  _strDom :: Lvl,        -- ^ size of renaming domain
+  _strCod :: Lvl,        -- ^ size of renaming codomain
+  _strRen :: Renaming,   -- ^ partial renaming
+  _strOcc :: Maybe MId   -- ^ meta for occurs strengthening
   }
 makeFields ''Str
 
+-- | Lift over a bound variable.
 liftStr :: Str -> Str
 liftStr (Str c d r occ) = Str (c + 1) (d + 1) (IM.insert d c r) occ
 
+-- | Skip a bound variable.
 skipStr :: Str -> Str
 skipStr (Str c d r occ) = Str c (d + 1) r occ
 
+-- | Close a type in a cxt by wrapping it in Pi types and explicit weakenings.
+closingTy :: UnifyCxt -> Ty -> Ty
+closingTy (UCxt TNil           []     d) b = b
+closingTy (UCxt (TDef tys a)   (x:ns) d) b = closingTy (UCxt tys ns (d-1)) (Skip b)
+closingTy (UCxt (TBound tys a) (x:ns) d) b = closingTy (UCxt tys ns (d-1)) (Pi x Expl (quote (d-1) a) b)
+closingTy _                              _ = error "impossible"
 
--- | A left-to-right representation for pruned spines (reversed compared to
---   `Spine`).  This is convenient for pruning types, where we process function
---   arguments one-by-one from the left.
-data PrunedSpine
-  = PSNil
-  | PSApp Name Icit ~Val Lvl PrunedSpine
-  | PSAppTel Name ~Val Lvl PrunedSpine
-  | PSSkipApp Name ~Val PrunedSpine
-  | PSSkipAppTel Name ~Val Lvl PrunedSpine
+-- | Close a term by wrapping it in `Int` number of lambdas, while taking the domain
+--   types from the `VTy`.
+closingTm :: (VTy, Int) -> Tm -> Tm
+closingTm = go 0 where
+  go d (a, 0)   rhs = rhs
+  go d (a, len) rhs = case force a of
+    VPi x i a b  -> Lam x i (quote d a)  $ go (d + 1) (b (VVar d), len-1) rhs
+    VPiTel x a b -> LamTel x (quote d a) $ go (d + 1) (b (VVar d), len-1) rhs
+    _            -> error "impossible"
 
+-- | Strengthen a value, returns quoted normal result. This performs scope
+--   checking, occurs checking and (recursive) pruning at the same time.
 strengthen :: Str -> Val -> IO Tm
 strengthen str = go where
 
@@ -140,23 +151,17 @@ strengthen str = go where
   prune :: MId -> Spine -> IO ()
   prune m sp = do
 
-    let pr = go [] sp where
-          go :: [Bool] -> Spine -> Maybe [Bool]
-          go acc SNil = pure acc
-          go acc (SApp sp (VVar x) i) =
-            case IM.lookup x (str^.ren) of
-              Nothing -> go (False:acc) sp
-              Just{}  -> go (True :acc) sp
-          go acc (SAppTel _ sp (VVar x)) =
-            case IM.lookup x (str^.ren) of
-              Nothing -> go (False:acc) sp
-              Just{}  -> go (True :acc) sp
-          go _ _ = Nothing
+    let pruning :: Maybe [Bool]
+        pruning = go [] sp where
+          go acc SNil                    = pure acc
+          go acc (SApp sp (VVar x) i)    = go (isJust (IM.lookup x (str^.ren)) : acc) sp
+          go acc (SAppTel _ sp (VVar x)) = go (isJust (IM.lookup x (str^.ren)) : acc) sp
+          go _   _                       = Nothing
 
-    case pr of
-      Nothing          -> pure ()  -- spine is not a var substitution
-      Just pr | and pr -> pure ()  -- no pruneable vars
-      Just pr          -> do
+    case pruning of
+      Nothing                    -> pure ()  -- spine is not a var substitution
+      Just pruning | and pruning -> pure ()  -- no pruneable vars
+      Just pruning               -> do
 
         let metaTy :: VTy
             metaTy = case lookupMeta m of
@@ -177,26 +182,29 @@ strengthen str = go where
                 go pr (skipStr str) (b (VVar (str^.cod)))
               go _ _ _ = error "impossible"
 
-          go pr (Str 0 0 mempty Nothing) metaTy
+          go pruning (Str 0 0 mempty Nothing) metaTy
 
         m' <- readIORef nextMId
         modifyIORef' nextMId (+1)
 
-        let l    = length pr
-            body = go pr metaTy (Meta m') 0 where
-                     go [] a acc d = acc
-                     go (True:pr) (force -> VPi x i a b) acc d =
-                       go pr (b (VVar d)) (App acc (Var (l - d - 1)) i) (d + 1)
-                     go (True:pr) (force -> VPiTel x a b) acc d =
-                       go pr (b (VVar d)) (AppTel (quote l a) acc (Var (l - d - 1))) (d + 1)
-                     go (False:pr) (force -> VPi x i a b) acc d =
-                       go pr (b (VVar d)) acc (d + 1)
-                     go (False:pr) (force -> VPiTel x a b) acc d =
-                       go pr (b (VVar d)) acc (d + 1)
-                     go _ _ _ _ = error "impossible"
-            rhs  = lams (metaTy, l) 0 body
+        let argNum = length pruning
 
-        traceShowM ("pruned", pr, quote 0 metaTy, prunedTy, rhs)
+            body = go pruning metaTy (Meta m') 0 where
+              go [] a acc d = acc
+              go (True:pr) (force -> VPi x i a b) acc d =
+                go pr (b (VVar d)) (App acc (Var (argNum - d - 1)) i) (d + 1)
+              go (True:pr) (force -> VPiTel x a b) acc d =
+                go pr (b (VVar d)) (AppTel (quote argNum a) acc (Var (argNum - d - 1))) (d + 1)
+              go (False:pr) (force -> VPi x i a b) acc d =
+                go pr (b (VVar d)) acc (d + 1)
+              go (False:pr) (force -> VPiTel x a b) acc d =
+                go pr (b (VVar d)) acc (d + 1)
+              go _ _ _ _ = error "impossible"
+
+        let rhs = closingTm (metaTy, argNum) body
+
+        traceShowM ("pruned", pruning, quote 0 metaTy, prunedTy, rhs)
+
         writeMetaIO m' $ Unsolved mempty (eval VNil prunedTy)
         writeMetaIO m  $ Solved (eval VNil rhs)
 
@@ -233,55 +241,41 @@ strengthen str = go where
     SProj1 sp      -> Proj1 <$> goSp h sp
     SProj2 sp      -> Proj2 <$> goSp h sp
 
-lams :: (VTy, Lvl) -> Lvl -> Tm -> Tm
-lams (a, 0)     d rhs = rhs
-lams (a, splen) d rhs = case force a of
-  VPi x i a b  -> Lam x i (quote d a) $ lams (b (VVar d), splen-1) (d + 1) rhs
-  VPiTel x a b -> LamTel x (quote d a) $ lams (b (VVar d), splen-1) (d + 1) rhs
-  _            -> error "impossible"
-
 solveMeta :: UnifyCxt -> MId -> Spine -> Val -> IO ()
 solveMeta cxt m sp rhs = do
-  -- traceShowM ("solve", quote (cxt^.len) (VNe (HMeta m) sp), quote (cxt^.len) rhs)
 
-  let ~lhst = quote (cxt^.len) (VNe (HMeta m) sp)
-      ~rhst = quote (cxt^.len) rhs
-  (r, d) <- checkSp sp
-         `catch` (throw . SpineError lhst rhst)
-  -- traceShowM ("solve", m)
+  -- these normal forms are only used in error reporting
+  let ~topLhs = quote (cxt^.len) (VNe (HMeta m) sp)
+      ~topRhs = quote (cxt^.len) rhs
 
-  rhs <- strengthen (Str d (cxt^.len) r (Just m)) rhs
-         `catch` (throw . StrengtheningError (cxt^.names) lhst rhst)
+  (ren, spLen) <- checkSp sp
+         `catch` (throw . SpineError (cxt^.names) topLhs topRhs)
 
-  let mty = case lookupMeta m of
-        Unsolved _ ty -> ty
-        _             -> error "impossible"
+  rhs <- strengthen (Str spLen (cxt^.len) ren (Just m)) rhs
+         `catch` (throw . StrengtheningError (cxt^.names) topLhs topRhs)
 
-  rhs <- pure $ lams (mty, d) 0 rhs
-  -- traceShowM ("solved", rhs)
-  writeMetaIO m (Solved (eval VNil rhs))
+  let metaTy = case lookupMeta m of
+        Unsolved _ a -> a
+        _            -> error "impossible"
+
+  let closedRhs = closingTm (metaTy, spLen) rhs
+  writeMetaIO m (Solved (eval VNil closedRhs))
 
 freshMeta :: UnifyCxt -> VTy -> IO Tm
-freshMeta cxt a = do
-  a <- pure $ quote (cxt^.len) a
+freshMeta cxt (quote (cxt^.len) -> a) = do
+
   m <- readIORef nextMId
   modifyIORef' nextMId (+1)
 
-  let term TNil                        = (Meta m, 0)
-      term (TDef   (term -> (t, d)) _) = (t, d + 1)
-      term (TBound (term -> (t, d)) _) = (App t (Var (cxt^.len - d - 1)) Expl, d + 1)
+  -- apply meta to bound vars
+  let appVars TNil                           = (Meta m, 0)
+      appVars (TDef   (appVars -> (t, d)) _) = (t, d + 1)
+      appVars (TBound (appVars -> (t, d)) _) = (App t (Var (cxt^.len - d - 1)) Expl, d + 1)
 
-  let ty :: Types -> [Name] -> Lvl -> Tm -> Tm
-      ty TNil           []     d b = b
-      ty (TDef tys a)   (x:ns) d b = ty tys ns (d-1) (Skip b)
-      ty (TBound tys a) (x:ns) d b = ty tys ns (d-1) (Pi x Expl (quote (d-1) a) b)
-      ty _ _ _ _ = error "impossible"
+  let metaTy = closingTy cxt a
 
-  let a' = ty (cxt^.types) (cxt^.names) (cxt^.len) a
-  -- traceShowM ("freshmeta", a')
-
-  writeMetaIO m $ Unsolved mempty (eval VNil a')
-  pure $ fst $ term (cxt^.types)
+  writeMetaIO m $ Unsolved mempty (eval VNil metaTy)
+  pure $ fst $ appVars (cxt^.types)
 
 unify :: Cxt -> Val -> Val -> IO ()
 unify cxt l r =
