@@ -1,11 +1,4 @@
 
--- TODO: - Only use elabcxt and unifycxt
---       - try to decorate errors with info when info is available (catch/rethrow)
---       - implement simple elab without telescope/pruning
---       - add pruning
---       - add telescopes
-
--- ISSUE : don't have any nonlinear solutions!
 
 module Elaboration where
 
@@ -77,13 +70,6 @@ occurs d topX = occurs' d mempty where
       VLamTel x a t -> go a <> goBind t
 
 
--- newConstancy :: MId -> Spine -> Closure -> IO ()
--- newConstancy telMeta sp cl = do
---   x <- fresh <$> view vals <*> pure "_"
---   ~codomain <- applyM cl (VVar x)
---   constM <- newMetaEntry (Constancy telMeta sp x codomain mempty)
---   tryConstancy constM
-
 -- | Attempt to solve a constancy constraint.
 tryConstancy :: MId -> IO ()
 tryConstancy constM = lookupMeta constM >>= \case
@@ -120,15 +106,9 @@ tryConstancy constM = lookupMeta constM >>= \case
 
 newConstancy :: UnifyCxt -> MId -> Spine -> (Val -> Val) -> IO ()
 newConstancy cxt telMeta sp b = do
-  let ~codomain = b (VVar (cxt^.len))
-  undefined
-
--- newConstancy :: MId -> Spine -> Closure -> UnifyM ()
--- newConstancy telMeta sp cl = do
---   x <- fresh <$> view vals <*> pure "_"
---   ~codomain <- applyM cl (VVar x)
---   constM <- newMetaEntry (Constancy telMeta sp x codomain mempty)
---   tryConstancy constM
+  let codomain = b (VVar (cxt^.len))
+  constM <- newMetaEntry $ Constancy cxt telMeta sp codomain mempty
+  tryConstancy constM
 
 
 -- Unification
@@ -291,18 +271,23 @@ solveMeta cxt m sp rhs = do
   -- try solving unblocked constraints
   forM_ (IS.toList blocked) tryConstancy
 
-
-freshMeta :: UnifyCxt -> VTy -> IO Tm
+freshMeta :: UnifyCxt -> VTy -> IO (MId, Spine)
 freshMeta cxt (quote (cxt^.len) -> a) = do
   let metaTy = closingTy cxt a
   m <- newMetaEntry $ Unsolved mempty (eval VNil metaTy)
 
-  -- apply meta to bound vars
-  let appVars TNil                           = (Meta m, 0)
-      appVars (TDef   (appVars -> (t, d)) _) = (t, d + 1)
-      appVars (TBound (appVars -> (t, d)) _) = (App t (Var (cxt^.len - d - 1)) Expl, d + 1)
+  let vars :: Types -> (Spine, Lvl)
+      vars TNil                          = (SNil, 0)
+      vars (TDef (vars -> (sp, !d)) _)   = (sp, d + 1)
+      vars (TBound (vars -> (sp, !d)) _) = (SApp sp (VVar d) Expl, d + 1)
 
-  pure $ fst $ appVars (cxt^.types)
+  let sp = fst $ vars (cxt^.types)
+  pure (m, sp)
+
+freshMetaTm :: UnifyCxt -> VTy -> IO Tm
+freshMetaTm cxt a = do
+  (m, sp) <- freshMeta cxt a
+  pure (quote (cxt^.len) (VNe (HMeta m) sp))
 
 unify :: Cxt -> Val -> Val -> IO ()
 unify cxt l r =
@@ -333,11 +318,30 @@ unify cxt l r =
       (VNe h sp, VNe h' sp') | h == h'         -> goSp (forceSp sp) (forceSp sp')
       (VNe (HMeta m) sp, t')                   -> solveMeta cxt m sp t'
       (t, VNe (HMeta m') sp')                  -> solveMeta cxt m' sp' t
-      _                                        -> unifyError
+
+      (VPiTel x a b, VPi x' Impl a' b') -> do
+        (m, sp) <- freshMeta cxt (VPi "_" Expl a' $ \_ -> VTel)
+        let gamma ~x = VNe (HMeta m) (SApp sp x Expl)
+        go a (VTCons x' a' gamma)
+        let b2 ~x1 ~x2 = b (VTcons x1 x2)
+        newConstancy (bindUCxt x' a' cxt) m (SApp sp (VVar (cxt^.len)) Expl) (b2 (VVar (cxt^.len)))
+        goBind x' a' (\ ~x1 -> VPiTel x (gamma x1) (b2 x1)) b'
+
+      (VPi x' Impl a' b', VPiTel x a b) -> do
+        (m, sp) <- freshMeta cxt (VPi "_" Expl a' $ \_ -> VTel)
+        let gamma ~x = VNe (HMeta m) (SApp sp x Expl)
+        go a (VTCons x' a' gamma)
+        let b2 ~x1 ~x2 = b (VTcons x1 x2)
+        newConstancy (bindUCxt x' a' cxt) m (SApp sp (VVar (cxt^.len)) Expl) (b2 (VVar (cxt^.len)))
+        goBind x' a' b' (\ ~x1 -> VPiTel x (gamma x1) (b2 x1))
+
+      (VPiTel x a b, t) -> go a VTEmpty >> go (b VTempty) t
+      (t, VPiTel x a b) -> go a VTEmpty >> go t (b VTempty)
+
+      _                 -> unifyError
 
     goBind x a t t' =
-      let UCxt tys ns d = cxt
-      in unify' (UCxt (TBound tys a) (x:ns) (d + 1)) (t (VVar d)) (t' (VVar d))
+      let v = VVar (cxt^.len) in unify' (bindUCxt x a cxt) (t v) (t' v)
 
     -- TODO: forcing spine while unifying
     goSp sp sp' = case (sp, sp') of
@@ -356,7 +360,10 @@ emptyCxt = Cxt VNil TNil [] [] 0
 emptyUCxt :: UnifyCxt
 emptyUCxt = UCxt TNil [] 0
 
-bind :: Name ->  NameOrigin -> VTy -> Cxt -> Cxt
+bindUCxt :: Name -> VTy -> UnifyCxt -> UnifyCxt
+bindUCxt x a (UCxt tys ns d) = UCxt (TBound tys a) (x:ns) (d + 1)
+
+bind :: Name -> NameOrigin -> VTy -> Cxt -> Cxt
 bind x o a (Cxt vs tys ns no d) =
   Cxt (VSkip vs) (TBound tys a) (x:ns) (o:no) (d + 1)
 
@@ -370,7 +377,7 @@ insert cxt True  act = do
   (t, va) <- act
   let go t va = case force va of
         VPi x Impl a b -> do
-          m <- freshMeta (cxt^.ucxt) a
+          m <- freshMetaTm (cxt^.ucxt) a
           let mv = eval (cxt^.vals) m
           go (App t m Impl) (b mv)
         va -> pure (t, va)
@@ -381,6 +388,11 @@ addSrcPos p act = act `catch` \(e::Err) ->
   case e^.pos of
     Nothing -> throwIO (e & pos .~ Just p)
     _       -> throwIO e
+
+-- | Lift a value in an extended context to a function in a
+--   non-extended context.
+liftVal :: Cxt -> Val -> (Val -> Val)
+liftVal cxt t = \ ~x' -> eval (VDef (cxt^.vals) x') $ quote (cxt^.len+1) t
 
 check :: Cxt -> Raw -> VTy -> IO Tm
 check cxt topT ~topA = do
@@ -410,6 +422,17 @@ check cxt topT ~topA = do
       t <- check (bind x NOInserted a cxt) t (b (VVar (cxt^.len)))
       pure $ Lam x Impl (quote (cxt^.len) a) t
 
+    -- new telescope
+    (t, VNe (HMeta _) _) -> do
+      (m, sp) <- freshMeta (cxt^.ucxt) VTel
+      let gamma = VNe (HMeta m) sp
+      let x     = "Γ" ++ show m
+      (t, a) <- infer (bind x NOInserted gamma cxt) True t
+      let aUp = liftVal cxt a
+      newConstancy (cxt^.ucxt) m sp aUp
+      unify cxt topA (VPiTel x gamma aUp)
+      pure $ LamTel x (quote (cxt^.len) gamma) t
+
     (RLet x a t u, topA) -> do
       a <- check cxt a VU
       let ~va = eval (cxt^.vals) a
@@ -419,7 +442,7 @@ check cxt topT ~topA = do
       pure $ Let x a t u
 
     (RHole, topA) -> do
-      freshMeta (cxt^.ucxt) topA
+      freshMetaTm (cxt^.ucxt) topA
 
     (t, topA) -> do
       (t, va) <- infer cxt True t
@@ -460,8 +483,8 @@ infer cxt ins t = do
           u <- check cxt u a
           pure (App t u i, b (eval (cxt^.vals) u))
         VNe (HMeta m) sp -> do
-          a    <- eval (cxt^.vals) <$> freshMeta (cxt^.ucxt) VU
-          cod  <- freshMeta (bind "x" NOInserted a cxt^.ucxt) VU
+          a    <- eval (cxt^.vals) <$> freshMetaTm (cxt^.ucxt) VU
+          cod  <- freshMetaTm (bind "x" NOInserted a cxt^.ucxt) VU
           let b ~x = eval (VDef (cxt^.vals) x) cod
           unify cxt (VNe (HMeta m) sp) (VPi "x" Expl a b)
           u <- check cxt u a
@@ -472,16 +495,15 @@ infer cxt ins t = do
     RLam x ann i t -> insert cxt ins $ do
       a <- case ann of
         Just ann -> check cxt ann VU
-        Nothing  -> freshMeta (cxt^.ucxt) VU
+        Nothing  -> freshMetaTm (cxt^.ucxt) VU
       let ~va = eval (cxt^.vals) a
       (t, b) <- infer (bind x NOSource va cxt) True t
-      let ~nb = quote (cxt^.len + 1) b
-      pure (Lam x i a t, VPi x i va $ \ ~x -> eval (VDef (cxt^.vals) x) nb)
+      pure (Lam x i a t, VPi x i va (liftVal cxt b))
 
     RHole -> do
-      a <- freshMeta (cxt^.ucxt) VU
+      a <- freshMetaTm (cxt^.ucxt) VU
       let ~va = eval (cxt^.vals) a
-      t <- freshMeta (cxt^.ucxt) va
+      t <- freshMetaTm (cxt^.ucxt) va
       pure (t, va)
 
     RLet x a t u -> do

@@ -64,7 +64,7 @@ vPiTel k x a b = case force a of
                         x2 = x ++ "2"
                     in VPi x1 Impl a $ \ ~x1 ->
                        vPiTel id x2 (as x1) $ \ ~x2 -> b (VTcons x1 x2)
-  a -> VPiTel x a b
+  a              -> VPiTel x a b
 
 vLamTel :: (Val -> Val) -> Name -> VTy -> (Val -> Val) -> Val
 vLamTel k x a t = case force a of

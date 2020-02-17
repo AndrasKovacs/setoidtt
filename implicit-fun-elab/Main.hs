@@ -74,9 +74,8 @@ test0 = main' "elab" $ unlines [
   "let Nat : U",
   "    = (N : U) -> (N -> N) -> N -> N in",
   "let zero : Nat = λ _ s z. z in",
-  "let id : {A} → A → A = λ x. x in",
-  "let id2 : {A} → A → A = id in",
-  "id zero"
+  "let foo = zero in",
+  "foo"
   ]
 
 test = main' "elab" $ unlines [
@@ -138,6 +137,16 @@ test = main' "elab" $ unlines [
   "let auto : ({A} → A → A) → ({A} → A → A) = id in",
   "let app  : {A B} → (A → B) → A → B = λ f a. f a in",
   "let revapp : {A B} → A → (A → B) → B = λ a f. f a in",
+
+  -- dependent function composition
+  "let comp : {A}{B : A -> U}{C : {a} -> B a -> U}",
+  "           (f : {a}(b : B a) -> C b)",
+  "           (g : (a : A) -> B a)",
+  "           (a : A)",
+  "           -> C (g a)",
+  "    = \\f g a. f (g a) in",
+
+  "let compExample = comp (cons true) (cons false) nil in",
 
   -- "let t5 = λ xs. poly (head xs) in", -- pruning
 
