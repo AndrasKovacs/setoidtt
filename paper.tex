@@ -933,12 +933,15 @@ for the $\slet$ body. For $\einfer{\_}{ins}{\Theta}{\Gamma}$, we create a fresh 
 for the type of the hole, and another fresh meta for the hole itself.
 
 \subsubsection{On soundness, completeness, and other properties}
-We briefly discuss what we can and cannot say about the presented
-elaborator. First, elaboration is \emph{sound} in the sense that it never
-produces malformed core syntax.
+We briefly discuss what we can say about the presented elaborator. First,
+elaboration is \emph{sound} in the sense that it never produces malformed core
+syntax.
 
 \begin{theorem}[Soundness of elaboration] The definitions of $\echeckblank$ and
-$\einferblank$ conform to the specification \ref{TODO}. This follows by induction on surface syntax and analyzing the definitions, while also relying on properties of substitution, metasubstitution, $\unify$ and $\mathsf{freshMeta}$. \qed
+$\einferblank$ conform to the specification \ref{TODO}. This follows by
+  induction on surface syntax, while also relying on the properties of
+  substitution, metasubstitution, $\mathsf{insert}$, $\unify$ and
+  $\mathsf{freshMeta}$. \qed
 \end{theorem}
 
 We remark that this notion of soundness is only a ``sanity'' or well-typing
@@ -975,7 +978,7 @@ translation of $t'$ differs from $t$ only by
 This follows by straightforward induction on surface syntax. \qed
 \end{theorem}
 
-\todo{Say something about termination of elab?}
+\todo{polymorphic subtyping, starting and ending elaboration}
 
 Also, note that we do not support \emph{let-generalization}. This is an open
 research topic in settings with dependent types, and we make no attempt at
