@@ -139,10 +139,12 @@ checkSp = go . forceSp where
 
 -- | Close a type in a cxt by wrapping it in Pi types and explicit weakenings.
 closingTy :: UnifyCxt -> Ty -> Ty
-closingTy (UCxt TNil           []     d) b = b
-closingTy (UCxt (TDef tys a)   (x:ns) d) b = closingTy (UCxt tys ns (d-1)) (Skip b)
-closingTy (UCxt (TBound tys a) (x:ns) d) b = closingTy (UCxt tys ns (d-1)) (Pi x Expl (quote (d-1) a) b)
-closingTy _                              _ = error "impossible"
+closingTy = go where
+  go (UCxt TNil                  []     d) b = b
+  go (UCxt (TDef tys a)          (x:ns) d) b = go (UCxt tys ns (d-1)) (Skip b)
+  go (UCxt (TBound tys (VRec a)) (x:ns) d) b = go (UCxt tys ns (d-1)) (PiTel x (quote (d-1) a) b)
+  go (UCxt (TBound tys a)        (x:ns) d) b = go (UCxt tys ns (d-1)) (Pi x Expl (quote (d-1) a) b)
+  go _                                     _ = error "impossible"
 
 -- | Close a term by wrapping it in `Int` number of lambdas, while taking the domain
 --   types from the `VTy`.
@@ -275,11 +277,13 @@ freshMeta :: UnifyCxt -> VTy -> IO (MId, Spine)
 freshMeta cxt (quote (cxt^.len) -> a) = do
   let metaTy = closingTy cxt a
   m <- newMetaEntry $ Unsolved mempty (eval VNil metaTy)
+  -- traceShowM ("freshMeta", m, metaTy)
 
   let vars :: Types -> (Spine, Lvl)
-      vars TNil                          = (SNil, 0)
-      vars (TDef (vars -> (sp, !d)) _)   = (sp, d + 1)
-      vars (TBound (vars -> (sp, !d)) _) = (SApp sp (VVar d) Expl, d + 1)
+      vars TNil                                 = (SNil, 0)
+      vars (TDef (vars -> (sp, !d)) _)          = (sp, d + 1)
+      vars (TBound (vars -> (sp, !d)) (VRec a)) = (SAppTel a sp (VVar d), d + 1)
+      vars (TBound (vars -> (sp, !d)) _)        = (SApp sp (VVar d) Expl, d + 1)
 
   let sp = fst $ vars (cxt^.types)
   pure (m, sp)
@@ -392,7 +396,7 @@ addSrcPos p act = act `catch` \(e::Err) ->
 -- | Lift a value in an extended context to a function in a
 --   non-extended context.
 liftVal :: Cxt -> Val -> (Val -> Val)
-liftVal cxt t = \ ~x' -> eval (VDef (cxt^.vals) x') $ quote (cxt^.len+1) t
+liftVal cxt t = \ ~x -> eval (VDef (cxt^.vals) x) $ quote (cxt^.len+1) t
 
 check :: Cxt -> Raw -> VTy -> IO Tm
 check cxt topT ~topA = do
@@ -427,7 +431,7 @@ check cxt topT ~topA = do
       (m, sp) <- freshMeta (cxt^.ucxt) VTel
       let gamma = VNe (HMeta m) sp
       let x     = "Γ" ++ show m
-      (t, a) <- infer (bind x NOInserted gamma cxt) True t
+      (t, a) <- infer (bind x NOInserted (VRec gamma) cxt) True t
       let aUp = liftVal cxt a
       newConstancy (cxt^.ucxt) m sp aUp
       unify cxt topA (VPiTel x gamma aUp)
@@ -477,20 +481,32 @@ infer cxt ins t = do
     RApp t u i -> insert cxt ins $ do
       (t, va) <- infer cxt (i == Expl) t
       case force va of
-        VPi x i' a b -> do
-          unless (i == i') $
-            report (cxt^.names) $ IcitMismatch i i'
-          u <- check cxt u a
-          pure (App t u i, b (eval (cxt^.vals) u))
-        VNe (HMeta m) sp -> do
-          a    <- eval (cxt^.vals) <$> freshMetaTm (cxt^.ucxt) VU
-          cod  <- freshMetaTm (bind "x" NOInserted a cxt^.ucxt) VU
-          let b ~x = eval (VDef (cxt^.vals) x) cod
-          unify cxt (VNe (HMeta m) sp) (VPi "x" Expl a b)
-          u <- check cxt u a
-          pure (App t u i, b (eval (cxt^.vals) u))
-        _ ->
-          report (cxt^.names) $ ExpectedFunction (quote (cxt^.len) va)
+        va -> do
+          a0 <- eval (cxt^.vals) <$> freshMetaTm (cxt^.ucxt) VU
+          a1 <- freshMetaTm (bind "x" NOInserted a0 cxt^.ucxt) VU
+          let a1' x = eval (VDef (cxt^.vals) x) a1
+          unify cxt va (VPi "x" i a0 a1')
+          u <- check cxt u a0
+          pure (App t u i, a1' (eval (cxt^.vals) u))
+
+    -- -- variant with better error messages and fewer generated metavariables
+    -- RApp t u i -> insert cxt ins $ do
+    --   (t, va) <- infer cxt (i == Expl) t
+    --   case force va of
+    --     VPi x i' a b -> do
+    --       unless (i == i') $
+    --         report (cxt^.names) $ IcitMismatch i i'
+    --       u <- check cxt u a
+    --       pure (App t u i, b (eval (cxt^.vals) u))
+    --     VNe (HMeta m) sp -> do
+    --       a    <- eval (cxt^.vals) <$> freshMetaTm (cxt^.ucxt) VU
+    --       cod  <- freshMetaTm (bind "x" NOInserted a cxt^.ucxt) VU
+    --       let b ~x = eval (VDef (cxt^.vals) x) cod
+    --       unify cxt (VNe (HMeta m) sp) (VPi "x" i a b)
+    --       u <- check cxt u a
+    --       pure (App t u i, b (eval (cxt^.vals) u))
+    --     _ ->
+    --       report (cxt^.names) $ ExpectedFunction (quote (cxt^.len) va)
 
     RLam x ann i t -> insert cxt ins $ do
       a <- case ann of

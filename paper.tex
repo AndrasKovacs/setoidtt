@@ -74,15 +74,15 @@
 \newcommand{\p}{\mathsf{p}}
 \newcommand{\id}{\mathsf{id}}
 \newcommand{\blank}{\mathord{\hspace{1pt}\text{--}\hspace{1pt}}}
-\newcommand{\freshMeta}[3]{\mathsf{freshMeta}\,#1\,#2\,#3}
+\newcommand{\freshMeta}[3]{\mathsf{freshMeta}_{#1|#2}\,#3}
 \newcommand{\unify}{\mathsf{unify}}
 \newcommand{\fail}{\mathsf{fail}}
 \newcommand{\kw}[1]{{\mathsf{#1}}}
 
 \newcommand{\echeckblank}{\llbracket\blank\rrbracket\!\Downarrow}
 \newcommand{\einferblank}{\llbracket\blank\rrbracket\!\Uparrow}
-\newcommand{\echeck}[4]{\llbracket#1\rrbracket\!\Downarrow\,#2\,#3\,#4}
-\newcommand{\einfer}[4]{\llbracket#1\rrbracket\!\Uparrow\,#2\,#3\,#4}
+\newcommand{\echeck}[4]{\llbracket#1\rrbracket\!\Downarrow\,_{#2|#3}\,#4}
+\newcommand{\einfer}[4]{\llbracket#1\rrbracket\!\Uparrow\,#2\,_{#3|#4}}
 \newcommand{\echeckt}[2]{\llbracket#1\rrbracket\!\Downarrow\,#2}
 \newcommand{\einfert}[2]{\llbracket#1\rrbracket\!\Uparrow\,#2}
 \newcommand{\edo}{\boldsymbol{\mathsf{do}}}
@@ -94,7 +94,8 @@
 \newcommand{\eof}{\boldsymbol{\mathsf{of}}}
 \newcommand{\true}{\mathsf{true}}
 \newcommand{\false}{\mathsf{false}}
-\newcommand{\einsert}[5]{\mathsf{insert}\,#1\,#2\,#3\,#4\,#5}
+\newcommand{\einsert}[3]{\mathsf{insert}\,#1\,#2\,#3}
+\newcommand{\einsertpar}[5]{\mathsf{insert}_{#1|#2}\,#3\,#4\,#5}
 \newcommand{\Set}{\mathsf{Set}}
 
 \newcommand{\Nat}{\mathsf{Nat}}
@@ -134,7 +135,7 @@ polymorphic types are another example. Implicit function types are
 \emph{first-class} if they are treated as any other type in the surface
 language. This holds in Agda and partially holds in GHC. Inference and
 elaboration in the presence of first-class implicit functions poses a challenge;
-in the context of GHC and ML-like languages, this has been dubbed
+in the context of Haskell and ML-like languages, this has been dubbed
 ``impredicative instantiation'' or ``impredicative inference''. We propose a new
 framework for elaborating first-class implicit functions, which is applicable
 for full dependent type theories and compares favorably to prior solutions in
@@ -215,9 +216,9 @@ Implicit functions are \textbf{first-class} if they can be manipulated like any
 other type. Coq is an example for a system where this is \emph{not} the case.
 In Coq, the core language does not have an actual implicit function type,
 instead, implicitness is tied to particular \emph{names}, and while we can write
-$list\,(\kw{forall}\,\{A : \kw{Type}\},\,A\to A)$ for a list type of polymorphic
-functions, the brackets here are simply ignored by Coq and we get a plain
-function type. For example, Coq accepts the following definition:
+$list\,(\kw{forall}\,\{A : \kw{Type}\},\,A\to A)$ for a list type with
+polymorphic elements, the brackets here are simply ignored by Coq. For example,
+Coq accepts the following definition:
 \begin{alignat*}{3}
   & \kw{Definition}\,poly\,: \kw{forall}\,(f : \kw{forall}\,\{A : \kw{Type}\},\,A\to A),\,bool\,*\,nat :=\\
   & \quad \kw{fun}\,f \Rightarrow (f\,bool\,true,\,f\,nat\,0)
@@ -262,7 +263,7 @@ function type, and elects to not insert a lambda. This assumption is often
 correct, but sometimes --- as in the current case --- it is not.
 
 There is significant literature on type inference in the presence of first-class
-polymorphic types, mainly in relation to GHC and ML-like languages \cite{TODO}.
+polymorphic types, mainly in relation to GHC and ML-like languages \cite{leijen2008hmf,leijen2009flexible,serrano2018guarded,vytiniotis2006boxy}.
 The above issue in Agda is a specific instance of the challenges described in
 the mentioned works. However, none of the proposed algorithms have landed so far
 in production compilers, for reasons of complexity, fragility and interaction
@@ -281,8 +282,8 @@ inferred type is unified with the annotation.
     Agda-like surface language to a small Martin-L\"of type theory extended with
     implicit function types, telescopes and \emph{strictly curried} function
     types with telescope domain. The extensions to the target theory are modest
-    and are derivable from W-types. We use these extensions to accummulate
-    information about implicit insertions.
+    and are derivable from W-types and $\Sigma$-types. We use these extensions
+    to accummulate information about implicit insertions.
   \item Our algorithm is a conservative extension of Norell's bidirectional
     elaborator for Agda \cite[Chapter~3]{norell07thesis}; it accepts strictly more
     programs, and does not require new constructs in the surface language.
@@ -444,8 +445,8 @@ Figure \ref{fig:surface} shows the the possible constructs in the surface
 language. We only have terms, as we have Russell-style universe in the core, and
 we can conflate types and terms for convenience. The surface syntax does not
 have semantics or any well-formedness relations attached; its sole purpose is to
-serve as input to elaboration. Hence, the surface syntax can be also viewed as
-a minimal untyped tactic language, which is interpreted by the elaborator.
+serve as input to elaboration. Hence, the surface syntax can be also viewed as a
+small untyped tactic language which is interpreted by the elaborator.
 
 The syntactic constructs are the almost the same in the surface language as in
 the core syntax. The difference is that $\_$ holes only appear in surface
@@ -491,9 +492,9 @@ Alternatively, one could present the syntax as a generalized algebraic theory
 and we would also get a rich model theory for our syntax. However, it seems that
 there are a number of possible choices for giving an algebraic presentation of
 metacontexts, and existing works on algebraic presentations of dependent modal
-contexts (e.g.\ \cite{birkedal2018modal}, TODO) do not precisely cover the
-current use case. We leave this to future work, along with the investigation of
-elaboration from an algebraic perspective.
+contexts (e.g.\ \cite{birkedal2018modal}) do not precisely cover the current use
+case. We leave this to future work, along with the investigation of elaboration
+from an algebraic perspective.
 
 \todo{how to refer to mathpartir rules from text?}
 
@@ -501,11 +502,11 @@ Metacontexts are used to record metavariables which are created during
 elaboration. In our case, metacontexts are simply a context prefix, and we have
 variables pointing into it. This corresponds to a particularly simple variant of
 \emph{crisp type theory} \cite{licata2018internal}, where we do not have modal
-type operators or functions with crisp (``meta'') domain. The non-meta typing context
-additionally supports \emph{defined variables}, which is used in the typing rule
-for \emph{let-definitions}, and we have that any defined variable is equal to
-its definition. We mainly support this as a convenience feature in the
-implementation of our elaborator.
+type operators or functions with crisp (``meta'') domain. The non-meta typing
+context additionally supports \emph{defined variables}, which is used in the
+typing rule for $\slet$-definitions, and we have that any defined variable is
+equal to its definition. We mainly support this as a convenience feature in the
+surface language.
 
 The universe $\U$ is Russell-style, and we have the type-in-type rule.
 This causes our core syntax to be non-total, and our elaboration algorithm to be
@@ -538,9 +539,10 @@ Both in the surface and core syntax, we use Agda-like notation:
 
 \begin{example}
 The core syntax is quite expressive as a programming language, thanks to
-let-definitions and the type-in-type rule which allows Church-encodings of a
-large class of inductive types. For example, the following term computes a list
-of types, by mapping over the list $cons\,\U\,(cons\,\U\,nil)$.
+$\slet$-definitions\footnote{In dependent type theories, the $\slet$ rule is not
+  derivable from function application, unlike in simple type theories.} and the
+type-in-type rule which allows Church-encodings of a large class of inductive
+types. For example, the following term computes a list of types by mapping:
 \begin{alignat*}{3}
   & \slet\,List : \U\to\U\\
   & \hspace{1em}= \lambda\,A.\,(L : \U)\to(A\to L\to L)\to L\to L\,\,\sin\\
@@ -669,19 +671,20 @@ A$ occurring in the surface program, we usually want to expand $id$ to
 $id\,\{\alpha\}$, where $\alpha$ is a fresh metavariable.
 \begin{mathpar}
 \inferrule*{ins \in \{\true,\,\false\} \\ \Theta|\Gamma\vdash t : A}
-           {\einsert{ins}{\Theta}{\Gamma}{t}{A} \in \{(\Theta',\,\theta\,t',\,A')\,|\,
+           {\einsert{ins}{t}{A} \in \{(\Theta',\,\theta\,t',\,A')\,|\,
              (\theta : \Theta' \To \Theta)\,\land\,(\Theta'|\Gamma[\theta]\vdash t' : A')\}}
 \end{mathpar}
 We have an additional $ins \in \{\true,\,\false\}$ parameter, which simply
 toggles whether any insertion is to be performed. We will use this in the
 definition of elaboration. Insertion is defined by recursion on $ins$ and the
-$A$ type, as follows.
+$A$ type, as follows. Here, we notate $\Theta$ and $\Gamma$ as subscripts but
+later we will leave them implicit.
 \begin{alignat*}{3}
-  &\einsert{\false}{\Theta}{\Gamma}{t}{A} && :\equiv\,\,&& (\Theta,\,\id,\,t,\,A)\\
-  &\einsert{\true\,}{\Theta}{\Gamma}{t}{(\{x : A\}\to B)} && :\equiv&&
+  &\einsertpar{\Theta}{\Gamma}{\false}{t}{A} && :\equiv\,\,&& (\Theta,\,\id,\,t,\,A)\\
+  &\einsertpar{\Theta}{\Gamma}{\true\,}{t}{(\{x : A\}\to B)} && :\equiv&&
        \slet\,(\Theta',\,\theta,\,u) = \freshMeta{\Theta}{\Gamma}{A}\\
-  & && &&\sin\,\einsert{\true}{\Theta'}{(\Gamma[\theta])}{((t[\theta])\,\{u\})}{(B[\theta][x\mapsto u])}\\
-  &\einsert{\true\,}{\Theta}{\Gamma}{t}{A} && :\equiv&& (\Theta,\,\id,\,t,\,A)
+  & && &&\sin\,\einsertpar{\Theta'}{\Gamma[\theta']}{\true}{((t[\theta])\,\{u\})}{(B[\theta][x\mapsto u])}\\
+  &\einsertpar{\Theta}{\Gamma}{\true\,}{t}{A} && :\equiv&& (\Theta,\,\id,\,t,\,A)
 \end{alignat*}
 
 \subsection{Unification}
@@ -700,14 +703,17 @@ as follows:
 Here, we do not require that unification returns most general unifiers, nor do
 we go into the details of how unification is implemented. Gundry describes
 unification in detail in \cite[Chapter~4]{gundry2013type} for a similar syntax,
-with a similar (though more featureful) setup for metacontexts.
+with a similar (though more featureful) setup for metacontexts. See also
+\cite{abel2011higher} for a reference on unification. Note that our unification
+algorithm does not support \emph{constraint postponing}, as we have not talked
+about constraints at all. In our concrete implementation, unification supports
+basic pattern unification and metavariable pruning.
 
-\todo{example for meta solution, more references, describe at least pattern unif and pruning briefly}
-
-Note that our unification algorithm does not support \emph{constraint
-  postponing}, since we have not specified constraints. In our concrete
-implementation, unification supports basic higher-order pattern unification and
-metavariable pruning \cite{TODO}.
+We describe a simple example. We have $\Theta :\equiv (\emptycon,\,\alpha :
+\U,\, \beta : \U)$, and we compute $\unify\,\alpha\,(\beta\to\beta)$. This
+yields $\Theta' :\equiv (\emptycon,\,\beta : \U)$ and the substitution $\theta
+:\equiv (\alpha \mapsto (\beta\to\beta),\,\beta\mapsto \beta)$, where $\theta :
+\Theta' \To \Theta$.
 
 \subsection{Elaboration}
 
@@ -718,7 +724,8 @@ In this section we define the elaboration algorithm. First, we explain the used 
     failure via $\fail$.
   \item We use pattern matching notation on core terms; e.g.\ we may match on
     whether a type is a function type. This requires an evaluation/normalization
-    procedure on core terms, but we already assume this in unification.
+    procedure on core terms, but note that we already assume this in implicit
+    argument insertion and unification.
 \end{itemize}
 
 Elaboration consists of two (partial) functions, checking and inferring, which
@@ -771,7 +778,7 @@ explain the cases of the definition in order.
   &\quad\ereturn\,(\Theta_2,\,\theta_1\circ\theta_2,\,t'[\theta_2])\\\\
   &\einfer{x}{ins}{\Theta}{\Gamma} :\equiv \edo\\
   &\quad\eif\,(x : A \in \Gamma)\,\lor\,(x : A = t \in \Gamma) \\
-  &\qquad   \ethen\, \ereturn\,(\einsert{ins}{\Theta}{\Gamma}{x}{A})\\
+  &\qquad   \ethen\, \ereturn\,(\einsert{ins}{x}{A})\\
   &\qquad   \eelse\, \fail\\
   &\einfer{\U}{ins}{\Theta}{\Gamma} :\equiv \edo\\
   &\quad\ereturn\,(\Theta,\,\id,\,\U,\,\U)\\
@@ -788,29 +795,27 @@ explain the cases of the definition in order.
   &\quad\ereturn\,(\Theta_2,\,\theta_1\circ\theta_2,
                  \,(\{x : A'[\theta_2]\}\to B'),\,\U)\\
   &\einfer{\lambda\,x.\,t}{ins}{\Theta_0}{\Gamma} :\equiv \edo \\
-  &\quad(\Theta_1,\,\theta_1,\,A)\leftarrow \freshMeta{\Theta}{\Gamma}{\U}\\
+  &\quad(\Theta_1,\,\theta_1,\,A)\leftarrow \freshMeta{\Theta_0}{\Gamma}{\U}\\
   &\quad(\Theta_2,\,\theta_2,\,t',\,B)\leftarrow \einfer{t}{\true}{\Theta_1}{(\Gamma[\theta_1],\,x:A)}\\
   &\quad\ereturn\,(\Theta_2,\,\theta_1\circ\theta_2,\,\lambda\,x.\,t',\,(x : A[\theta_2])\to B)\\
   &\einfer{\lambda\,\{x\}.\,t}{ins}{\Theta_0}{\Gamma} :\equiv \edo \\
-  &\quad(\Theta_1,\,\theta_1,\,A)\leftarrow \freshMeta{\Theta}{\Gamma}{\U}\\
+  &\quad(\Theta_1,\,\theta_1,\,A)\leftarrow \freshMeta{\Theta_0}{\Gamma}{\U}\\
   &\quad(\Theta_2,\,\theta_2,\,t',\,B)\leftarrow \einfer{t}{\true}{\Theta_1}{(\Gamma[\theta_1],\,x:A)}\\
-  &\quad\ereturn\,(\einsert{ins}{\Theta_2}{(\Gamma[\theta_1\circ\theta_2])}{(\lambda\,\{x\}.\,t')}{(\{x : A[\theta_2]\}\to B)})\\
+  &\quad\ereturn\,(\einsert{ins}{(\lambda\,\{x\}.\,t')}{(\{x : A[\theta_2]\}\to B)})\\
   &\einfer{t\,u}{ins}{\Theta_0}{\Gamma} :\equiv \edo \\
   &\quad (\Theta_1,\,\theta_1,\,t',\,A) \leftarrow \einfer{t}{\true}{\Theta_0}{\Gamma}\\
-  &\quad \ecase\,\,A\,\,\eof\\
-  &\qquad   ((x : A)\to B) \To \edo\\
-  &\qquad\quad  (\Theta_2,\,\theta_2,\,u') \leftarrow
-                    \echeck{u}{\Theta_1}{(\Gamma[\theta_1])}{A}\\
-  &\qquad\quad  \ereturn\,(\einsert{ins}{\Theta_2}{(\Gamma[\theta_1\circ\theta_2])}{(t'[\theta_2]\,u')}{(B[\theta_2][x\mapsto u'])})\\
-  &\qquad A \To \fail\\
+  &\quad (\Theta_2,\,\theta_2,A_0) \leftarrow \freshMeta{\Theta_1}{\Gamma[\theta_1]}{\U}\\
+  &\quad (\Theta_3,\,\theta_3,A_1) \leftarrow \freshMeta{\Theta_2}{\Gamma[\theta_1\circ\theta_2],\,x:A_0}{\U}\\
+  &\quad (\Theta_4,\,\theta_4) \leftarrow \unify\,(A[\theta_2\circ\theta_3])\,((x : A_0[\theta_3])\to A_1)\\
+  &\quad (\Theta_5,\,\theta_5,\,u') \leftarrow \echeck{u}{\Theta_4}{(\Gamma[\theta_1\circ\theta_2\circ\theta_3\circ\theta_4])}{(A_0[\theta_3\circ\theta_4])}\\
+  &\quad \ereturn\,(\mathsf{insert}\,{ins}\,{((t'[\theta_2\circ\theta_3\circ\theta_4\circ\theta_5])\,u')}\,{(A_1[\theta_4\circ\theta_5][x\mapsto u'])})\\
   &\einfer{t\,\{u\}}{ins}{\Theta_0}{\Gamma} :\equiv \edo \\
   &\quad (\Theta_1,\,\theta_1,\,t',\,A) \leftarrow \einfer{t}{\false}{\Theta_0}{\Gamma}\\
-  &\quad \ecase\,\,A\,\,\eof\\
-  &\qquad   (\{x : A\}\to B) \To \edo\\
-  &\qquad\quad  (\Theta_2,\,\theta_2,\,u') \leftarrow
-                    \echeck{u}{\Theta_1}{(\Gamma[\theta_1])}{A}\\
-  &\qquad\quad  \ereturn\,(\einsert{ins}{\Theta_2}{(\Gamma[\theta_1\circ\theta_2])}{(t'[\theta_2]\,\{u'\})}{(B[\theta_2][x\mapsto u'])})\\
-  &\qquad A \To \fail\\
+  &\quad (\Theta_2,\,\theta_2,A_0) \leftarrow \freshMeta{\Theta_1}{\Gamma[\theta_1]}{\U}\\
+  &\quad (\Theta_3,\,\theta_3,A_1) \leftarrow \freshMeta{\Theta_2}{\Gamma[\theta_1\circ\theta_2],\,x:A_0}{\U}\\
+  &\quad (\Theta_4,\,\theta_4) \leftarrow \unify\,(A[\theta_2\circ\theta_3])\,(\{x : A_0[\theta_3]\}\to A_1)\\
+  &\quad (\Theta_5,\,\theta_5,\,u') \leftarrow \echeck{u}{\Theta_4}{(\Gamma[\theta_1\circ\theta_2\circ\theta_3\circ\theta_4])}{(A_0[\theta_3\circ\theta_4])}\\
+  &\quad \ereturn\,(\mathsf{insert}\,{ins}\,{((t'[\theta_2\circ\theta_3\circ\theta_4\circ\theta_5])\,\{u'\})}\,{(A_1[\theta_4\circ\theta_5][x\mapsto u'])})\\
   &\einfer{\slet\,x:A=t\,\sin\,u}{ins}{\Theta_0}{\Gamma} :\equiv \edo \\
   &\quad(\Theta_1,\,\theta_1,\,A') \leftarrow \echeck{A}{\Theta_0}{\Gamma}{\U}\\
   &\quad(\Theta_2,\,\theta_2,\,t') \leftarrow \echeck{t}
@@ -820,9 +825,27 @@ explain the cases of the definition in order.
   &\quad\ereturn\,(\Theta_3,\,\theta_1\circ\theta_2\circ\theta_3,\,(\slet\,x:A'[\theta_2\circ\theta_3]=t'[\theta_3]\,\sin\,u'),\,B)\\
   &\einfer{\_}{ins}{\Theta}{\Gamma} :\equiv \edo \\
   &\quad \slet\,(\Theta',\,\theta,\,A) = \freshMeta{\Theta}{\Gamma}{\U}\\
-  &\quad \ereturn\,(\freshMeta{\Theta'}{(\Gamma[\theta])}{A})\\
+  &\quad \ereturn\,(\freshMeta{\Theta'}{\Gamma[\theta]}{A})\\
 \end{alignat*}
 \endgroup
+
+%% %% alternative application infer
+  %% &\einfer{t\,u}{ins}{\Theta_0}{\Gamma} :\equiv \edo \\
+  %% &\quad (\Theta_1,\,\theta_1,\,t',\,A) \leftarrow \einfer{t}{\true}{\Theta_0}{\Gamma}\\
+  %% &\quad \ecase\,\,A\,\,\eof\\
+  %% &\qquad   ((x : A)\to B) \To \edo\\
+  %% &\qquad\quad  (\Theta_2,\,\theta_2,\,u') \leftarrow
+  %%                   \echeck{u}{\Theta_1}{(\Gamma[\theta_1])}{A}\\
+  %% &\qquad\quad  \ereturn\,(\einsert{ins}{\Theta_2}{(\Gamma[\theta_1\circ\theta_2])}{(t'[\theta_2]\,u')}{(B[\theta_2][x\mapsto u'])})\\
+  %% &\qquad A \To \fail\\
+  %% &\einfer{t\,\{u\}}{ins}{\Theta_0}{\Gamma} :\equiv \edo \\
+  %% &\quad (\Theta_1,\,\theta_1,\,t',\,A) \leftarrow \einfer{t}{\false}{\Theta_0}{\Gamma}\\
+  %% &\quad \ecase\,\,A\,\,\eof\\
+  %% &\qquad   (\{x : A\}\to B) \To \edo\\
+  %% &\qquad\quad  (\Theta_2,\,\theta_2,\,u') \leftarrow
+  %%                   \echeck{u}{\Theta_1}{(\Gamma[\theta_1])}{A}\\
+  %% &\qquad\quad  \ereturn\,(\einsert{ins}{\Theta_2}{(\Gamma[\theta_1\circ\theta_2])}{(t'[\theta_2]\,\{u'\})}{(B[\theta_2][x\mapsto u'])})\\
+  %% &\qquad A \To \fail\\
 
 \subsubsection{Checking}
 The first two clauses are checking $\lambda$-s, where the expected type exactly
@@ -876,7 +899,7 @@ the domains and codomains have type $\U$.
 For $\lambda$-s, we create a fresh meta for the domain type (since our surface
 $\lambda$-s are not annotated), and infer the bodies. In the case of
 $\einfer{\lambda\,\{x\}.\,t}{ins}{\Theta_0}{\Gamma}$, we additionally perform
-$\einsert$ on the output. \todo{explain this weird case}
+$\einsert$ on the output.
 
 The $\einfer{t\,u}{ins}{\Theta_0}{\Gamma}$ and
 $\einfer{t\,\{u\}}{ins}{\Theta_0}{\Gamma}$ cases are again interesting. Here, we
@@ -915,7 +938,7 @@ elaborator. First, elaboration is \emph{sound} in the sense that it never
 produces malformed core syntax.
 
 \begin{theorem}[Soundness of elaboration] The definitions of $\echeckblank$ and
-$\einferblank$ conform to the specification \ref{TODO}. This follows by induction on surface syntax and analyzing the definitions, while also relying on properties of substitution, metasubstitution, $\unify$ and $\freshMeta$. \qed
+$\einferblank$ conform to the specification \ref{TODO}. This follows by induction on surface syntax and analyzing the definitions, while also relying on properties of substitution, metasubstitution, $\unify$ and $\mathsf{freshMeta}$. \qed
 \end{theorem}
 
 We remark that this notion of soundness is only a ``sanity'' or well-typing

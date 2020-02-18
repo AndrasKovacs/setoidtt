@@ -71,12 +71,12 @@ pruneTest = main' "elab" $ unlines [
   ]
 
 test0 = main' "elab" $ unlines [
-  "let Nat : U",
-  "    = (N : U) -> (N -> N) -> N -> N in",
-  "let zero : Nat = λ _ s z. z in",
-  "let foo = zero in",
-  "foo"
+  "let IdTy = {A} → A → A in",
+  "let f = λ (g:IdTy). g g in",
+  -- "let id : IdTy = f in",
+  "U"
   ]
+
 
 test = main' "elab" $ unlines [
   "let the : (A : U) → A → A = \\A x.x in",
@@ -175,11 +175,22 @@ outOfScopeTelRefinement = main' "elab" $ unlines [
 --  "U"
 --   ]
 
+-- ex1 = main' "elab" $ unlines [
+--   "λ (List : U → U)(nil : {A} → List A)(cons : {A} → A → List A → List A)(append : {A} → List A → List A → List A).",
+
+
+--   "let l1 = nil in",
+--   "let l2 : List ({A} → List A) = cons l1 nil in",
+
+--   "U"
+--   ]
+
 
 ex1 = main' "elab" $ unlines [
   "let the : (A : U) → A → A = \\A x.x in",
   "let id : {A} → A → A = λ x. x in",
   "let choose : {A} → A → A → A = λ x y. x in",
+  "λ (Bool : U)(true : Bool)(false : Bool).",
 
   "let Nat : U",
   "    = (N : U) -> (N -> N) -> N -> N in",
@@ -221,15 +232,6 @@ ex1 = main' "elab" $ unlines [
   "let fst : {A B} → Pair A B → A = λ p. p _ (λ x y. x) in",
   "let snd : {A B} → Pair A B → B = λ p. p _ (λ x y. y) in",
 
-  "let Bool : U",
-  "    = {B} -> B -> B -> B in",
-  "let true : Bool",
-  "    = \\t f. t in",
-  "let false : Bool",
-  "    = \\t f. f in",
-  "let not : Bool → Bool",
-  "   = λ b t f. b f t in",
-
   "let poly : ({A} → A → A) → Pair Nat Bool = λ f. pair (f zero) (f true) in",
   "let auto : ({A} → A → A) → ({A} → A → A) = id in",
   "let app  : {A B} → (A → B) → A → B = λ f a. f a in",
@@ -251,23 +253,24 @@ ex1 = main' "elab" $ unlines [
   "let l = cons const2 (nil {{A B} → A → B → A}) in",
 
   "let t1 = choose nil ids in",
-  -- "let t2 = λ (x : IdTy). x x in",  -- pruning
   "let t3 = poly id in",
   "let t4 = id poly (λ x. x) in",
 
+  "let foo = head ids true in",
   -- "let t5 = λ xs. poly (head xs) in", -- pruning
-  "let t6 = length ids in",
-  "let t7 = append (single inc) (single id) in",
-  -- "let t8 : ({A} → List A → List A → A) → _ = λ g. g (single id) ids in",
-  "let t9 = map poly (single id) in",
-  "let t10 = map head (single ids) in",
+  -- "let t6 = length ids in",
+  -- "let t7 = append (single inc) (single id) in",
+  -- -- "let t8 : ({A} → List A → List A → A) → _ = λ g. g (single id) ids in",
+  -- "let t9 = map poly (single id) in",
+  -- "let t10 = map head (single ids) in",
 
-  "let t11 = app poly id in",
-  "let t12 = revapp id poly in",
-  "let t13 = app runST argST in",
-  "let t14 : ({A} → A → {B} → B → B) → _ = λ r. r (λ x y. y) in",
+  -- "let t11 = app poly id in",
+  -- "let t12 = revapp id poly in",
+  -- "let t13 = app runST argST in",
+  -- "let t14 : ({A} → A → {B} → B → B) → _ = λ r. r (λ x y. y) in",
 
-  "length l3"
+  -- "length l3"
+  "U"
   ]
 
 ex2 = main' "elab" $ unlines [

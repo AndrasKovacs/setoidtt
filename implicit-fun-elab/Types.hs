@@ -326,14 +326,13 @@ prettyTm prec = go (prec /= 0) where
       showParen p (go True ns t . (' ':)
                    . bracket (go False ns u  . (" : "++) . go False ns a))
     LamTel x a t -> showParen p (("λ"++)
-                   . bracket ((x++) . (" : "++) . go False ns a) . goLam ns t)
+                   . bracket ((x++) . (" : "++) . go False ns a) . goLam (x:ns) t)
 
     Skip t -> go p ("_":ns) t
 
 showTm :: [Name] -> Tm -> String
 showTm ns t = prettyTm 0 ns t []
 -- showTm ns t = show t
-
 -- deriving instance Show Tm
 instance Show Tm where show = showTm []
 
