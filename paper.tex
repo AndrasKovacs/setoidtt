@@ -74,7 +74,7 @@
 \newcommand{\p}{\mathsf{p}}
 \newcommand{\id}{\mathsf{id}}
 \newcommand{\blank}{\mathord{\hspace{1pt}\text{--}\hspace{1pt}}}
-\newcommand{\freshMeta}[3]{\mathsf{freshMeta}_{#1|#2}\,#3}
+\newcommand{\freshMeta}[3]{\mathsf{freshMeta}\,_{#1|#2}\,#3}
 \newcommand{\unify}{\mathsf{unify}}
 \newcommand{\fail}{\mathsf{fail}}
 \newcommand{\kw}[1]{{\mathsf{#1}}}
@@ -82,7 +82,7 @@
 \newcommand{\echeckblank}{\llbracket\blank\rrbracket\!\Downarrow}
 \newcommand{\einferblank}{\llbracket\blank\rrbracket\!\Uparrow}
 \newcommand{\echeck}[4]{\llbracket#1\rrbracket\!\Downarrow\,_{#2|#3}\,#4}
-\newcommand{\einfer}[4]{\llbracket#1\rrbracket\!\Uparrow\,#2\,_{#3|#4}}
+\newcommand{\einfer}[4]{\llbracket#1\rrbracket\!\Uparrow\,_{#3|#4}\,#2}
 \newcommand{\echeckt}[2]{\llbracket#1\rrbracket\!\Downarrow\,#2}
 \newcommand{\einfert}[2]{\llbracket#1\rrbracket\!\Uparrow\,#2}
 \newcommand{\edo}{\boldsymbol{\mathsf{do}}}
@@ -1031,7 +1031,7 @@ $\lambda$. At the heart of the issue is that elaboration makes insertion choices
 based on core types.
 \begin{enumerate}
 \item $\echeck{t}{\Theta}{\Gamma}{A}$ can insert a $\lambda$ only if $A$ is an implicit function type.
-\item $\einsert{\true}{\Theta}{\Gamma}{A}$ inserts an application only if $A$ is an implicit function type.
+\item $\einsert{\true}{A}$ inserts an application only if $A$ is an implicit function type.
 \end{enumerate}
 In both of these cases, if $A$ is of the form $\alpha\,\overline{u}$
 (i.e.\ meta-headed), then it is possible that $\alpha$ is later refined to an
