@@ -100,6 +100,7 @@
 \newcommand{\einsert}[3]{\mathsf{insert}\,#1\,#2\,#3}
 \newcommand{\einsertpar}[5]{\mathsf{insert}_{#1|#2}\,#3\,#4\,#5}
 \newcommand{\Set}{\mathsf{Set}}
+\renewcommand{\tt}{\mathsf{tt}}
 
 \newcommand{\Nat}{\mathsf{Nat}}
 \newcommand{\zero}{\mathsf{zero}}
@@ -908,7 +909,7 @@ $\einsert$ on the output.
 The $\einfer{t\,u}{ins}{\Theta_0}{\Gamma}$ and
 $\einfer{t\,\{u\}}{ins}{\Theta_0}{\Gamma}$ cases are again interesting. Here, we
 first infer a type for the term which is being applied, then refine the type to
-a function type, and lastly check the argument with the domain type.  Note the
+a function type, and lastly check the argument with the domain type. Note the
 difference between the explicit and implicit case. In the former case, we use
 $\einfer{t}{\true}{\Theta_0}{\Gamma}$, which inserts implicit applications. In
 the latter case we do no insertion.  This, together with the inference
@@ -930,14 +931,18 @@ On the other hand, we elaborate $id\,\{\U\}$ as follows:
   \item This changes direction again, and we infer $\U$ type for $\U$, and
     successfully unify $\U$ with $\U$.
 \end{enumerate}
+Note that it would be more efficient (and also allow more user-friendly error
+messages) to not immediately refine the inferred type of $t$ to a function type,
+but rather match on the inferred type, and only perform refining when the type
+is meta-headed. We present the unoptimized version here for the sake of brevity.
 
 In the case of $\slet$, inference again just falls through, and we infer a type
 for the $\slet$ body. For $\einfer{\_}{ins}{\Theta}{\Gamma}$, we create a fresh meta
 for the type of the hole, and another fresh meta for the hole itself.
 
 \subsubsection{Starting and finishing elaboration} Given a surface term $t$,
-we do elaboration by computing $\einfer{t}{\true}{\emptycon}{\emptycon}$. If this
-succeeds, we get a $(\Theta,\,\theta,t')$ result. We say that elaboration succeeds
+we initiate elaboration by computing $\einfer{t}{\true}{\emptycon}{\emptycon}$. If this
+succeeds, we get a $(\Theta,\,\theta,t')$ result. Elaboration is successful overall
 if $\Theta = \emptycon$ and $\theta = \id$, i.e.\ no unsolved metas remain.
 
 \subsubsection{Properties of elaboration}
@@ -997,13 +1002,10 @@ This follows by straightforward induction on surface syntax. \qed
     relation arising along instantiations of polymorphic types. In GHC 8
     polymorphic subtyping is implemented for function types only. Polymorphic
     subtyping complicates type inference, and to our knowledge it has not been
-    researched or implemented in dependently typed settings. Hence we omit it as
-    well. GHC also seems to abandon polymorphic subtyping in recent developments
-    of impredicative inference \cite{serrano2020a}.
-
-
+    implemented in any dependently typed setting. Hence we omit it as well. GHC
+    also seems to abandon polymorphic subtyping in recent developments of
+    impredicative inference \cite{serrano2020a}.
 \end{itemize}
-
 
 \section{Issues with First-Class Implicit Functions}
 
@@ -1086,8 +1088,53 @@ cause more postponing.
 
 \section{Telescopes and Strictly Curried Functions}
 
-As part of the proposed solution, we extend the core theory with telescopes
-and strictly curried functions.
+As part of the proposed solution, we extend the core theory with telescopes and
+strictly curried functions. Figure \ref{fig:telescopes} lists the typing rules and
+definitional equalities.
+
+\subsection{Telescopes}
+Telescopes can be viewed as a generic implementation of record types. We have
+$\Tel$ as the type of telescopes. Elements of $\Tel$ are right-nested telescopes
+of types, with $\epsilon$ denoting the empty telescope, and $\blank\TCons\blank$
+telescope extension. For example, we can define the signature of natural number
+algebras as follows:
+\begin{alignat*}{3}
+  & \slet\,NatAlgSig : \Tel = (N : \U) \TCons (zero : N) \TCons (suc : N \to N) \TCons \epsilon\,\sin\,...
+\end{alignat*}
+We interpret an $A : \Tel$ as a record type as $\Rec\,A$, which behaves as the
+evident iterated $\Sigma$-type corresponding to the telescope. Hence,
+$\Rec\,\epsilon$ is isomorphic to the unit type, with inhabitant ${[}{]}$, and
+$\Rec\,((x : A) \TCons B)$ behaves as a $\Sigma$-type, with pairing constructor
+$\blank::\blank$ and projections $\pi_1$ and $\pi_2$. We also have the $\beta$
+and $\eta$ rules for record constructors and projections in Figure
+\ref{fig:telescopes}. We present definitional equalities in a compact form, but
+note that they still stand for $\boxed{\Theta|\Gamma\vdash t \equiv u : A}$
+judgments. Hence, the sides of the equations must have the same types, and in
+particular the left side of the \LabTirName{${[}{]}$-$\eta$} rule has type
+$\Rec\,\epsilon$.
+
+Our telescopes and records are derivable from natural numbers, the unit type and
+$\Sigma$-types. We use Agda-like pattern matching notation in the following.
+First, we define length-indexed telescopes.
+\begin{alignat*}{3}
+  & \rlap{$\Tel' : \Nat \to \U$}\\
+  & \Tel'\,\zero      && :\equiv \top\\
+  & \Tel'\,(\suc\,n)  && :\equiv \Sigma(A : \U).\,(A \to \Tel'\,n)
+\end{alignat*}
+Then, we have $\Tel :\equiv \Sigma(n : \Nat).\,(\Tel'\,n)$, and define records:
+\begin{alignat*}{3}
+  & \rlap{$\Rec : \Tel \to \U$}\\
+  & \Rec\,(\zero,\,\_)        &&:\equiv \top\\
+  & \Rec\,(\suc\,n,\,(A,\,B)) &&:\equiv \Sigma(a : A).\,(\Rec\,(n,\,B\,a))
+\end{alignat*}
+From the above, $\epsilon$, $\blank\TCons\blank$, $\blank::\blank$ and ${[}{]}$
+are evident, and all expected equalities hold definitionally. Derivability is
+good news because we inherit nice properties of the type theory which only
+contains the base type formers. For instance, if we have a consistent universe
+setup, we inherit consistency, canonicity and decidability of conversion. We
+currently use native telescopes instead of $\Nat$, $\top$ and $\Sigma$ because
+in unification and elaboration it is convenient that we are able to restrict
+some types to records types.
 
 \begin{figure}[h]
 \begin{mathpar}
@@ -1107,49 +1154,19 @@ and strictly curried functions.
              {\Theta|\Gamma \vdash A : \Tel}
              {\Theta|\Gamma \vdash \Rec\,A : \U}
 
-  \inferrule*[lab=empty-rec]
+  \inferrule*[lab=empty-record]
              {\\}
              {\Theta|\Gamma \vdash [] : \Rec\,\epsilon}
 
-  \inferrule*[lab=nonempty-rec]
+  \inferrule*[lab=nonempty-record]
              {\Theta|\Gamma \vdash t : A \\ \Theta|\Gamma \vdash u : \Rec\,(B[x\mapsto t])}
              {\Theta|\Gamma \vdash t :: u : \Rec\,((x : A) \TCons B)}
 
-  \inferrule*[lab=rec-projection]
+  \inferrule*[lab=record-projection]
              {\Theta|\Gamma \vdash t : \Rec\,((x : A) \TCons B)}
              {\Theta|\Gamma \vdash \pi_1\,t : A \\
                \Theta|\Gamma \vdash \pi_2\,t : \Rec\,(B[x\mapsto \pi_1\,t])}
-\end{mathpar}
 
-\begin{alignat*}{3}
-  & \text{\LabTirName{$\pi_1$-$\beta$}}\hspace{2em}  && \pi_1\,(t :: u) && \equiv t\\
-  & \text{\LabTirName{$\pi_2$-$\beta$}}  && \pi_2\,(t :: u) && \equiv u\\
-  & \text{\LabTirName{$::$-$\eta$}}  && (\pi_1\,t :: \pi_2\,t) && \equiv t\\
-  & \text{\LabTirName{${[}{]}$-$\eta$}}  && t && \equiv []
-\end{alignat*}
-
-  %% \inferrule*[lab=rec-projection]
-  %%            {\Theta|\Gamma \vdash t : \Rec\,((x : A) \TCons B)}
-  %%            {\Theta|\Gamma \vdash \pi_1\,t : A \\ \Theta|\Gamma \vdash \pi_2\,t : \Rec\,(B[x\mapsto \pi_1\,t])}
-
-  %% \inferrule*[lab=projection-$\beta$]
-  %%            {\\}
-  %%            {\pi_1\,(t :: u) \equiv t \\ \pi_2\,(t :: u) \equiv u}
-
-  %% \inferrule*[lab=$::$-$\eta$]
-  %%            {\\}
-  %%            {(\pi_1\,t :: \pi_2\,t) \equiv t}
-
-  %% \inferrule*[lab=${[}{]}$-$\eta$]
-  %%            {\Theta|\Gamma \vdash t : \Rec\,\epsilon}
-  %%            {\Theta|\Gamma \vdash t \equiv []}
-
-\caption{Rules for telescopes.}
-\label{fig:telescopes}
-\end{figure}
-
-\begin{figure}[h]
-\begin{mathpar}
   \inferrule*[lab=curried-fun]
              {\Theta|\Gamma \vdash A : \Tel \\ \Theta|\Gamma,\,x : \Rec\,A \vdash B : \U}
              {\Theta|\Gamma \vdash \{x : \ol{A}\} \to B : \U}
@@ -1164,9 +1181,13 @@ and strictly curried functions.
 \end{mathpar}
 
 \begin{alignat*}{3}
+  & \text{\LabTirName{$\pi_1$-$\beta$}}\hspace{2em}  && \pi_1\,(t :: u) && \equiv t\\
+  & \text{\LabTirName{$\pi_2$-$\beta$}}  && \pi_2\,(t :: u) && \equiv u\\
+  & \text{\LabTirName{$::$-$\eta$}}  && (\pi_1\,t :: \pi_2\,t) && \equiv t\\
+  & \text{\LabTirName{${[}{]}$-$\eta$}}  && t && \equiv []\\
   & \text{\LabTirName{fun-$\epsilon$}}\hspace{3em} && \{x : \ol{\epsilon}\}\to B && \equiv B[x \mapsto []]\\
   & \text{\LabTirName{fun-$\TCons$}}         && \{x : \ol{(y : A) \TCons B}\}\to C \quad && \equiv
-                                               \{y : A\}\to(\{b : \ol{B}\}\to B[x \mapsto (y :: b)])\\
+                                               \{y : A\}\to(\{b : \ol{B}\}\to C[x \mapsto (y :: b)])\\
   & \text{\LabTirName{lam-$\epsilon$}}       && \lambda\,\{x : \ol{\epsilon}\}.\,t && \equiv t[x \mapsto []]\\
   & \text{\LabTirName{lam-$\TCons$}}         && \lambda\,\{x : \ol{(y : A)\TCons B}\}.\,t && \equiv
                                          \lambda\{y\}.\,\lambda\,\{b : \ol{B}\}.\,t[x \mapsto (y :: b)]\\
@@ -1178,10 +1199,62 @@ and strictly curried functions.
   & \text{\LabTirName{curried-$\eta$}}  && \lambda\,\{x : \ol{A}\}.\,t\,\{x : \ol{A}\} && \equiv t
 \end{alignat*}
 
-
-\caption{Rules for strictly curried functions.}
-\label{fig:curriedfunctions}
+\caption{Rules for telescopes and strictly curried functions.}
+\label{fig:telescopes}
 \end{figure}
+
+
+\subsection{Strictly Curried Functions}
+
+These are function types whose domains are telescopes, and they are immediately
+computed to iterated implicit function types when the domain telescope is known
+to be empty or non-empty. See \LabTirName{fun-$\epsilon$} and
+\LabTirName{fun-$\TCons$}: a curried function with empty domain computes to
+simply the codomain, while a function with a non-empty domain computes to an
+implicit function type. We explicitly notate telescopes in both
+$\lambda$-abstractions and applications for strictly curried functions, since
+they are relevant in the computation rules.
+
+
+Curried function types tend to be computed away, but they can persist if the
+domain telescope is neutral, and in particular when it is meta-headed. For
+example, assuming a meta $\alpha : \Tel$, the type $\{x : \ol{\alpha}\}\to B$
+cannot be computed further. During elaboration, we will use strictly curried
+function types to represent unknown insertions, but these types are eventually
+computed away if a surface expression can be successfully elaborated. Since the
+surface language remains unchanged, telescopes and curried functions are merely
+an internal implementation detail from the perspective of programmers.
+
+Curried functions are \emph{mostly} derivable from $\Nat$, $\top$ and $\Sigma$.
+\begin{alignat*}{3}
+& \rlap{$\Pi^C : (A : \Tel) \to (\Rec\,A \to \U) \to \U$}\\
+& \Pi^C (\zero,\,\_)\,B && :\equiv B\,\tt\\
+& \Pi^C (\suc\,n,\,(A,\,B))\,C && :\equiv \{a : A\}\to \Pi^C\,(n,\,B\,a) (\lambda\,b.\,C\,(a,\,b))
+\end{alignat*}
+
+
+%% Π : (Δ : Tel) → (Rec Δ → Set) → Set
+%% Π ε       B = B tt
+%% Π (A ▶ Δ) B = (x : A) → Π (_ , Δ x) λ δ → B (x , δ)
+
+%% app : ∀ {Δ B} → Π Δ B → (δ : Rec Δ) → B δ
+%% app {ε}     f x         = f
+%% app {A ▶ Δ} f (x₀ , x₁) = app (f x₀) x₁
+
+%% lam : ∀ {Δ B} → ((δ : Rec Δ) → B δ) → Π Δ B
+%% lam {ε}     f = f tt
+%% lam {A ▶ Δ} f = λ x → lam λ δ → f (x , δ)
+
+
+
+
+
+
+
+
+
+
+
 
 
 \begin{acks}
@@ -1190,11 +1263,7 @@ and strictly curried functions.
   EUTypes CA15123.
 \end{acks}
 
-
-
-
 %% Bibliography
 \bibliography{references}
-
 
 \end{document}
