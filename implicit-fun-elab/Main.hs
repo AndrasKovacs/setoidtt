@@ -70,6 +70,14 @@ pruneTest = main' "elab" $ unlines [
   "λ f (x : Bool). not (f x)"
   ]
 
+pruneTest2 = main' "elab" $ unlines [
+ "λ (ℕ : U)(zero : ℕ)(suc : ℕ → ℕ)(add : ℕ → ℕ → ℕ).",
+ "let test1 = (P : _) → (n : ℕ) → P n → P n in",
+ "let test2 = λ f x . add (suc (f x)) x in",
+ "U"
+ ]
+
+
 test0 = main' "elab" $ unlines [
   "let IdTy = {A} → A → A in",
   "let f = λ (g:IdTy). g g in",
@@ -148,7 +156,7 @@ test = main' "elab" $ unlines [
 
   "let compExample = comp (cons true) (cons false) nil in",
 
-  -- "let t5 = λ xs. poly (head xs) in", -- pruning
+  -- "let t5 = λ xs. poly (head xs) in",
 
   "hundred"
   ]

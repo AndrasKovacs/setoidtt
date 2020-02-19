@@ -64,7 +64,10 @@
 \usepackage{todonotes}
 \presetkeys{todonotes}{inline}{}
 \usepackage{scalerel}
-\usepackage{cleveref}
+\usepackage{amssymb}
+%% \usepackage{cleveref}
+%% \usepackage{hyperref}
+%% \usepackage{nameref}
 
 \newcommand{\slet}{\boldsymbol{\mathsf{let}}}
 \renewcommand{\sin}{\boldsymbol{\mathsf{in}}}
@@ -101,9 +104,14 @@
 \newcommand{\Nat}{\mathsf{Nat}}
 \newcommand{\zero}{\mathsf{zero}}
 \newcommand{\suc}{\mathsf{suc}}
+\newcommand{\Tel}{\mathsf{Tel}}
+\newcommand{\TCons}{\triangleright}
+\newcommand{\Rec}{\mathsf{Rec}}
+\newcommand{\ol}[1]{\overline{#1}}
 
 \theoremstyle{remark}
 \newtheorem{notation}{Notation}
+
 
 %% ------------------------------------------------------------
 
@@ -263,7 +271,7 @@ function type, and elects to not insert a lambda. This assumption is often
 correct, but sometimes --- as in the current case --- it is not.
 
 There is significant literature on type inference in the presence of first-class
-polymorphic types, mainly in relation to GHC and ML-like languages \cite{leijen2008hmf,leijen2009flexible,serrano2018guarded,vytiniotis2006boxy}.
+polymorphic types, mainly in relation to GHC and ML-like languages \cite{leijen2008hmf,leijen2009flexible,serrano2018guarded,vytiniotis2006boxy,serrano2020a}.
 The above issue in Agda is a specific instance of the challenges described in
 the mentioned works. However, none of the proposed algorithms have landed so far
 in production compilers, for reasons of complexity, fragility and interaction
@@ -281,9 +289,8 @@ inferred type is unified with the annotation.
   \item We propose an elaboration algorithm which translates from a small
     Agda-like surface language to a small Martin-L\"of type theory extended with
     implicit function types, telescopes and \emph{strictly curried} function
-    types with telescope domain. The extensions to the target theory are modest
-    and are derivable from W-types and $\Sigma$-types. We use these extensions
-    to accummulate information about implicit insertions.
+    types with telescope domain. We use these extensions to accummulate
+    information about implicit insertions.
   \item Our algorithm is a conservative extension of Norell's bidirectional
     elaborator for Agda \cite[Chapter~3]{norell07thesis}; it accepts strictly more
     programs, and does not require new constructs in the surface language.
@@ -372,19 +379,19 @@ and we extend it in Section TODO with additional rules.
              {\Theta|\Gamma \vdash \\ \Theta|\Gamma \vdash t : A}
              {\Theta|\Gamma,\,x : A = t \vdash}
 
-  \inferrule*[lab=tm/metavar]
+  \inferrule*[lab=metavar]
              {\\}
              {\Theta_0,\,\alpha : A,\,\Theta_1|\Gamma \vdash \alpha : A}
 
-  \inferrule*[lab=tm/bound-var]
+  \inferrule*[lab=bound-var]
              {\\}
              {\Theta|\Gamma,\,x : A,\,\Delta \vdash x : A}
 
-  \inferrule*[lab=tm/defined-var]
+  \inferrule*[lab=defined-var]
              {\\}
              {\Theta|\Gamma,\,x : A = t,\,\Delta \vdash x : A}
 
-  \inferrule*[lab=ty/u]
+  \inferrule*[lab=universe]
              {\\}
              {\Theta|\Gamma \vdash \U : \U}
 
@@ -392,27 +399,27 @@ and we extend it in Section TODO with additional rules.
              {\Theta|\Gamma\vdash t : A \\ \Theta|\Gamma,\,x : A = t \vdash u : B}
              {\Theta|\Gamma\vdash \slet\,x : A = t\,\sin\,u : B[x\mapsto t]}
 
-  \inferrule*[lab=ty/fun]
+  \inferrule*[lab=fun]
              {\Theta|\Gamma \vdash A : \U \\ \Theta|\Gamma,\,x : A \vdash B : \U}
              {\Theta|\Gamma \vdash (x : A) \to B : \U}
 
-  \inferrule*[lab=ty/implicit-fun]
+  \inferrule*[lab=implicit-fun]
              {\Theta|\Gamma \vdash A : \U \\ \Theta|\Gamma,\,x : A \vdash B : \U}
              {\Theta|\Gamma \vdash \{x : A\} \to B : \U}
 
-  \inferrule*[lab=tm/app]
+  \inferrule*[lab=app]
              {\Theta|\Gamma \vdash t : (x : A) \to B \\ \Theta|\Gamma\vdash u : A}
              {\Theta|\Gamma \vdash t\,u : B[x \mapsto u]}
 
-  \inferrule*[lab=tm/implicit-app]
+  \inferrule*[lab=implicit-app]
              {\Theta|\Gamma \vdash t : \{x : A\} \to B \\ \Theta|\Gamma\vdash u : A}
              {\Theta|\Gamma \vdash t\,\{u\} : B[x \mapsto u]}
 
-  \inferrule*[lab=tm/lam]
+  \inferrule*[lab=lam]
              {\Theta|\Gamma,\,x : A \vdash t : B}
              {\Theta|\Gamma \vdash \lambda\,x.\,t : (x : A) \to B}
 
-  \inferrule*[lab=tm/implicit-lam]
+  \inferrule*[lab=implicit-lam]
              {\Theta|\Gamma,\,x : A \vdash t : B}
              {\Theta|\Gamma \vdash \lambda\,\{x\}.\,t : \{x : A\} \to B}
 
@@ -495,8 +502,6 @@ metacontexts, and existing works on algebraic presentations of dependent modal
 contexts (e.g.\ \cite{birkedal2018modal}) do not precisely cover the current use
 case. We leave this to future work, along with the investigation of elaboration
 from an algebraic perspective.
-
-\todo{how to refer to mathpartir rules from text?}
 
 Metacontexts are used to record metavariables which are created during
 elaboration. In our case, metacontexts are simply a context prefix, and we have
@@ -699,6 +704,11 @@ as follows:
              \,\land\,(\Theta'|\Gamma[\theta]\vdash
              t[\theta] \equiv u[\theta] : A[\theta])\}\,\cup\,\{\fail\}}
 \end{mathpar}
+For a simple example, assuming $\Theta :\equiv (\emptycon,\,\alpha : \U,\, \beta
+: \U)$, $\unify\,\alpha\,(\beta\to\beta)$ yields $\Theta'
+:\equiv (\emptycon,\,\beta : \U)$ and the substitution $\theta :\equiv (\alpha
+\mapsto (\beta\to\beta),\,\beta\mapsto \beta)$, where $\theta : \Theta' \To
+\Theta$.
 
 Here, we do not require that unification returns most general unifiers, nor do
 we go into the details of how unification is implemented. Gundry describes
@@ -706,14 +716,8 @@ unification in detail in \cite[Chapter~4]{gundry2013type} for a similar syntax,
 with a similar (though more featureful) setup for metacontexts. See also
 \cite{abel2011higher} for a reference on unification. Note that our unification
 algorithm does not support \emph{constraint postponing}, as we have not talked
-about constraints at all. In our concrete implementation, unification supports
-basic pattern unification and metavariable pruning.
-
-We describe a simple example. We have $\Theta :\equiv (\emptycon,\,\alpha :
-\U,\, \beta : \U)$, and we compute $\unify\,\alpha\,(\beta\to\beta)$. This
-yields $\Theta' :\equiv (\emptycon,\,\beta : \U)$ and the substitution $\theta
-:\equiv (\alpha \mapsto (\beta\to\beta),\,\beta\mapsto \beta)$, where $\theta :
-\Theta' \To \Theta$.
+about constraints at all. In our concrete prototype implementation, unification
+supports basic pattern unification and metavariable pruning.
 
 \subsection{Elaboration}
 
@@ -723,8 +727,8 @@ In this section we define the elaboration algorithm. First, we explain the used 
   \item We use a Haskell-like monadic pseudocode notation, where the side effect is
     failure via $\fail$.
   \item We use pattern matching notation on core terms; e.g.\ we may match on
-    whether a type is a function type. This requires an evaluation/normalization
-    procedure on core terms, but note that we already assume this in implicit
+    whether a type is a function type. This assumes an evaluation/normalization
+    procedure on core terms; but note that we already assume this in implicit
     argument insertion and unification.
 \end{itemize}
 
@@ -735,14 +739,14 @@ inference, which toggles whether the output has inserted implicit arguments.  We
 explain the cases of the definition in order.
 
 \begin{mathpar}
-\inferrule*[lab=checking]
+\inferrule*[lab=check]
            {\text{$t$ is a surface expression} \\ \Theta|\Gamma \vdash A : \U}
            {\echeck{t}{\Theta}{\Gamma}{A} \in
              \{(\Theta',\,\theta,\,t')\,|\,(\theta : \Theta' \To \Theta)\,\land\,
                (\Theta'|\Gamma[\theta]\vdash t' : A[\theta])\}\cup\{\fail\}
            }
 
-\inferrule*[lab=inferring]
+\inferrule*[lab=infer]
            {ins \in \{\true,\,\false\} \\
                 \text{$t$ is a surface expression} \\ \Theta|\Gamma \vdash}
            {\einfer{t}{ins}{\Theta}{\Gamma} \in
@@ -755,20 +759,20 @@ explain the cases of the definition in order.
 \allowdisplaybreaks
 \begin{alignat*}{3}
   &\echeck{\lambda\,x.\,t}{\Theta}{\Gamma}{((x : A)\to B)} :\equiv \edo \\
-  &\quad(\Theta',\,\theta,\,t') \leftarrow \echeck{t}{\Theta}{(\Gamma,\,x:A)} B\\
+  &\quad(\Theta',\,\theta,\,t') \leftarrow \echeck{t}{\Theta}{\Gamma,\,x:A} B\\
   &\quad\ereturn\,(\Theta',\,\theta,\,\lambda\,x.\,t')\\
   &\echeck{\lambda\,\{x\}.\,t}{\Theta}{\Gamma}{(\{x : A\}\to B)} :\equiv \edo \\
-  &\quad(\Theta',\,\theta,\,t') \leftarrow \echeck{t}{\Theta}{(\Gamma,\,x:A)} B\\
+  &\quad(\Theta',\,\theta,\,t') \leftarrow \echeck{t}{\Theta}{\Gamma,\,x:A} B\\
   &\quad\ereturn\,(\Theta',\,\theta,\,\lambda\,\{x\}.\,t')\\
   &\echeck{t}{\Theta}{\Gamma}{(\{x : A\}\to B)} : \equiv \edo \\
-  &\quad (\Theta',\,\theta,\,t') \leftarrow \echeck{t}{\Theta}{(\Gamma,\,x:A)} B\\
+  &\quad (\Theta',\,\theta,\,t') \leftarrow \echeck{t}{\Theta}{\Gamma,\,x:A} B\\
   &\quad (\Theta',\,\theta,\,\lambda\,\{x\}.\,t')\\
   &\echeck{\slet\,x:A=t\,\sin\,u}{\Theta_0}{\Gamma}{B} :\equiv \edo \\
   &\quad(\Theta_1,\,\theta_1,\,A') \leftarrow \echeck{A}{\Theta_0}{\Gamma}{\U}\\
   &\quad(\Theta_2,\,\theta_2,\,t') \leftarrow \echeck{t}
-                {\Theta_1}{(\Gamma[\theta_1])}{A'}\\
+                {\Theta_1}{\Gamma[\theta_1]}{A'}\\
   &\quad(\Theta_3,\,\theta_3,\,u') \leftarrow
-                \echeck{u}{\Theta_2}{(\Gamma[\theta_1\circ\theta_2])}{(B[\theta_1\circ\theta_2])}\\
+                \echeck{u}{\Theta_2}{\Gamma[\theta_1\circ\theta_2]}{(B[\theta_1\circ\theta_2])}\\
   &\quad\ereturn\,(\Theta_3,\,\theta_1\circ\theta_2\circ\theta_3,\,\slet\,x:A'[\theta_2\circ\theta_3]=t'[\theta_3]\,\sin\,u')\\
   &\echeck{\_}{\Theta}{\Gamma}{A} :\equiv \edo \\
   &\quad\ereturn\,(\freshMeta{\Theta}{\Gamma}{A})\\
@@ -777,7 +781,7 @@ explain the cases of the definition in order.
   &\quad(\Theta_2,\,\theta_2) \leftarrow \unify\,(A[\theta_1])\,B\\
   &\quad\ereturn\,(\Theta_2,\,\theta_1\circ\theta_2,\,t'[\theta_2])\\\\
   &\einfer{x}{ins}{\Theta}{\Gamma} :\equiv \edo\\
-  &\quad\eif\,(x : A \in \Gamma)\,\lor\,(x : A = t \in \Gamma) \\
+  &\quad\eif\,((x : A) \in \Gamma)\,\lor\,((x : A = t) \in \Gamma) \\
   &\qquad   \ethen\, \ereturn\,(\einsert{ins}{x}{A})\\
   &\qquad   \eelse\, \fail\\
   &\einfer{\U}{ins}{\Theta}{\Gamma} :\equiv \edo\\
@@ -785,43 +789,43 @@ explain the cases of the definition in order.
   &\einfer{(x : A)\to B}{ins}{\Theta_0}{\Gamma} :\equiv \edo\\
   &\quad(\Theta_1,\,\theta_1,\,A') \leftarrow \echeck{A}{\Theta_1}{\Gamma}{\U}\\
   &\quad(\Theta_2,\,\theta_2,\,B') \leftarrow
-                 \echeck{B}{\Theta_2}{(\Gamma[\theta_1],\,x : A')}{\U}\\
+                 \echeck{B}{\Theta_2}{\Gamma[\theta_1],\,x : A'}{\U}\\
   &\quad\ereturn\,(\Theta_2,\,\theta_1\circ\theta_2,
                  \,((x : A'[\theta_2])\to B'),\,\U)\\
   &\einfer{\{x : A\}\to B}{ins}{\Theta_0}{\Gamma} :\equiv \edo\\
   &\quad(\Theta_1,\,\theta_1,\,A') \leftarrow \echeck{A}{\Theta_1}{\Gamma}{\U}\\
   &\quad(\Theta_2,\,\theta_2,\,B') \leftarrow
-                 \echeck{B}{\Theta_2}{(\Gamma[\theta_1],\,x : A')}{\U}\\
+                 \echeck{B}{\Theta_2}{\Gamma[\theta_1],\,x : A'}{\U}\\
   &\quad\ereturn\,(\Theta_2,\,\theta_1\circ\theta_2,
                  \,(\{x : A'[\theta_2]\}\to B'),\,\U)\\
   &\einfer{\lambda\,x.\,t}{ins}{\Theta_0}{\Gamma} :\equiv \edo \\
   &\quad(\Theta_1,\,\theta_1,\,A)\leftarrow \freshMeta{\Theta_0}{\Gamma}{\U}\\
-  &\quad(\Theta_2,\,\theta_2,\,t',\,B)\leftarrow \einfer{t}{\true}{\Theta_1}{(\Gamma[\theta_1],\,x:A)}\\
+  &\quad(\Theta_2,\,\theta_2,\,t',\,B)\leftarrow \einfer{t}{\true}{\Theta_1}{\Gamma[\theta_1],\,x:A}\\
   &\quad\ereturn\,(\Theta_2,\,\theta_1\circ\theta_2,\,\lambda\,x.\,t',\,(x : A[\theta_2])\to B)\\
   &\einfer{\lambda\,\{x\}.\,t}{ins}{\Theta_0}{\Gamma} :\equiv \edo \\
   &\quad(\Theta_1,\,\theta_1,\,A)\leftarrow \freshMeta{\Theta_0}{\Gamma}{\U}\\
-  &\quad(\Theta_2,\,\theta_2,\,t',\,B)\leftarrow \einfer{t}{\true}{\Theta_1}{(\Gamma[\theta_1],\,x:A)}\\
+  &\quad(\Theta_2,\,\theta_2,\,t',\,B)\leftarrow \einfer{t}{\true}{\Theta_1}{\Gamma[\theta_1],\,x:A}\\
   &\quad\ereturn\,(\einsert{ins}{(\lambda\,\{x\}.\,t')}{(\{x : A[\theta_2]\}\to B)})\\
   &\einfer{t\,u}{ins}{\Theta_0}{\Gamma} :\equiv \edo \\
   &\quad (\Theta_1,\,\theta_1,\,t',\,A) \leftarrow \einfer{t}{\true}{\Theta_0}{\Gamma}\\
   &\quad (\Theta_2,\,\theta_2,A_0) \leftarrow \freshMeta{\Theta_1}{\Gamma[\theta_1]}{\U}\\
   &\quad (\Theta_3,\,\theta_3,A_1) \leftarrow \freshMeta{\Theta_2}{\Gamma[\theta_1\circ\theta_2],\,x:A_0}{\U}\\
   &\quad (\Theta_4,\,\theta_4) \leftarrow \unify\,(A[\theta_2\circ\theta_3])\,((x : A_0[\theta_3])\to A_1)\\
-  &\quad (\Theta_5,\,\theta_5,\,u') \leftarrow \echeck{u}{\Theta_4}{(\Gamma[\theta_1\circ\theta_2\circ\theta_3\circ\theta_4])}{(A_0[\theta_3\circ\theta_4])}\\
+  &\quad (\Theta_5,\,\theta_5,\,u') \leftarrow \echeck{u}{\Theta_4}{\Gamma[\theta_1\circ\theta_2\circ\theta_3\circ\theta_4]}{(A_0[\theta_3\circ\theta_4])}\\
   &\quad \ereturn\,(\mathsf{insert}\,{ins}\,{((t'[\theta_2\circ\theta_3\circ\theta_4\circ\theta_5])\,u')}\,{(A_1[\theta_4\circ\theta_5][x\mapsto u'])})\\
   &\einfer{t\,\{u\}}{ins}{\Theta_0}{\Gamma} :\equiv \edo \\
   &\quad (\Theta_1,\,\theta_1,\,t',\,A) \leftarrow \einfer{t}{\false}{\Theta_0}{\Gamma}\\
   &\quad (\Theta_2,\,\theta_2,A_0) \leftarrow \freshMeta{\Theta_1}{\Gamma[\theta_1]}{\U}\\
   &\quad (\Theta_3,\,\theta_3,A_1) \leftarrow \freshMeta{\Theta_2}{\Gamma[\theta_1\circ\theta_2],\,x:A_0}{\U}\\
   &\quad (\Theta_4,\,\theta_4) \leftarrow \unify\,(A[\theta_2\circ\theta_3])\,(\{x : A_0[\theta_3]\}\to A_1)\\
-  &\quad (\Theta_5,\,\theta_5,\,u') \leftarrow \echeck{u}{\Theta_4}{(\Gamma[\theta_1\circ\theta_2\circ\theta_3\circ\theta_4])}{(A_0[\theta_3\circ\theta_4])}\\
+  &\quad (\Theta_5,\,\theta_5,\,u') \leftarrow \echeck{u}{\Theta_4}{\Gamma[\theta_1\circ\theta_2\circ\theta_3\circ\theta_4]}{(A_0[\theta_3\circ\theta_4])}\\
   &\quad \ereturn\,(\mathsf{insert}\,{ins}\,{((t'[\theta_2\circ\theta_3\circ\theta_4\circ\theta_5])\,\{u'\})}\,{(A_1[\theta_4\circ\theta_5][x\mapsto u'])})\\
   &\einfer{\slet\,x:A=t\,\sin\,u}{ins}{\Theta_0}{\Gamma} :\equiv \edo \\
   &\quad(\Theta_1,\,\theta_1,\,A') \leftarrow \echeck{A}{\Theta_0}{\Gamma}{\U}\\
   &\quad(\Theta_2,\,\theta_2,\,t') \leftarrow \echeck{t}
-                {\Theta_1}{(\Gamma[\theta_1])}{A'}\\
+                {\Theta_1}{\Gamma[\theta_1]}{A'}\\
   &\quad(\Theta_3,\,\theta_3,\,u',\,B) \leftarrow
-                \einfer{u}{ins}{\Theta_2}{(\Gamma[\theta_1\circ\theta_2])}\\
+                \einfer{u}{ins}{\Theta_2}{\Gamma[\theta_1\circ\theta_2]}\\
   &\quad\ereturn\,(\Theta_3,\,\theta_1\circ\theta_2\circ\theta_3,\,(\slet\,x:A'[\theta_2\circ\theta_3]=t'[\theta_3]\,\sin\,u'),\,B)\\
   &\einfer{\_}{ins}{\Theta}{\Gamma} :\equiv \edo \\
   &\quad \slet\,(\Theta',\,\theta,\,A) = \freshMeta{\Theta}{\Gamma}{\U}\\
@@ -903,14 +907,14 @@ $\einsert$ on the output.
 
 The $\einfer{t\,u}{ins}{\Theta_0}{\Gamma}$ and
 $\einfer{t\,\{u\}}{ins}{\Theta_0}{\Gamma}$ cases are again interesting. Here, we
-first infer a type for the term which is being applied, and only proceed if the
-type is an appropriate function. Note a difference between the explicit and
-implicit case. In the former case, we use $\einfer{t}{\true}{\Theta_0}{\Gamma}$,
-which inserts implicit applications. In the latter case we do not insert
-implicit applications. This, together with the inference definition for
-variables, ensures that implicit applications in the surface syntax behave
-similarly as in Agda. For example, given $id : \{A : \U\}\to A\to A$ in scope,
-we elaborate $id\,\U$ as follows:
+first infer a type for the term which is being applied, then refine the type to
+a function type, and lastly check the argument with the domain type.  Note the
+difference between the explicit and implicit case. In the former case, we use
+$\einfer{t}{\true}{\Theta_0}{\Gamma}$, which inserts implicit applications. In
+the latter case we do no insertion.  This, together with the inference
+definition for variables, ensures that implicit applications in the surface
+syntax behave similarly as in Agda. For example, given $id : \{A : \U\}\to A\to
+A$ in scope, we elaborate $id\,\U$ as follows:
 \begin{enumerate}
   \item The expression is an explicit application, so we infer $\id$ and insert implicit
         arguments, returning $id\,\{\alpha\}$, where $\alpha$ is a fresh meta.
@@ -926,22 +930,25 @@ On the other hand, we elaborate $id\,\{\U\}$ as follows:
   \item This changes direction again, and we infer $\U$ type for $\U$, and
     successfully unify $\U$ with $\U$.
 \end{enumerate}
-\todo{explain that we fail if $t$ has meta-headed type or handle it in elab}
 
 In the case of $\slet$, inference again just falls through, and we infer a type
 for the $\slet$ body. For $\einfer{\_}{ins}{\Theta}{\Gamma}$, we create a fresh meta
 for the type of the hole, and another fresh meta for the hole itself.
 
-\subsubsection{On soundness, completeness, and other properties}
-We briefly discuss what we can say about the presented elaborator. First,
-elaboration is \emph{sound} in the sense that it never produces malformed core
-syntax.
+\subsubsection{Starting and finishing elaboration} Given a surface term $t$,
+we do elaboration by computing $\einfer{t}{\true}{\emptycon}{\emptycon}$. If this
+succeeds, we get a $(\Theta,\,\theta,t')$ result. We say that elaboration succeeds
+if $\Theta = \emptycon$ and $\theta = \id$, i.e.\ no unsolved metas remain.
 
-\begin{theorem}[Soundness of elaboration] The definitions of $\echeckblank$ and
-$\einferblank$ conform to the specification \ref{TODO}. This follows by
-  induction on surface syntax, while also relying on the properties of
-  substitution, metasubstitution, $\mathsf{insert}$, $\unify$ and
-  $\mathsf{freshMeta}$. \qed
+\subsubsection{Properties of elaboration}
+First, elaboration is \emph{sound} in the sense that it only produces well-formed
+output.
+
+\begin{theorem}[Soundness] The definitions of $\echeckblank$ and
+$\einferblank$ conform to the \LabTirName{check} and \LabTirName{infer}
+  specifications. This follows by induction on surface syntax, while also
+  relying on the properties of substitution, metasubstitution,
+  $\mathsf{insert}$, $\unify$ and $\mathsf{freshMeta}$. \qed
 \end{theorem}
 
 We remark that this notion of soundness is only a ``sanity'' or well-typing
@@ -978,12 +985,25 @@ translation of $t'$ differs from $t$ only by
 This follows by straightforward induction on surface syntax. \qed
 \end{theorem}
 
-\todo{polymorphic subtyping, starting and ending elaboration}
+\subsubsection{Omitted features}
 
-Also, note that we do not support \emph{let-generalization}. This is an open
-research topic in settings with dependent types, and we make no attempt at
-tackling it. See \cite{eisenberg2016dependent} for a treatment in a proposed
-dependent version of Haskell.
+\begin{itemize}
+  \item \emph{Let-generalization}. This is an open
+    research topic in settings with dependent types, and we make no attempt at
+    tackling it. See \cite{eisenberg2016dependent} for a treatment in a proposed
+    dependent version of Haskell.
+  \item \emph{Polymorphic subtyping}. In some prior works, e.g.\ in
+    \cite{dunfield2013complete, vytiniotis2008fph}, there is a subtyping
+    relation arising along instantiations of polymorphic types. In GHC 8
+    polymorphic subtyping is implemented for function types only. Polymorphic
+    subtyping complicates type inference, and to our knowledge it has not been
+    researched or implemented in dependently typed settings. Hence we omit it as
+    well. GHC also seems to abandon polymorphic subtyping in recent developments
+    of impredicative inference \cite{serrano2020a}.
+
+
+\end{itemize}
+
 
 \section{Issues with First-Class Implicit Functions}
 
@@ -1066,17 +1086,102 @@ cause more postponing.
 
 \section{Telescopes and Strictly Curried Functions}
 
+As part of the proposed solution, we extend the core theory with telescopes
+and strictly curried functions.
+
+\begin{figure}[h]
+\begin{mathpar}
+  \inferrule*[lab=tel]
+             {\\}
+             {\Theta|\Gamma \vdash \Tel : \U}
+
+  \inferrule*[lab=empty-tel]
+             {\\}
+             {\Theta|\Gamma \vdash \epsilon : \Tel}
+
+  \inferrule*[lab=nonempty-tel]
+             {\Theta|\Gamma \vdash A : \U \\ \Theta|\Gamma,\,x : A \vdash B : \Tel}
+             {\Theta|\Gamma \vdash (x : A) \TCons B : \Tel}
+
+  \inferrule*[lab=record-type]
+             {\Theta|\Gamma \vdash A : \Tel}
+             {\Theta|\Gamma \vdash \Rec\,A : \U}
+
+  \inferrule*[lab=empty-rec]
+             {\\}
+             {\Theta|\Gamma \vdash [] : \Rec\,\epsilon}
+
+  \inferrule*[lab=nonempty-rec]
+             {\Theta|\Gamma \vdash t : A \\ \Theta|\Gamma \vdash u : \Rec\,(B[x\mapsto t])}
+             {\Theta|\Gamma \vdash t :: u : \Rec\,((x : A) \TCons B)}
+
+  \inferrule*[lab=rec-projection]
+             {\Theta|\Gamma \vdash t : \Rec\,((x : A) \TCons B)}
+             {\Theta|\Gamma \vdash \pi_1\,t : A \\
+               \Theta|\Gamma \vdash \pi_2\,t : \Rec\,(B[x\mapsto \pi_1\,t])}
+\end{mathpar}
+
+\begin{alignat*}{3}
+  & \text{\LabTirName{$\pi_1$-$\beta$}}\hspace{2em}  && \pi_1\,(t :: u) && \equiv t\\
+  & \text{\LabTirName{$\pi_2$-$\beta$}}  && \pi_2\,(t :: u) && \equiv u\\
+  & \text{\LabTirName{$::$-$\eta$}}  && (\pi_1\,t :: \pi_2\,t) && \equiv t\\
+  & \text{\LabTirName{${[}{]}$-$\eta$}}  && t && \equiv []
+\end{alignat*}
+
+  %% \inferrule*[lab=rec-projection]
+  %%            {\Theta|\Gamma \vdash t : \Rec\,((x : A) \TCons B)}
+  %%            {\Theta|\Gamma \vdash \pi_1\,t : A \\ \Theta|\Gamma \vdash \pi_2\,t : \Rec\,(B[x\mapsto \pi_1\,t])}
+
+  %% \inferrule*[lab=projection-$\beta$]
+  %%            {\\}
+  %%            {\pi_1\,(t :: u) \equiv t \\ \pi_2\,(t :: u) \equiv u}
+
+  %% \inferrule*[lab=$::$-$\eta$]
+  %%            {\\}
+  %%            {(\pi_1\,t :: \pi_2\,t) \equiv t}
+
+  %% \inferrule*[lab=${[}{]}$-$\eta$]
+  %%            {\Theta|\Gamma \vdash t : \Rec\,\epsilon}
+  %%            {\Theta|\Gamma \vdash t \equiv []}
+
+\caption{Rules for telescopes.}
+\label{fig:telescopes}
+\end{figure}
+
+\begin{figure}[h]
+\begin{mathpar}
+  \inferrule*[lab=curried-fun]
+             {\Theta|\Gamma \vdash A : \Tel \\ \Theta|\Gamma,\,x : \Rec\,A \vdash B : \U}
+             {\Theta|\Gamma \vdash \{x : \ol{A}\} \to B : \U}
+
+  \inferrule*[lab=curried-lam]
+             {\Theta|\Gamma,\,x : \Rec\,A \vdash t : B}
+             {\Theta|\Gamma \vdash \lambda\,\{x : \ol{A}\}.\,t : \{x : \ol{A}\} \to B}
+
+  \inferrule*[lab=curried-app]
+             {\Theta|\Gamma \vdash t : \{x : \ol{A}\} \to B \\ \Theta|\Gamma \vdash u : \Rec\,A}
+             {\Theta|\Gamma \vdash t\,\{u : \ol{A}\} : B[x \mapsto u]}
+\end{mathpar}
+
+\begin{alignat*}{3}
+  & \text{\LabTirName{fun-$\epsilon$}}\hspace{3em} && \{x : \ol{\epsilon}\}\to B && \equiv B[x \mapsto []]\\
+  & \text{\LabTirName{fun-$\TCons$}}         && \{x : \ol{(y : A) \TCons B}\}\to C \quad && \equiv
+                                               \{y : A\}\to(\{b : \ol{B}\}\to B[x \mapsto (y :: b)])\\
+  & \text{\LabTirName{lam-$\epsilon$}}       && \lambda\,\{x : \ol{\epsilon}\}.\,t && \equiv t[x \mapsto []]\\
+  & \text{\LabTirName{lam-$\TCons$}}         && \lambda\,\{x : \ol{(y : A)\TCons B}\}.\,t && \equiv
+                                         \lambda\{y\}.\,\lambda\,\{b : \ol{B}\}.\,t[x \mapsto (y :: b)]\\
+  & \text{\LabTirName{app-$\epsilon$}}       && t\,\{u : \ol{\epsilon}\} && \equiv t\\
+  & \text{\LabTirName{app-$\TCons$}}         && t\,\{u : \ol{(x : A) \TCons B}\} &&\equiv
+                                         t\,\{\pi_1\,u\}\,\{\pi_2\,u : \ol{B[x \mapsto \pi_1\,u]}\}\\
+  & \text{\LabTirName{curried-$\beta$}} && \lambda\,(\{x : \ol{A}\}.\,t)\,\{u:\ol{A}\} &&\equiv
+                                                             t[x \mapsto u]\\
+  & \text{\LabTirName{curried-$\eta$}}  && \lambda\,\{x : \ol{A}\}.\,t\,\{x : \ol{A}\} && \equiv t
+\end{alignat*}
 
 
-
-
-
-
-
-
-
-
-
+\caption{Rules for strictly curried functions.}
+\label{fig:curriedfunctions}
+\end{figure}
 
 
 \begin{acks}

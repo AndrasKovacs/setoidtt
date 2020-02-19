@@ -80,8 +80,8 @@ vAppTel a ~t ~u = case force a of
   VTEmpty       -> t
   VTCons _ a as -> let u1 = vProj1 u in vAppTel (as u1) (vApp t u1 Impl) (vProj2 u)
   a             -> case t of
-                     VLamTel _ _ t -> t u
                      VNe h sp      -> VNe h (SAppTel a sp u)
+                     VLamTel _ _ t -> t u
                      _             -> error "impossible"
 
 vAppSp :: Val -> Spine -> Val

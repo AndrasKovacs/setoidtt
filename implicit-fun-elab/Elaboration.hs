@@ -307,8 +307,8 @@ unify cxt l r =
 
     go t t' = case (force t, force t') of
       (VLam x _ a t, VLam _ _ _ t')            -> goBind x a t t'
-      (VLam x i a t, t')                       -> goBind x a t (\v -> vApp t' v i)
-      (t, VLam x' i' a' t')                    -> goBind x' a' (\v -> vApp t v i') t'
+      (VLam x i a t, t')                       -> goBind x a t (\ ~v -> vApp t' v i)
+      (t, VLam x' i' a' t')                    -> goBind x' a' (\ ~v -> vApp t v i') t'
       (VPi x i a b, VPi x' i' a' b') | i == i' -> go a a' >> goBind x a b b'
       (VU, VU)                                 -> pure ()
       (VTel, VTel)                             -> pure ()
@@ -317,8 +317,10 @@ unify cxt l r =
       (VTCons x a b, VTCons x' a' b')          -> go a a' >> goBind x a b b'
       (VTempty, VTempty)                       -> pure ()
       (VTcons t u, VTcons t' u')               -> go t t' >> go u u'
-      (VPiTel x a b, VPiTel x' a' b')          -> go a a' >> goBind x a b b'
-      (VLamTel x a t, VLamTel x' a' t')        -> goBind x a t t'
+      (VPiTel x a b, VPiTel x' a' b')          -> go a a' >> goBind x (VRec a) b b'
+      (VLamTel x a t, VLamTel x' a' t')        -> goBind x (VRec a) t t'
+      -- (VLamTel x a t, t')                      -> goBind x (VRec a) t (vAppTel a t')
+      -- (t, VLamTel x' a' t')                    -> goBind x' (VRec a') (vAppTel a' t) t'
       (VNe h sp, VNe h' sp') | h == h'         -> goSp (forceSp sp) (forceSp sp')
       (VNe (HMeta m) sp, t')                   -> solveMeta cxt m sp t'
       (t, VNe (HMeta m') sp')                  -> solveMeta cxt m' sp' t
