@@ -1226,11 +1226,28 @@ surface language remains unchanged, telescopes and curried functions are merely
 an internal implementation detail from the perspective of programmers.
 
 Curried functions are \emph{mostly} derivable from $\Nat$, $\top$ and $\Sigma$.
+The type former is defined as follows:
 \begin{alignat*}{3}
 & \rlap{$\Pi^C : (A : \Tel) \to (\Rec\,A \to \U) \to \U$}\\
 & \Pi^C (\zero,\,\_)\,B && :\equiv B\,\tt\\
 & \Pi^C (\suc\,n,\,(A,\,B))\,C && :\equiv \{a : A\}\to \Pi^C\,(n,\,B\,a) (\lambda\,b.\,C\,(a,\,b))
 \end{alignat*}
+With this, we can also define $\mathsf{app} : \Pi^C\,A\,B \to (a : \Rec\,A) \to
+B\, a$ and $\mathsf{lam} : ((a : \Rec\,A) \to B\, a) \to \Pi^C\,A\,B$, and all
+equations in Figure \ref{fig:telescopes} hold definitionally, except
+\LabTirName{curried-$\beta$} and \LabTirName{curried-$\eta$}. These do not hold
+strictly, because $\Pi^C$, $\mathsf{app}$ and $\mathsf{lam}$ are all defined by
+recursion on the $A$ telescope, but the $\beta\eta$ rules are specified
+generically for an arbitrary (possibly neutral)
+telescope. \LabTirName{curried-$\beta$} is still provable as a propositional
+equality, and assuming function extensionality \LabTirName{curried-$\eta$} is
+provable as well.
+
+
+
+
+
+
 
 
 %% Π : (Δ : Tel) → (Rec Δ → Set) → Set
