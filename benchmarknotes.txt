@@ -1,0 +1,9 @@
+
+
+1. Example in QL paper:
+
+  let foo = λ x. cons x ids    -- works in our system (FCIF - first-class-implicit-function)
+
+  "QL can't yet infer polymorphic types (i.e. when in infer mode!)"
+
+2. Agda tickets! Review again!

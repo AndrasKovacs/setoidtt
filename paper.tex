@@ -1002,9 +1002,17 @@ This follows by straightforward induction on surface syntax. \qed
     relation arising along instantiations of polymorphic types. In GHC 8
     polymorphic subtyping is implemented for function types only. Polymorphic
     subtyping complicates type inference, and to our knowledge it has not been
-    implemented in any dependently typed setting. Hence we omit it as well. GHC
-    also seems to abandon polymorphic subtyping in recent developments of
-    impredicative inference \cite{serrano2020a}.
+    implemented in any dependently typed setting. We also believe that it is an
+    anti-feature in dependent settings, because the elaboration of subtyping
+    must insert coercions which significantly change the intensional character
+    of programs. For example, if we have covariant list types, then coercing $t
+    : List\,(\{A : \U\}\to A \to A)$ to $t : List\,(Bool \to Bool)$ requires
+    mapping over $t$ and inserting implicit applications to $Bool$ for each list
+    element. In System F, this is harmless, since types are computationally
+    irrelevant, but in our core syntax we have implicit functions with arbitrary
+    (relevant) domains. In GHC, subtyping coercions for functions change
+    operational semantics; this is a reason for abandoning subtyping in recent
+    developments of impredicative inference for GHC \cite{serrano2020a}.
 \end{itemize}
 
 \section{Issues with First-Class Implicit Functions}
@@ -1131,7 +1139,7 @@ From the above, $\epsilon$, $\blank\TCons\blank$, $\blank::\blank$ and ${[}{]}$
 are evident, and all expected equalities hold definitionally. Derivability is
 good news because we inherit nice properties of the type theory which only
 contains the base type formers. For instance, if we have a consistent universe
-setup, we inherit consistency, canonicity and decidability of conversion. We
+setup\footnote{Recall that we currently assume type-in-type, which causes consistency and normalization to fail.}, we inherit consistency, canonicity and decidability of conversion. We
 currently use native telescopes instead of $\Nat$, $\top$ and $\Sigma$ because
 in unification and elaboration it is convenient that we are able to restrict
 some types to records types.
@@ -1241,7 +1249,23 @@ recursion on the $A$ telescope, but the $\beta\eta$ rules are specified
 generically for an arbitrary (possibly neutral)
 telescope. \LabTirName{curried-$\beta$} is still provable as a propositional
 equality, and assuming function extensionality \LabTirName{curried-$\eta$} is
-provable as well.
+provable as well. For details, see our Agda formalization of these definitions,
+which is included alongside the prototype implementation.
+
+Hence, we can derive a somewhat weaker version of curried functions, with
+propositional $\beta$ and $\eta$. From this, we still get consistency almost for
+free. That is because whenever we have a model of the base theory with $\Nat$,
+$\top$ and $\Sigma$, such that the model also validates equality reflection,
+then every propositionally provable equation is also validated as a definitional
+equation. And fortunately for us, standard models which prove consistency
+usually validate equality reflection, e.g.\ set-theoretical models or standard
+models in extensional type theory.
+
+In contrast, showing canonicity, normalization and decidability of conversion
+would require some extra work. We leave this to future work, but we expect that
+it is straightforward to extend previous proofs to cover strict $\beta$ and
+$\eta$ for curried functions.
+
 
 
 

@@ -265,6 +265,7 @@ ex1 = main' "elab" $ unlines [
   "let t4 = id poly (λ x. x) in",
 
   "let foo = head ids true in",
+  "let kek = λ x. cons x ids in",
   -- "let t5 = λ xs. poly (head xs) in", -- pruning
   -- "let t6 = length ids in",
   -- "let t7 = append (single inc) (single id) in",
