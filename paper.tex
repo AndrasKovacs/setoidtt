@@ -629,7 +629,7 @@ and similarly to \cite{gundry2013type}, we do not have a first-class notion of
 contextual types, and instead reuse the standard dependent function type to
 abstract over enclosing contexts.
 
-\begin{definition}[Closing type] For each $\Theta|\Gamma \vdash A : \U$, we define
+\begin{definition}[Closing type]\label{def:closingtype} For each $\Theta|\Gamma \vdash A : \U$, we define
 $\Gamma \To A$ by recursion on $\Gamma$, such that $\Theta|\emptycon\vdash
   \Gamma \To A : \U$.
   \begin{alignat*}{3}
@@ -782,7 +782,7 @@ explain the cases of the definition in order.
   &\quad(\Theta_2,\,\theta_2) \leftarrow \unify\,(A[\theta_1])\,B\\
   &\quad\ereturn\,(\Theta_2,\,\theta_1\circ\theta_2,\,t'[\theta_2])\\\\
   &\einfer{x}{ins}{\Theta}{\Gamma} :\equiv \edo\\
-  &\quad\eif\,((x : A) \in \Gamma)\,\lor\,((x : A = t) \in \Gamma) \\
+  &\quad\eif\,(\Gamma = (\Gamma_0,\,x : A,\,\Gamma_1))\,\lor\,(\Gamma = (\Gamma_0,\,x : A = t,\,\Gamma_1)) \\
   &\qquad   \ethen\, \ereturn\,(\einsert{ins}{x}{A})\\
   &\qquad   \eelse\, \fail\\
   &\einfer{\U}{ins}{\Theta}{\Gamma} :\equiv \edo\\
@@ -979,7 +979,7 @@ translation, which maps core terms to surface counterparts. Now, this is an
 ``evil'' construction on core terms, since it does not preserve definitional
 equality. We shall only use this evil notion in the following statement.
 
-\begin{theorem}[Conservativity]
+\begin{theorem}[Conservativity]\label{thm:conservativity}
 Elaboration is conservative over the surface syntax, in the sense that for any
 surface term $t$, if checking or inference outputs $t'$, then the forgetful
 translation of $t'$ differs from $t$ only by
@@ -993,29 +993,31 @@ This follows by straightforward induction on surface syntax. \qed
 \subsubsection{Omitted features}
 
 \begin{itemize}
-  \item \emph{Let-generalization}. This is an open
-    research topic in settings with dependent types, and we make no attempt at
-    tackling it. See \cite{eisenberg2016dependent} for a treatment in a proposed
-    dependent version of Haskell.
+  \item \emph{Let-generalization}. This is an open research topic in settings
+    with dependent types, and we make no attempt at covering it. See
+    \cite{eisenberg2016dependent} for a treatment in a proposed dependent
+    version of Haskell.
   \item \emph{Polymorphic subtyping}. In some prior works, e.g.\ in
     \cite{dunfield2013complete, vytiniotis2008fph}, there is a subtyping
     relation arising along instantiations of polymorphic types. In GHC 8
     polymorphic subtyping is implemented for function types only. Polymorphic
     subtyping complicates type inference, and to our knowledge it has not been
     implemented in any dependently typed setting. We also believe that it is an
-    anti-feature in dependent settings, because the elaboration of subtyping
-    must insert coercions which significantly change the intensional character
-    of programs. For example, if we have covariant list types, then coercing $t
-    : List\,(\{A : \U\}\to A \to A)$ to $t : List\,(Bool \to Bool)$ requires
+    anti-feature in dependent settings, because elaboration of subtyping must
+    insert coercions which significantly change the intensional character of
+    programs. For example, if we have covariant list types, then coercing $t :
+    List\,(\{A : \U\}\to A \to A)$ to $t : List\,(Bool \to Bool)$ requires
     mapping over $t$ and inserting implicit applications to $Bool$ for each list
-    element. In System F, this is harmless, since types are computationally
-    irrelevant, but in our core syntax we have implicit functions with arbitrary
-    (relevant) domains. In GHC, subtyping coercions for functions change
-    operational semantics; this is a reason for abandoning subtyping in recent
-    developments of impredicative inference for GHC \cite{serrano2020a}.
+    element. In System F, all such coercions are erasible, since types are
+    computationally irrelevant, but in our core syntax we have implicit
+    functions with arbitrary (relevant) domains. In GHC, subtyping coercions for
+    functions change operational semantics; this is a reason for abandoning
+    subtyping in recent developments of impredicative inference for GHC
+    \cite{serrano2020a}.
 \end{itemize}
 
 \section{Issues with First-Class Implicit Functions}
+\label{sec:issues}
 
 We revisit now the $polyList$ example from Section \ref{sec:introduction}. We
 assume the following:
@@ -1266,35 +1268,84 @@ would require some extra work. We leave this to future work, but we expect that
 it is straightforward to extend previous proofs to cover strict $\beta$ and
 $\eta$ for curried functions.
 
+\section{Extending Elaboration}
 
+We shall utilize the extended core theory to implement smarter
+elaboration. Recall from Section \ref{sec:issues} that the old elaborator makes
+two kinds of unforced insertion choices:
+\begin{enumerate}
+\item $\echeck{t}{\Theta}{\Gamma}{A}$ does not insert an implicit $\lambda$ when $A$ is meta-headed.
+\item $\einsert{\true}{A}$ does not insert an implicit application if $A$ is meta-headed.
+\end{enumerate}
+In the following, we shall only handle the case for $\lambda$ insertions. This
+allows a simple implementation which only requires minimal changes to
+unification, and which is already remarkably powerful. It seems that handling
+implicit application insertions requires extending unification; we will talk
+about this in Section \ref{TODO}. But before delving into elaboration, we need to
+rectify a curious issue.
 
+\subsection{Superfluous Implicit Functions}
 
+Assuming $Bool : \U$, $true : Bool$ and $false : Bool$, consider the following surface expression:
+\[
+  \slet\,x : \_ = true\,\sin\,x
+\]
+What should this expression elaborate to? We would expect the result to be simply
+\[
+  \slet\,x : Bool = true\,\sin\,x
+\]
+However, there are infinitely many core terms which are conservative over the
+surface expression in the sense of Theorem \ref{thm:conservativity}. That is, we
+can wrap definitions with any number of implicit $\lambda$-s, and add implicit
+applications accordingly to usage sites of the defined name. For example, we could have
+\[
+  \slet\,x : \{y : Bool\} \to Bool = \lambda\,\{y\}.\,true\,\sin\,x\,\{true\}
+\]
+This is clearly undesirable. With the type $\{y : Bool\} \to Bool$, the implicit
+argument $y$ is never inferable, because the codomain type does not depend on
+the domain, and the argument is never constrained. Hence, with the above
+definition, we always have to write $x\,\{true\}$ or $x\,\{false\}$ when we want
+to use $x$. To rule out such nonsense, we adopt the following principle:
 
+\begin{quote}
+  \emph{Elaboration should never invent non-dependent implicit function types.}
+\end{quote}
 
+This was a non-issue in the old elaborator, because it was not able to invent
+implicit function types; it was only utilizing the type annotations present in
+the surface input. With $\slet\,x : \_ = true$, the old elaborator checks $true$
+with a fresh meta, and just assumes that the meta does not stand for an
+implicit function type.
 
+To implement our principle, we need \emph{constancy constraints}. These are
+constraints in the sense of GHC's OutsideIn(X) \cite{vytiniotis2011outsidein}
+and also in the sense of the implementation in Agda and Coq. Rules for constancy
+constraints are as follows.
 
+\begin{mathpar}
+  \inferrule*[lab=metacon/constr]
+             {\Theta \vdash \alpha : \Gamma \To \Tel \\ \Theta|\Delta,\,x : \Rec\,(\alpha\,\ol{t}) \vdash B : \U}
+             {\Theta,\,\mathsf{constancy}_{\Delta,\,x : \Rec\,(\alpha\,\ol{t})}\,B\vdash}
 
-%% Π : (Δ : Tel) → (Rec Δ → Set) → Set
-%% Π ε       B = B tt
-%% Π (A ▶ Δ) B = (x : A) → Π (_ , Δ x) λ δ → B (x , δ)
+  \inferrule*[lab=constr/solve]
+             {\Theta_0 \vdash \alpha : \Gamma_0 \To \Tel \\ x \notin FreeVars(B)}
+             {\Theta_0,\,\mathsf{constancy}_{\Delta,\,x : \Rec\,(\alpha\,\ol{t})}\,B,\,\Theta_1|\Gamma_1
+               \vdash \alpha \equiv \lambda\,\overline{\mathsf{vars}_{\Gamma_0}}.\,\epsilon}
+\end{mathpar}
 
-%% app : ∀ {Δ B} → Π Δ B → (δ : Rec Δ) → B δ
-%% app {ε}     f x         = f
-%% app {A ▶ Δ} f (x₀ , x₁) = app (f x₀) x₁
+In the rule \LabTirName{metacon/constr}, we allow extension of the metacontext
+with a constraint.  In the constraint, the metavariable $\alpha : \Gamma \To
+\Tel$ represents an unknown domain for a curried function type, and $B$ is the
+codomain of the function. Here, $\Gamma \To \Tel$ refers to a closing type, which
+was defined in Section \ref{def:closingtype}.
 
-%% lam : ∀ {Δ B} → ((δ : Rec Δ) → B δ) → Π Δ B
-%% lam {ε}     f = f tt
-%% lam {A ▶ Δ} f = λ x → lam λ δ → f (x , δ)
+\todo{first, define new closing types and fresh metas!}
 
-
-
-
-
-
-
-
-
-
+The rule \LabTirName{constr/solve} says that if $B$ does not depend on the $x :
+\Rec\,(\alpha\,\ol{t})$ domain variable, then $\alpha$ is equal to the constant
+function which returns the empty telescope. We use the abbreviation
+$\lambda\,\overline{\mathsf{vars}_{\Gamma_0}}$ to refer to an iterated $\lambda$
+which abstracts over all variables in $\Gamma_0$.
 
 
 
