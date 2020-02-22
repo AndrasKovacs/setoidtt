@@ -18,7 +18,7 @@ import ElabState
 import Debug.Trace
 
 
--- Telescope constancy
+-- Occurs check for constancy constraints
 --------------------------------------------------------------------------------
 
 data Occurs = Rigid | Flex IS.IntSet | None deriving (Eq, Show)

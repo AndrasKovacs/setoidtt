@@ -78,9 +78,12 @@
 \newcommand{\id}{\mathsf{id}}
 \newcommand{\blank}{\mathord{\hspace{1pt}\text{--}\hspace{1pt}}}
 \newcommand{\freshMeta}[3]{\mathsf{freshMeta}\,_{#1|#2}\,#3}
+\newcommand{\constancy}{\mathsf{constancy}}
+\newcommand{\newConstancy}[6]{\mathsf{newConstancy}_{#1|#2,\,#3 : \Rec\,(#4\,#5)}\,#6}
 \newcommand{\unify}{\mathsf{unify}}
 \newcommand{\fail}{\mathsf{fail}}
 \newcommand{\kw}[1]{{\mathsf{#1}}}
+\newcommand{\FreeVars}{\mathsf{FreeVars}}
 
 \newcommand{\echeckblank}{\llbracket\blank\rrbracket\!\Downarrow}
 \newcommand{\einferblank}{\llbracket\blank\rrbracket\!\Uparrow}
@@ -149,14 +152,13 @@ in the context of Haskell and ML-like languages, this has been dubbed
 framework for elaborating first-class implicit functions, which is applicable
 for full dependent type theories and compares favorably to prior solutions in
 terms of power, generality and conceptual simplicity. We build atop Norell's
-bidirectional elaboration algorithm for Agda, and note that the key issue is
+bidirectional elaboration algorithm for Agda, and we note that the key issue is
 incomplete information about insertions of implicit abstractions and
 applications. We make it possible to track and refine information related to
-such insertions, by adding a new function type to a core Martin-L\"of type
-theory, which supports strict (definitional) currying. This allows us to
-represent undetermined domain arities of implicit function types, and we can
-decide at any point during elaboration whether implicit abstractions should be
-inserted.
+such insertions, by adding a function type to a core Martin-L\"of type theory,
+which supports strict (definitional) currying. This allows us to represent
+undetermined domain arities of implicit function types, and we can decide at any
+point during elaboration whether implicit abstractions should be inserted.
 \end{abstract}
 
 
@@ -214,7 +216,7 @@ types\footnote{This notation requires language extensions
 \end{alignat*}
 In all of the above cases, if we apply $id$ to an argument, the implicit type
 argument is provided by elaboration. For example, in Agda, $id\,true$ is
-elaborated to $id\,Bool\,true$, and analogously in GHC and Coq. In all three
+elaborated to $id\,\{Bool\}\,true$, and analogously in GHC and Coq. In all three
 systems, there is also a way to explicitly specify implicit arguments: in Agda
 we may put arguments in brackets as we have seen, in Coq we can prefix a name
 with $\kw{@}$ to make every implicit argument explicit, as in
@@ -260,7 +262,7 @@ and consider the following code:
 \end{alignat*}
 Agda 2.6.0.1 does not accept this. However, it does accept $polyList =
 (\lambda\,\{A\}\,x \to x)\,::\,[]$. The issue is the following. Agda first
-\emph{infers} a type for $(\lambda\,x \to x)\,::\,[]$, then tries to unify the
+infers a type for $(\lambda\,x \to x)\,::\,[]$, then tries to unify the
 inferred type with the given $List\,(\{A : \kw{Set}\}\to A \to A)$
 annotation. However, when Agda elaborates $\lambda\,x \to x$, it does not yet
 know anything about the element type of the list; it is an undetermined
@@ -272,11 +274,15 @@ function type, and elects to not insert a lambda. This assumption is often
 correct, but sometimes --- as in the current case --- it is not.
 
 There is significant literature on type inference in the presence of first-class
-polymorphic types, mainly in relation to GHC and ML-like languages \cite{leijen2008hmf,leijen2009flexible,serrano2018guarded,vytiniotis2006boxy,serrano2020a}.
+polymorphic types, mainly in relation to GHC and ML-like languages; see
+e.g.\ \cite{leijen2008hmf,leijen2009flexible,serrano2018guarded,vytiniotis2006boxy}.
 The above issue in Agda is a specific instance of the challenges described in
-the mentioned works. However, none of the proposed algorithms have landed so far
-in production compilers, for reasons of complexity, fragility and interaction
-with other language features.
+the mentioned works. So far, none of the above solutions have landed in
+production compilers, for reasons of complexity, fragility and interaction with
+other language features. A recent GHC development \cite{serrano2020a} offers a
+solution which is relatively simple, and which is likely to land in an official
+GHC release. However, none of these solutions support dependent types, and they
+also have other limitations which we would like to address.
 
 The solution presented in this paper is to gradually accummulate information
 about implicit insertions, and to have a setup where insertions can be refined
@@ -332,7 +338,7 @@ First, we present a variant of Norell's bidirectional elaborator
 \cite[Chapter~3]{norell07thesis}. Compared to ibid.\ we make some extensions and
 simplifications; what we end up with can be viewed as a toy version of the
 actual Agda elaborator. In this section, we use it to illustrate the key issues,
-and we extend it in Section TODO with additional rules.
+and we extend it in Section \ref{sec:extending_elaboration}.
 \begin{figure}[h]
 \begin{alignat*}{4}
   t,\,u,\,v,\,A,\,B,\,C\, :&:=\quad  && x\hspace{8em}              & \text{variable}                 &  \\
@@ -490,9 +496,8 @@ fully formal presentation in this paper. Some notes on what is elided:
     we have $\Theta|\Gamma\vdash t : A$, we assume that $\Theta|\Gamma\vdash A : \U$.
 \end{itemize}
 
-From now on, we will only consider well-formed core syntax, and only
-constructions which respect definitional equality. In other words, we quotient
-well-formed syntax by definitional equality.
+From now on, we will only consider well-formed core syntax, and unless otherwise
+mentioned, constructions on core syntax which respect definitional equality.
 
 Alternatively, one could present the syntax as a generalized algebraic theory
 \cite{sterling2019algebraic} or a quotient inductive-inductive type
@@ -562,7 +567,7 @@ will be able to omit implicit arguments to $map$.
 
 \end{example}
 
-\subsection{Metasubstitutions}
+\subsection{Metasubstitutions}\label{sec:metasubstitutions}
 
 Before we can move on to the description of the elaborator, we need to specify
 metasubstitutions. These are essentially just parallel substitutions of
@@ -639,7 +644,7 @@ $\Gamma \To A$ by recursion on $\Gamma$, such that $\Theta|\emptycon\vdash
   \end{alignat*}
 \end{definition}
 
-\begin{definition}[Contextualization] For each $\Theta|\Gamma \vdash t : \Gamma\To A$,
+\begin{definition}[Contextualization]\label{def:contextualization} For each $\Theta|\Gamma \vdash t : \Gamma\To A$,
 we define the spine $\overline{\mathsf{vars}_{\Gamma}}$ such that that
 $\Theta|\Gamma\vdash t\,\overline{\mathsf{vars}_{\Gamma}} : A$. Informally, this
 is $t$ applied to all bound variables in $\Gamma$.
@@ -655,7 +660,7 @@ $(\Gamma \To \U) \equiv ((A : \U)(B : A \to \U) \to \U)$ and
 $t\,\overline{\mathsf{vars}_{\Gamma}} \equiv t\,A\,B$.
 \end{example}
 
-\begin{definition}[Fresh meta creation] We specify $\freshMeta{\Theta}{\Gamma}{A}$ as follows:
+\begin{definition}[Fresh meta creation]\label{def:freshmeta} We specify $\freshMeta{\Theta}{\Gamma}{A}$ as follows:
   \begin{mathpar}
   \inferrule*{\Theta|\Gamma\vdash A : \U}
              {\freshMeta{\Theta}{\Gamma}{A} \in \{(\Theta',\,\theta,\,t)\,|\,(\theta : \Theta' \To \Theta)\,\land\,(\Theta'|\Gamma[\theta]\vdash t : A[\theta])\}}
@@ -673,8 +678,8 @@ applied to all bound variables.
 
 We define a helper function which inserts implicit applications around a core
 term. For example, if we have a defined name $id$ with type $\{A : \U\}\to A \to
-A$ occurring in the surface program, we usually want to expand $id$ to
-$id\,\{\alpha\}$, where $\alpha$ is a fresh metavariable.
+A$ in a surface program, we usually want to expand $id$ to $id\,\{\alpha\}$,
+where $\alpha$ is a fresh metavariable.
 \begin{mathpar}
 \inferrule*{ins \in \{\true,\,\false\} \\ \Theta|\Gamma\vdash t : A}
            {\einsert{ins}{t}{A} \in \{(\Theta',\,\theta\,t',\,A')\,|\,
@@ -684,7 +689,8 @@ We have an additional $ins \in \{\true,\,\false\}$ parameter, which simply
 toggles whether any insertion is to be performed. We will use this in the
 definition of elaboration. Insertion is defined by recursion on $ins$ and the
 $A$ type, as follows. Here, we notate $\Theta$ and $\Gamma$ as subscripts but
-later we will leave them implicit.
+later we will leave them implicit. The clauses of the following definition are
+matched top-down.
 \begin{alignat*}{3}
   &\einsertpar{\Theta}{\Gamma}{\false}{t}{A} && :\equiv\,\,&& (\Theta,\,\id,\,t,\,A)\\
   &\einsertpar{\Theta}{\Gamma}{\true\,}{t}{(\{x : A\}\to B)} && :\equiv&&
@@ -736,8 +742,8 @@ In this section we define the elaboration algorithm. First, we explain the used 
 Elaboration consists of two (partial) functions, checking and inferring, which
 are defined by mutual induction on surface syntax. They are specified as
 follows. We also have the additional $ins \in \{\true,\,\false\}$ argument for
-inference, which toggles whether the output has inserted implicit arguments.  We
-explain the cases of the definition in order.
+inference, which toggles whether we perform implicit argument insertion on the
+output. We explain the cases of the definition in order.
 
 \begin{mathpar}
 \inferrule*[lab=check]
@@ -854,9 +860,9 @@ explain the cases of the definition in order.
 
 \subsubsection{Checking}
 The first two clauses are checking $\lambda$-s, where the expected type exactly
-matches the $\lambda$ expressions. Hence, we simply check under binders with
+matches the $\lambda$ binders. Hence, we simply check under binders with
 $\echeck{t}{\Theta}{(\Gamma,\,x:A)} B$, and wrap the resulting term in the
-appropriate $\lambda$.
+appropriate (implicit or explicit) $\lambda$.
 
 The third clause for $\echeck{t}{\Theta}{\Gamma}{(\{x : A\}\to B)}$ is more
 interesting. Here, we are checking a surface term which is \emph{not} a
@@ -869,20 +875,19 @@ higher-order function where some arguments have implicit function type. For
 example, in the surface syntax, assume natural numbers, and an induction
 principle for them:
 \[
-NatInd : \{P : \Nat \to \U\}\to \,P\,\zero \to (\{n : \Nat\}\to P\,n \to
-         P\,(\suc\,n)) \to (n : \Nat) \to P\,n
+NatInd : \{P : Nat \to \U\}\to \,P\,\zero \to (\{n : Nat\}\to P\,n \to
+         P\,(\suc\,n)) \to (n : Nat) \to P\,n
 \]
 Then, define addition using induction:
 \begin{alignat*}{1}
-& \slet\, NatPlus : \Nat \to \Nat \to \Nat\\
-& \qquad = NatInd\,(\lambda\,n.\,\Nat\to\Nat)\,(\lambda\,m.\,m)\,
+& \slet\, NatPlus : Nat \to Nat \to Nat\\
+& \qquad = NatInd\,(\lambda\,n.\,\Nat\to Nat)\,(\lambda\,m.\,m)\,
                         (\lambda\,f\,m.\,\suc\,(f\,m))\,\,\sin\,\,...
 \end{alignat*}
 When the above is elaborated, the $\lambda\,f\,m.\,\suc\,(f\,m)$ function is
-checked with the expected type $\{n : \Nat\}\to (\Nat \to \Nat) \to (\Nat \to
-\Nat)$, and the elaboration output is $\lambda\,\{n\}\,f\,m.\,\suc\,(f\,m)$.
-Hence, in this case we do not have to write implicit $\lambda$ in the surface
-syntax.
+checked with the expected type $\{n : Nat\}\to (Nat \to Nat) \to (Nat \to Nat)$,
+and the elaboration output is $\lambda\,\{n\}\,f\,m.\,\suc\,(f\,m)$.  Hence, in
+this case we do not have to write implicit $\lambda$ in the surface syntax.
 
 For $\echeck{\slet\,x:A=t\,\sin\,u}{\Theta_0}{\Gamma}{B}$, we simply let
 checking fall through. The definition here is a bit noisy, because we need to
@@ -902,7 +907,7 @@ succeed and infer $\U$ as type. In the cases for function types, we check that
 the domains and codomains have type $\U$.
 
 For $\lambda$-s, we create a fresh meta for the domain type (since our surface
-$\lambda$-s are not annotated), and infer the bodies. In the case of
+$\lambda$-s are not annotated), and infer types for the bodies. In the case of
 $\einfer{\lambda\,\{x\}.\,t}{ins}{\Theta_0}{\Gamma}$, we additionally perform
 $\einsert$ on the output.
 
@@ -1217,14 +1222,12 @@ some types to records types.
 \subsection{Strictly Curried Functions}
 
 These are function types whose domains are telescopes, and they are immediately
-computed to iterated implicit function types when the domain telescope is known
-to be empty or non-empty. See \LabTirName{fun-$\epsilon$} and
-\LabTirName{fun-$\TCons$}: a curried function with empty domain computes to
-simply the codomain, while a function with a non-empty domain computes to an
-implicit function type. We explicitly notate telescopes in both
-$\lambda$-abstractions and applications for strictly curried functions, since
-they are relevant in the computation rules.
-
+computed to iterated implicit function types when the domain telescope is
+canonical.  See \LabTirName{fun-$\epsilon$} and \LabTirName{fun-$\TCons$}: a
+curried function with empty domain computes to simply the codomain, while a
+function with a non-empty domain computes to an implicit function type. We
+explicitly notate telescopes in both $\lambda$-abstractions and applications for
+strictly curried functions, since they are relevant in the computation rules.
 
 Curried function types tend to be computed away, but they can persist if the
 domain telescope is neutral, and in particular when it is meta-headed. For
@@ -1269,6 +1272,7 @@ it is straightforward to extend previous proofs to cover strict $\beta$ and
 $\eta$ for curried functions.
 
 \section{Extending Elaboration}
+\label{sec:extending_elaboration}
 
 We shall utilize the extended core theory to implement smarter
 elaboration. Recall from Section \ref{sec:issues} that the old elaborator makes
@@ -1277,16 +1281,33 @@ two kinds of unforced insertion choices:
 \item $\echeck{t}{\Theta}{\Gamma}{A}$ does not insert an implicit $\lambda$ when $A$ is meta-headed.
 \item $\einsert{\true}{A}$ does not insert an implicit application if $A$ is meta-headed.
 \end{enumerate}
-In the following, we shall only handle the case for $\lambda$ insertions. This
-allows a simple implementation which only requires minimal changes to
-unification, and which is already remarkably powerful. It seems that handling
-implicit application insertions requires extending unification; we will talk
-about this in Section \ref{TODO}. But before delving into elaboration, we need to
-rectify a curious issue.
+In the following, we shall only enhance $\lambda$-insertions. This allows a
+simple implementation which only requires minimal changes to unification, and
+which is already remarkably powerful. It seems that handling implicit
+application insertions requires extending unification; we discuss this in
+Section \ref{TODO}. First, we modify closing types and contextualization to take
+advantage of telescopes.
 
-\subsection{Superfluous Implicit Functions}
+\begin{definition}[Closing types]
+We use curried function space to close over record types in the scope. We
+prepend the following clause to Definition \ref{def:closingtype}:
+\[
+  ((\Gamma,\, x : \Rec\,A) \To B) :\equiv (\Gamma \To (\{x : \ol{A}\} \to B))
+\]
+\end{definition}
+\begin{definition}[Contextualization]
+We extend our spine notation to applications of curried functions. For example,
+we may have a spine $\ol{t} \equiv (\{x : \ol{A}\}\,\{y : \ol{B}\})$. We
+accordingly revise Definition \ref{def:contextualization} for
+$\overline{\mathsf{vars}_{\Gamma}}$ so that we use curried function application
+for each record type in $\Gamma$.
+\end{definition}
 
-Assuming $Bool : \U$, $true : Bool$ and $false : Bool$, consider the following surface expression:
+\subsection{Handling Superfluous Implicit Functions}
+
+Before we can move on to unification, checking and inference, we have to address
+a curious issue. Assuming $Bool : \U$, $true : Bool$ and $false : Bool$,
+consider the following surface expression:
 \[
   \slet\,x : \_ = true\,\sin\,x
 \]
@@ -1305,47 +1326,128 @@ This is clearly undesirable. With the type $\{y : Bool\} \to Bool$, the implicit
 argument $y$ is never inferable, because the codomain type does not depend on
 the domain, and the argument is never constrained. Hence, with the above
 definition, we always have to write $x\,\{true\}$ or $x\,\{false\}$ when we want
-to use $x$. To rule out such nonsense, we adopt the following principle:
-
-\begin{quote}
-  \emph{Elaboration should never invent non-dependent implicit function types.}
-\end{quote}
+to use $x$. In order to avoid such nonsense, we adopt the following principle:
+\emph{elaboration should never invent non-dependent implicit function types.}
 
 This was a non-issue in the old elaborator, because it was not able to invent
 implicit function types; it was only utilizing the type annotations present in
-the surface input. With $\slet\,x : \_ = true$, the old elaborator checks $true$
-with a fresh meta, and just assumes that the meta does not stand for an
-implicit function type.
+the surface input. In the case of $\slet\,x : \_ = true$, the old elaborator
+checks $true$ with a fresh meta, and just assumes that the meta does not stand
+for an implicit function type.
 
-To implement our principle, we need \emph{constancy constraints}. These are
-constraints in the sense of GHC's OutsideIn(X) \cite{vytiniotis2011outsidein}
-and also in the sense of the implementation in Agda and Coq. Rules for constancy
-constraints are as follows.
+\subsubsection{Constancy constraints}
+We use \emph{constancy constraints} to get rid of curried function types as
+soon as we learn that they are non-dependent. These are constraints in the usual
+sense in unification algorithms (e.g.\ as in \cite{abel2011higher} or
+\cite{vytiniotis2011outsidein}). We formalize them in a compact way, by adding a
+new kind of context extension for metacontexts. The rules are given in Figure
+\ref{fig:constancy}.
 
+\begin{figure}
 \begin{mathpar}
-  \inferrule*[lab=metacon/constr]
-             {\Theta \vdash \alpha : \Gamma \To \Tel \\ \Theta|\Delta,\,x : \Rec\,(\alpha\,\ol{t}) \vdash B : \U}
-             {\Theta,\,\mathsf{constancy}_{\Delta,\,x : \Rec\,(\alpha\,\ol{t})}\,B\vdash}
+  \inferrule*[lab=metacon/constancy]
+             {\Theta|\emptycon \vdash \alpha : \Delta \To \Tel \\ \Theta|\Gamma,\,x : \Rec\,(\alpha\,\ol{t}) \vdash B : \U}
+             {\Theta,\,\mathsf{constancy}_{\Gamma,\,x : \Rec\,(\alpha\,\ol{t})}\,B\vdash}
 
-  \inferrule*[lab=constr/solve]
-             {\Theta_0 \vdash \alpha : \Gamma_0 \To \Tel \\ x \notin FreeVars(B)}
-             {\Theta_0,\,\mathsf{constancy}_{\Delta,\,x : \Rec\,(\alpha\,\ol{t})}\,B,\,\Theta_1|\Gamma_1
-               \vdash \alpha \equiv \lambda\,\overline{\mathsf{vars}_{\Gamma_0}}.\,\epsilon}
+  \inferrule*[lab=constancy-$\equiv$]
+             {\Theta_0|\emptycon \vdash \alpha : \Delta \To \Tel \\ x \notin \FreeVars(B)}
+             {\Theta_0,\,\mathsf{constancy}_{\Gamma_0,\,x : \Rec\,(\alpha\,\ol{t})}\,B,\,\Theta_1|\Gamma_1
+               \vdash \alpha \equiv (\lambda\,\overline{\mathsf{vars}_{\Delta}}.\,\epsilon) : \Delta \To \Tel}
+
+  \inferrule*[lab=metasub/constancy]
+             {\Theta_1|\emptycon \vdash \alpha : \Delta \To \Tel \\ \theta : \Theta_0 \To \Theta_1 \\\\ (x \notin \FreeVars(B[\theta]))\,\,\,\text{implies}\,\,\,(\alpha[\theta] \equiv (\lambda\,\overline{\mathsf{vars}_{\Delta[\theta]}}.\,\epsilon))}
+             {(\theta,\,\mathsf{solve}) : \Theta_0 \To (\Theta_1,\,\constancy_{\Gamma,\,x : \Rec\,(\alpha\,\ol{t})}\,B)}
+
+  \inferrule*[lab=metasub/weaken-constancy]
+             {\\}
+             {\p : (\Theta,\,\constancy_{\Gamma,\,x : \Rec\,(\alpha\,\ol{t})}\,B) \To \Theta}
 \end{mathpar}
+\caption{Rules for constancy constraints}
+\label{fig:constancy}
+\end{figure}
 
-In the rule \LabTirName{metacon/constr}, we allow extension of the metacontext
-with a constraint.  In the constraint, the metavariable $\alpha : \Gamma \To
-\Tel$ represents an unknown domain for a curried function type, and $B$ is the
-codomain of the function. Here, $\Gamma \To \Tel$ refers to a closing type, which
-was defined in Section \ref{def:closingtype}.
+In the rule \LabTirName{metacon/constancy} we specify extension of a
+metacontext with a constraint. The metavariable $\alpha : \Gamma \To \Tel$
+represents an unknown domain for a curried function type, and $B$ is the
+codomain of the function.
 
-\todo{first, define new closing types and fresh metas!}
-
-The rule \LabTirName{constr/solve} says that if $B$ does not depend on the $x :
-\Rec\,(\alpha\,\ol{t})$ domain variable, then $\alpha$ is equal to the constant
-function which returns the empty telescope. We use the abbreviation
+The \LabTirName{constancy-$\equiv$} rule expresses that, assuming we have a
+constancy constraint for $\alpha$ and $B$ in context, if $B$ does not depend on
+the $x : \Rec\,(\alpha\,\ol{t})$ domain variable, then $\alpha$ is equal to the
+constant function which returns the empty telescope. We use the abbreviation
 $\lambda\,\overline{\mathsf{vars}_{\Gamma_0}}$ to refer to an iterated $\lambda$
 which abstracts over all variables in $\Gamma_0$.
+
+The \LabTirName{metasub/constancy} rule defines metasubstitutions whose
+codomains are extended with constraints. Intuitively, while the
+\LabTirName{metasub/extended} rule from Section \ref{sec:metasubstitutions} can
+be used to solve a metavariable (by mapping it to a term),
+\LabTirName{metasub/constancy} solves a constraint. We can only extend $\theta :
+\Theta_0 \To \Theta_1$ to map into an additional constraint in the codomain if
+$\theta$ forces the constraint to hold. In
+\LabTirName{metasub/weaken-constancy}, we overload $\p$ for the weakening
+substitution which drops a constraint.
+
+\begin{definition}[Creating a new constraint]
+We define this similarly to Definition \ref{def:freshmeta}, by simply
+returning a weakening substitution.
+\[
+\newConstancy{\Theta}{\Gamma}{x}{\alpha}{\ol{t}}{B} : \equiv
+             ((\Theta,\,\constancy_{\Gamma,\,x : \Rec\,(\alpha\,\ol{t})}\,B),\,\p)
+\]
+\end{definition}
+
+\subsubsection{Algorithmic implementation of constraint solving}
+The above specification for constancy constraints is compact but not
+particularly algorithmic: we just magically get new definitional equalities
+whenever we have constraints in contexts. In our prototype implementation, we
+augment the unification procedure with eager removal of solvable constraints.
+
+After solving a meta $\beta$ during unification, which yields a unifying
+$\theta$ substitution, we review all ($\constancy_{\Gamma,\,x :
+  \Rec\,(\alpha\,\ol{t})}\,B$) constraints in the context, where $x$ occurs in
+$B$ inside a $\ol{t}$ spine of some $\beta\,\ol{t}$ term. In other words, we
+review constraints where the new meta solution might make a difference.
+\begin{enumerate}
+  \item If we have $x \in \FreeVars(B[\theta])$, where $x$ occurs rigidly in
+    $B[\theta]$, i.e.\ the occurrence is not in a spine of a meta, then no
+    metasubstitution can possibly remove this occurrence. In this case the
+    constraint holds vacuously, so we can use the rule
+    \LabTirName{metasub/constancy} to return a $\theta'$ substitution which also
+    solves the constraint.
+  \item If we have $x \notin \FreeVars(B[\theta])$, we solve $\alpha$ to be
+    constantly $\epsilon$, thereby getting a $\theta'$ substitution. Since
+    $\theta'$ forces the constrain to hold, we can again use
+    \LabTirName{metasub/constancy} to solve the constraint. Then, since we have
+    just solved $\alpha$, we recursively check for solvable constraints.
+  \item
+    In any other case we simply return $\theta$ and keep the constraint around.
+\end{enumerate}
+
+\emph{Remark.} In the case with $x \in \FreeVars(B[\theta])$, it would be also
+sound to solve the constraint when the occurrence is not necessarily
+rigid. However, this way we could lose potential non-$\epsilon$ solutions of
+$\alpha$.
+
+\subsection{Unification For Strictly Curried Functions}
+Although we omit most details of unification, we shall discuss it for curried
+functions, as it is essential in the extended elaboration algorithm.  The most
+interesting case is when we unify a curried function type with an implicit
+function type. In this case, we learn that the domain of the curried function is
+non-empty, so we refine the domain telescope.
+\begin{alignat*}{3}
+& \unify_{\Theta_0|\Gamma}(\{x : \ol{A}\}\to B)\,(\{x : A'\}\to B') :\equiv \edo\\
+& \quad (\Theta_1,\,\theta_1,\,\alpha\,\ol{t}) \leftarrow \freshMeta{\Theta_0}{\Gamma,\,x : A'}{\Tel}\\
+& \quad (\Theta_2,\,\theta_2) \leftarrow
+  \unify_{\Theta_1|\Gamma[\theta_1]}\,(A[\theta_1])\,((x : A'[\theta_1])\TCons \alpha\,\ol{t})\\
+& \quad (\Theta_3,\,\theta_3) \leftarrow \newConstancy{\Theta_2}{\Gamma[\theta_1\circ\theta_2],\,y : A'[\theta_1\circ\theta_2]}{z}{(\alpha}{\ol{t})[\theta_2]}{(B[\theta_1\circ\theta_2][x\mapsto (y :: z)])}\\
+& \unify_{\Theta_3|\Gamma[\theta_{123}]}\,(\{z : \ol{\alpha\,\ol{t}}
+\end{alignat*}
+
+
+
+
+
 
 
 

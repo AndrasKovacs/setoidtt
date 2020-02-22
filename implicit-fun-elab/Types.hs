@@ -100,12 +100,12 @@ pattern TSnoc as a <- ((\case TBound as a -> Just (as, a)
 lvlName :: [Name] -> Lvl -> Name
 lvlName ns x = ns !! (length ns - x - 1)
 
-ixType :: Types -> Ix -> VTy
-ixType TNil           _ = error "impossible"
-ixType (TDef   tys a) 0 = a
-ixType (TBound tys a) 0 = a
-ixType (TDef   tys a) x = ixType tys (x - 1)
-ixType (TBound tys a) x = ixType tys (x - 1)
+-- ixType :: Types -> Ix -> VTy
+-- ixType TNil           _ = error "impossible"
+-- ixType (TDef   tys a) 0 = a
+-- ixType (TBound tys a) 0 = a
+-- ixType (TDef   tys a) x = ixType tys (x - 1)
+-- ixType (TBound tys a) x = ixType tys (x - 1)
 
 data NameOrigin = NOSource | NOInserted
 
@@ -394,8 +394,3 @@ makeFields ''Str
 ucxt :: Lens' Cxt UnifyCxt
 ucxt f (Cxt vs tys ns no d) =
   (\(UCxt tys ns d) -> Cxt vs tys ns no d) <$> f (UCxt tys ns d)
-
--- instance HasNames  [Name]  [Name]  where names = id
--- instance HasVals   Vals    Vals    where vals  = id
--- instance HasTypes  Types   Types   where types = id
--- instance HasLen    Int     Int     where len   = id

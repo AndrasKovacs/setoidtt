@@ -9,3 +9,11 @@
 2. Agda tickets! Review again!
 
 3. Count lines of code *without* telescopes, note the diff!
+
+
+
+-- line counts:
+
+-- FCIF:
+-- eval, elab, unify: 713 lines
+-- without telescopes: 573
