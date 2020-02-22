@@ -28,23 +28,21 @@ lookupMeta m = do
 runLookupMeta :: MId -> MetaEntry
 runLookupMeta m = runIO (lookupMeta m)
 
-writeMeta :: MId -> MetaEntry -> IO ()
-writeMeta m e = modifyIORef' mcxt (IM.alter go m) where
-  go Just{} = Just e
-  go _      = error "impossible"
-
-newMetaEntry :: MetaEntry -> IO MId
-newMetaEntry e = do
-  m <- readIORef nextMId
-  writeIORef nextMId $! (m + 1)
-  let f = maybe (Just e) (\_ -> error "impossible")
-  modifyIORef' mcxt (IM.alter f m)
-  pure m
+alterMeta :: MId -> (Maybe MetaEntry -> Maybe MetaEntry) -> IO ()
+alterMeta m f = modifyIORef' mcxt (IM.alter f m)
 
 modifyMeta :: MId -> (MetaEntry -> MetaEntry) -> IO ()
-modifyMeta m f = modifyIORef' mcxt (IM.alter go m) where
-  go Nothing  = error "impossible"
-  go (Just e) = Just (f e)
+modifyMeta m f = alterMeta m (maybe (error "impossible") (Just . f))
+
+writeMeta :: MId -> MetaEntry -> IO ()
+writeMeta m e = modifyMeta m (const e)
+
+newMeta :: MetaEntry -> IO MId
+newMeta e = do
+  m <- readIORef nextMId
+  writeIORef nextMId $! (m + 1)
+  alterMeta m (maybe (Just e) (\_ -> error "impossible"))
+  pure m
 
 reset :: IO ()
 reset = do

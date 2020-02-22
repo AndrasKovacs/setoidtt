@@ -58,8 +58,8 @@ data MetaEntry
 
   -- | Telescope constancy constraint. When the closure becomes constant,
   --   we unify the telescope with the empty telescope.
-  --   Constancy context (telescope meta) (meta spine) codomain blockers
-  | Constancy UnifyCxt MId Spine Val BlockedBy
+  --   Constancy context domain codomain blockers
+  | Constancy Cxt VTy VTy BlockedBy
 
 
 -- | A partial mapping from levels to levels. Undefined domain reresents
@@ -117,11 +117,6 @@ data Cxt = Cxt {
   cxtNames      :: [Name],
   cxtNameOrigin :: [NameOrigin],
   cxtLen        :: Int}
-
-data UnifyCxt = UCxt {
-  unifyCxtTypes :: Types,
-  unifyCxtNames :: [Name],
-  unifyCxtLen   :: Int }
 
 data Tm
   = Var Ix
@@ -382,15 +377,9 @@ showError ns = \case
     "Function icitness mismatch: expected %s, got %s.")
     (show i) (show i')
 
-
 -- Lenses
 --------------------------------------------------------------------------------
 
 makeFields ''Cxt
-makeFields ''UnifyCxt
 makeFields ''Err
 makeFields ''Str
-
-ucxt :: Lens' Cxt UnifyCxt
-ucxt f (Cxt vs tys ns no d) =
-  (\(UCxt tys ns d) -> Cxt vs tys ns no d) <$> f (UCxt tys ns d)
