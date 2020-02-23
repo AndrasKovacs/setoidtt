@@ -100,13 +100,6 @@ pattern TSnoc as a <- ((\case TBound as a -> Just (as, a)
 lvlName :: [Name] -> Lvl -> Name
 lvlName ns x = ns !! (length ns - x - 1)
 
--- ixType :: Types -> Ix -> VTy
--- ixType TNil           _ = error "impossible"
--- ixType (TDef   tys a) 0 = a
--- ixType (TBound tys a) 0 = a
--- ixType (TDef   tys a) x = ixType tys (x - 1)
--- ixType (TBound tys a) x = ixType tys (x - 1)
-
 data NameOrigin = NOSource | NOInserted
 
 type MetaInsertion = Bool
@@ -298,11 +291,11 @@ prettyTm prec = go (prec /= 0) where
     t@Pi{}         -> showParen p (goPi ns False t)
     U              -> ("U"++)
     Tel            -> ("Tel"++)
-    TEmpty         -> ("∙"++)
-    TCons "_" a as -> showParen p (go False ns a . (" ▶ "++). go False ns as)
+    TEmpty         -> ("ε"++)
+    TCons "_" a as -> showParen p (go False ns a . (" ▷ "++). go False ns as)
     TCons (fresh ns -> x) a as ->
               showParen p (showParen True ((x++) . (" : "++) . go False ns a)
-            . (" ▶ "++). go False (x:ns) as)
+            . (" ▷ "++). go False (x:ns) as)
     Tempty         -> ("[]"++)
     Rec a          -> showParen p (("Rec "++) . go True ns a)
     Tcons t u      -> showParen p (go True ns t . (" ∷ "++). go False ns u)

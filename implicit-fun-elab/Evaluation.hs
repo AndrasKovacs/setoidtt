@@ -150,6 +150,8 @@ quote d = go where
 -- zonking
 --------------------------------------------------------------------------------
 
+-- | Unfold all metas and evaluate meta-headed spines, but don't evaluate
+--   anything else.
 zonk :: Vals -> Tm -> Tm
 zonk vs t = go t where
 

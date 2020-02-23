@@ -164,7 +164,7 @@ test = main' "elab" $ unlines [
   "hundred"
   ]
 
--- example for when a telescope cannot depend on local A% B% vars.
+-- example for when a telescope cannot depend on local A B vars.
 -- this would only work with let generalization!
 outOfScopeTelRefinement = main' "elab" $ unlines [
   "let the : (A : U) → A → A = \\A x.x in",
@@ -291,10 +291,9 @@ ex1 = main' "elab" $ unlines [
   ]
 
 ex2 = main' "elab" $ unlines [
-  "let id : {A : U} → A → A = λ x. x in",
+  -- "let id : {A : U} → A → A = λ x. x in",
 
-  "let id2 : {A : U} → A → A = id id in",
-  "id U"
+  -- "let id2 : {A : U} → A → A = id id in",
 
   -- "let const : {A B} -> A -> B -> A",
   -- "    = \\x y. x in",
@@ -302,8 +301,8 @@ ex2 = main' "elab" $ unlines [
   -- -- definition types can be omitted
   -- "let constTy = {A B} → A → B → A in",
 
-  -- -- explicit id function, used for annotation as in Idris
-  -- "let the : (A : _) -> A -> A = \\_ x. x in",
+  -- explicit id function, used for annotation as in Idris
+  -- "let the : (A : _) -> A -> A = \\A x. x in",
 
   -- -- bool
   -- "let Bool : U",
@@ -346,14 +345,16 @@ ex2 = main' "elab" $ unlines [
   -- "    = \\N s z. s (s (s (s (s (s (s (s (s (s z))))))))) in",
   -- "let hundred = mul ten ten in",
 
-  -- -- Leibniz equality
-  -- "let Eq : {A} -> A -> A -> U",
-  -- "    = \\{A} x y. (P : A -> U) -> P x -> P y in",
-  -- "let refl : {A}{x : A} -> Eq x x",
-  -- "    = \\_ px. px in",
+  -- Leibniz equality
+  "let Eq : {A} -> A -> A -> U",
+  "    = \\{A} x y. (P : A -> U) -> P x -> P y in",
+  "let refl : {A}{x : A} -> Eq x x",
+  "    = \\P px. px in",
+  "let foo : Eq {U → U → U}(λ x y. x) (λ x y. x) = refl {U → U → U} in",
 
-  -- "the (Eq (mul ten ten) hundred) refl"
+  "foo"
   ]
+
 
   -- ?4 {A} (?3 {A})* {?6 {A}},A
 

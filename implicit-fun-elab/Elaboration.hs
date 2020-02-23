@@ -134,23 +134,23 @@ newConstancy cxt dom cod =
 
 -- | Checks that a spine consists only of distinct bound vars.
 --   Returns a partial variable renaming on success, alongside the size
---   of the spine.
-checkSp :: Spine -> IO (Renaming, Lvl)
-checkSp = go . forceSp where
-  go :: Spine -> IO (Renaming, Lvl)
+--   of the spine, and the list of variables in the spine.
+checkSp :: Spine -> IO (Renaming, Lvl, [Lvl])
+checkSp = (over _3 reverse <$>) . go . forceSp where
+  go :: Spine -> IO (Renaming, Lvl, [Lvl])
   go = \case
-    SNil        -> pure (mempty, 0)
+    SNil        -> pure (mempty, 0, [])
     SApp sp u i -> do
-      (!r, !d) <- go sp
+      (!r, !d, !xs) <- go sp
       case force u of
         VVar x | IM.member x r -> throwIO $ NonLinearSpine x
-               | otherwise     -> pure (IM.insert x d r, d + 1)
+               | otherwise     -> pure (IM.insert x d r, d + 1, x:xs)
         _      -> throwIO SpineNonVar
     SAppTel a sp u -> do
-      (!r, !d) <- go sp
+      (!r, !d, !xs) <- go sp
       case force u of
         VVar x | IM.member x r -> throwIO $ NonLinearSpine x
-               | otherwise     -> pure (IM.insert x d r, d + 1)
+               | otherwise     -> pure (IM.insert x d r, d + 1, x:xs)
         _    -> throwIO SpineNonVar
     SProj1 _ -> throwIO SpineProjection
     SProj2 _ -> throwIO SpineProjection
@@ -165,13 +165,18 @@ closingTy cxt = go (cxt^.types) (cxt^.names) (cxt^.len) where
   go _                     _      _ _ = error "impossible"
 
 -- | Close a term by wrapping it in `Int` number of lambdas, while taking the domain
---   types from the `VTy`.
-closingTm :: (VTy, Int) -> Tm -> Tm
+--   types from the `VTy`, and the binder names from a list.
+closingTm :: (VTy, Int, [Name]) -> Tm -> Tm
 closingTm = go 0 where
-  go d (a, 0)   rhs = rhs
-  go d (a, len) rhs = case force a of
-    VPi x i a b  -> Lam x i (quote d a)  $ go (d + 1) (b (VVar d), len-1) rhs
-    VPiTel x a b -> LamTel x (quote d a) $ go (d + 1) (b (VVar d), len-1) rhs
+  getName []     x = x
+  getName (x:xs) _ = x
+
+  go d (a, 0, _)   rhs = rhs
+  go d (a, len, xs) rhs = case force a of
+    VPi (getName xs -> x) i a b  ->
+      Lam x i (quote d a)  $ go (d + 1) (b (VVar d), len-1, drop 1 xs) rhs
+    VPiTel (getName xs -> x) a b ->
+      LamTel x (quote d a) $ go (d + 1) (b (VVar d), len-1, drop 1 xs) rhs
     _            -> error "impossible"
 
 -- | Strengthen a value, returns quoted normal result. This performs scope
@@ -231,7 +236,7 @@ strengthen str = go where
                 go pr (b (VVar d)) acc (d + 1)
               go _ _ _ _ = error "impossible"
 
-        let rhs = closingTm (metaTy, argNum) body
+        let rhs = closingTm (metaTy, argNum, []) body
         -- traceShowM ("pruned", pruning, quote 0 metaTy, prunedTy, rhs)
         writeMeta m $ Solved (eval VNil rhs)
 
@@ -275,7 +280,7 @@ solveMeta cxt m sp rhs = do
   let ~topLhs = quote (cxt^.len) (VNe (HMeta m) sp)
       ~topRhs = quote (cxt^.len) rhs
 
-  (ren, spLen) <- checkSp sp
+  (ren, spLen, spVars) <- checkSp sp
          `catch` (throwIO . SpineError (cxt^.names) topLhs topRhs)
 
   rhs <- strengthen (Str spLen (cxt^.len) ren (Just m)) rhs
@@ -285,7 +290,8 @@ solveMeta cxt m sp rhs = do
     Unsolved blocked a -> pure (blocked, a)
     _                  -> error "impossible"
 
-  let closedRhs = closingTm (metaTy, spLen) rhs
+  let spVarNames = map (lvlName (cxt^.names)) spVars
+  let closedRhs = closingTm (metaTy, spLen, spVarNames) rhs
   writeMeta m (Solved (eval VNil closedRhs))
 
   -- try solving unblocked constraints
@@ -306,10 +312,6 @@ freshMeta cxt (quote (cxt^.len) -> a) = do
   let sp = fst $ vars (cxt^.types)
   pure (quote (cxt^.len) (VNe (HMeta m) sp))
 
--- freshMetaTm :: UnifyCxt -> VTy -> IO Tm
--- freshMetaTm cxt a = do
---   (m, sp) <- freshMeta cxt a
---   pure (quote (cxt^.len) (VNe (HMeta m) sp))
 
 unifyWhile :: Cxt -> Val -> Val -> IO ()
 unifyWhile cxt l r =

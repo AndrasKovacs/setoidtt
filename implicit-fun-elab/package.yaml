@@ -51,10 +51,10 @@ dependencies:
 - containers
 - megaparsec
 - microlens-platform
-- mmorph
-- mtl
 
 source-dirs: .
 
 executable:
   main: Main.hs
+  ghc-options:
+    - -O
