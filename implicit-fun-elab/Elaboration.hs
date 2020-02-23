@@ -4,7 +4,6 @@ module Elaboration where
 
 import Control.Exception
 import Control.Monad
-import Data.Foldable
 import Data.IORef
 import Data.Maybe
 import Lens.Micro.Platform
