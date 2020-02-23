@@ -15,6 +15,7 @@ import qualified Data.IntSet        as IS
 -- Raw syntax
 --------------------------------------------------------------------------------
 
+-- | We wrap `SourcePos` to avoid printing it in `Show`.
 newtype SPos = SPos SourcePos deriving (Eq, Ord, Read)
 instance Show SPos where show _ = ""
 
@@ -30,14 +31,15 @@ icit Impl i e = i
 icit Expl i e = e
 
 data Raw
-  = RVar Name
-  | RLam Name (Maybe Raw) Icit Raw
-  | RApp Raw Raw Icit
-  | RU
-  | RPi Name Icit Raw Raw
-  | RLet Name Raw Raw Raw
-  | RHole
-  | RSrcPos SPos Raw
+  = RVar Name                        -- ^ x
+  | RLam Name (Maybe Raw) Icit Raw   -- ^ λx.t  or λ{x}.t with optional type annotation
+                                     --   on x
+  | RApp Raw Raw Icit                -- ^ t u  or  t {u}
+  | RU                               -- ^ U
+  | RPi Name Icit Raw Raw            -- ^ (x : A) → B  or  {x : A} → B
+  | RLet Name Raw Raw Raw            -- ^ let x : A = t in u
+  | RHole                            -- ^ _
+  | RSrcPos SPos Raw                 -- ^ source position annotation, added by parsing
 
 deriving instance Show Raw
 
@@ -56,9 +58,8 @@ data MetaEntry
   = Unsolved Blocking ~VTy
   | Solved Val
 
-  -- | Telescope constancy constraint. When the closure becomes constant,
-  --   we unify the telescope with the empty telescope.
-  --   Constancy context domain codomain blockers
+  -- | Constancy (Γ, x : Rec A) B   + a list of blocking metas.
+  --   When B becomes constant, A is solved to ε
   | Constancy Cxt VTy VTy BlockedBy
 
 
@@ -66,7 +67,7 @@ data MetaEntry
 --   out-of-scope or "illegal" variables.
 type Renaming = IM.IntMap Lvl
 
--- | A strengthening. We use this for pruning and checking meta solution
+-- | Explicit strengthening. We use this for pruning and checking meta solution
 --   candidates.
 data Str = Str {
   _strDom :: Lvl,        -- ^ size of renaming domain
@@ -92,6 +93,7 @@ type Ty    = Tm
 type VTy   = Val
 type MCxt  = IM.IntMap MetaEntry
 
+-- | Extending `Types` with any type.
 pattern TSnoc :: Types -> VTy -> Types
 pattern TSnoc as a <- ((\case TBound as a -> Just (as, a)
                               TDef as a   -> Just (as, a)
@@ -100,10 +102,13 @@ pattern TSnoc as a <- ((\case TBound as a -> Just (as, a)
 lvlName :: [Name] -> Lvl -> Name
 lvlName ns x = ns !! (length ns - x - 1)
 
-data NameOrigin = NOSource | NOInserted
+data NameOrigin =
+    NOSource        -- ^ Names which come from surface syntax.
+  | NOInserted      -- ^ Names of binders inserted by elaboration.
 
 type MetaInsertion = Bool
 
+-- | Context for elaboration and unification.
 data Cxt = Cxt {
   cxtVals       :: Vals,
   cxtTypes      :: Types,
@@ -112,32 +117,32 @@ data Cxt = Cxt {
   cxtLen        :: Int}
 
 data Tm
-  = Var Ix
-  | Let Name Ty Tm Tm
+  = Var Ix             -- ^ x
+  | Let Name Ty Tm Tm  -- ^ let x : A = t in u
 
-  | Pi Name Icit Ty Ty
-  | Lam Name Icit Ty Tm
-  | App Tm Tm Icit
+  | Pi Name Icit Ty Ty  -- ^ (x : A) → B)  or  {x : A} → B
+  | Lam Name Icit Ty Tm -- ^ λ(x : A).t  or  λ{x : A}.t
+  | App Tm Tm Icit      -- ^ t u  or  t {u}
 
-  | Tel               -- Ty Γ
-  | TEmpty            -- Tm Γ Tel
-  | TCons Name Ty Ty  -- (A : Ty Γ) → Tm (Γ ▶ A) Tel → Tm Γ Tel
-  | Rec Tm            -- Tm Γ Tel → Ty Γ
+  | Tel               -- ^ Tel
+  | TEmpty            -- ^ ε
+  | TCons Name Ty Ty  -- ^ (x : A) ▷ B
+  | Rec Tm            -- ^ Rec A
 
-  | Tempty            -- Tm Γ (El TEmpty)
-  | Tcons Tm Tm       -- (t : Tm Γ A) → Tm Γ (Δ[id, t]) → Tm Γ (El (TCons A Δ))
-  | Proj1 Tm          -- Tm Γ (El (TCons A Δ)) → Tm Γ A
-  | Proj2 Tm          -- (t : Tm Γ (El (TCons A Δ))) → Tm Γ (El (Δ[id, Proj₁ t]))
+  | Tempty            -- ^ []
+  | Tcons Tm Tm       -- ^ t :: u
+  | Proj1 Tm          -- ^ π₁ t
+  | Proj2 Tm          -- ^ π₂ t
 
-  | PiTel Name Ty Ty  -- (A : Tm Γ Tel) → Ty (Γ ▶ El A) → Ty Γ
-  | AppTel Ty Tm Tm   -- (A : Tm Γ Tel)(t : Tm Γ (PiTel A B))(u : Tm Γ A)
-                      -- → Tm Γ B[id, u]
-  | LamTel Name Ty Tm -- (A : Tm Γ Tel)(t : Tm (Γ ▶ El A) B) → Tm Γ (PiTel A B)
+  | PiTel Name Ty Ty  -- ^ {x : A⃗} → B
+  | AppTel Ty Tm Tm   -- ^ t {u : A⃗}
 
-  | U
-  | Meta MId
+  | LamTel Name Ty Tm -- ^ λ{x : A⃗}.t
 
-  | Skip Tm  -- explicit weakening (convenience feature for fresh meta gen)
+  | U                 -- ^ U
+  | Meta MId          -- ^ α
+
+  | Skip Tm           -- ^ explicit weakening (convenience feature in closing types)
 
 data Spine
   = SNil
@@ -219,6 +224,12 @@ instance Exception Err
 report :: [Name] -> ElabError -> a
 report ns e = throw (Err ns e Nothing)
 
+-- | Rethrow an `Err` with source position attached.
+addSrcPos :: SPos -> IO a -> IO a
+addSrcPos p act = act `catch` \case
+  Err ns e Nothing -> throwIO (Err ns e (Just p))
+  e                -> throwIO e
+
 
 -- Pretty printing
 --------------------------------------------------------------------------------
@@ -232,7 +243,6 @@ prettyTm prec = go (prec /= 0) where
              | otherwise = n
 
   goVar :: [Name] -> Ix -> ShowS
-  -- goVar ns topX = (show topX++)
   goVar ns topX = go ns topX where
     -- go []     _ = error "impossible"
     go []     _ = (show topX++)

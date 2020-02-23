@@ -1570,6 +1570,17 @@ $true$ on line $\scriptstyle{11}$, since $\lambda\,\{x : \ol{\epsilon}\}.\,true$
 computes to that, and elaboration succeeds with the expected output.
 \end{example}
 
+\section{Implementation and Evaluation}
+\label{sec:impl_and_eval}
+
+We provide a implementation of the elaborator described in Section
+\ref{sec:extending_elaboration}. It is a standalone Haskell program which takes
+as input a file or a string containing a surface expression, and outputs the
+result of elaboration.
+
+
+
+
 \begin{acks}
   This work was supported by the European Union, co-financed by the
   European Social Fund (EFOP-3.6.3-VEKOP-16-2017-00002) and COST Action
