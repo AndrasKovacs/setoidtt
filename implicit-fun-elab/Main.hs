@@ -78,14 +78,9 @@ pruneTest2 = main' "elab" $ unlines [
  ]
 
 test0 = main' "elab" $ unlines [
-  "let the : (A : U) → A → A = λ A x. x in",
-  "let IdTy = {A} → A → A in",
-  "let choose : {A} → A → A → A = λ x y. x in",
-  "let id : IdTy = λ x. x in",
-  "let auto2 : {B} → IdTy → B → B = λ f b. b in",
-  "let r : ({A} → A → {B} → B → B) → U = λ _. U in",
-  "let foo = r (λ x y. y) in",
-  "U"
+  "λ (Bool : U)(true : Bool).",
+
+  "let x : _ = true in x"
   ]
 
 
@@ -291,68 +286,67 @@ ex1 = main' "elab" $ unlines [
   ]
 
 ex2 = main' "elab" $ unlines [
-  -- "let id : {A : U} → A → A = λ x. x in",
+  "let id : {A : U} → A → A = λ x. x in",
 
-  -- "let id2 : {A : U} → A → A = id id in",
+  "let id2 : {A : U} → A → A = id id in",
 
-  -- "let const : {A B} -> A -> B -> A",
-  -- "    = \\x y. x in",
+  "let const : {A B} -> A -> B -> A",
+  "    = \\x y. x in",
 
-  -- -- definition types can be omitted
-  -- "let constTy = {A B} → A → B → A in",
+  -- definition types can be omitted
+  "let constTy = {A B} → A → B → A in",
 
   -- explicit id function, used for annotation as in Idris
-  -- "let the : (A : _) -> A -> A = \\A x. x in",
+  "let the : (A : _) -> A -> A = \\A x. x in",
 
-  -- -- bool
-  -- "let Bool : U",
-  -- "    = (B : _) -> B -> B -> B in",
-  -- "let true : Bool",
-  -- "    = \\B t f. t in",
-  -- "let false : Bool",
-  -- "    = \\B t f. f in",
-  -- "let not : Bool -> Bool",
-  -- "    = \\b B t f. b B f t in",
+  -- bool
+  "let Bool : U",
+  "    = (B : _) -> B -> B -> B in",
+  "let true : Bool",
+  "    = \\B t f. t in",
+  "let false : Bool",
+  "    = \\B t f. f in",
+  "let not : Bool -> Bool",
+  "    = \\b B t f. b B f t in",
 
-  -- -- lists
-  -- "let List : U -> U",
-  -- "    = \\A. (L : _) -> (A -> L -> L) -> L -> L in",
-  -- "let nil : {A} -> List A",
-  -- "    = \\L cons nil. nil in",
-  -- "let cons : {A} -> A -> List A -> List A",
-  -- "    = \\x xs L cons nil. cons x (xs L cons nil) in",
-  -- "let map : {A B} -> (A -> B) -> List A -> List B",
-  -- "    = \\{A}{B} f xs L c n. xs L (\\a. c (f a)) n in",
-  -- "let list1 : List Bool",
-  -- "    = cons true (cons false (cons true nil)) in",
+  -- lists
+  "let List : U -> U",
+  "    = \\A. (L : _) -> (A -> L -> L) -> L -> L in",
+  "let nil : {A} -> List A",
+  "    = \\L cons nil. nil in",
+  "let cons : {A} -> A -> List A -> List A",
+  "    = \\x xs L cons nil. cons x (xs L cons nil) in",
+  "let map : {A B} -> (A -> B) -> List A -> List B",
+  "    = \\{A}{B} f xs L c n. xs L (\\a. c (f a)) n in",
+  "let list1 : List Bool",
+  "    = cons true (cons false (cons true nil)) in",
 
-  -- -- dependent function composition
-  -- "let comp : {A}{B : A -> U}{C : {a} -> B a -> U}",
-  -- "           (f : {a}(b : B a) -> C b)",
-  -- "           (g : (a : A) -> B a)",
-  -- "           (a : A)",
-  -- "           -> C (g a)",
-  -- "    = \\f g a. f (g a) in",
+  -- dependent function composition
+  "let comp : {A}{B : A -> U}{C : {a} -> B a -> U}",
+  "           (f : {a}(b : B a) -> C b)",
+  "           (g : (a : A) -> B a)",
+  "           (a : A)",
+  "           -> C (g a)",
+  "    = \\f g a. f (g a) in",
 
-  -- "let compExample = comp (cons true) (cons false) nil in",
+  "let compExample = comp (cons true) (cons false) nil in",
 
-  -- -- nat
-  -- "let Nat : U",
-  -- "    = (N : U) -> (N -> N) -> N -> N in",
-  -- "let mul : Nat -> Nat -> Nat",
-  -- "    = \\a b N s z. a _ (b _ s) z in",
-  -- "let ten : Nat",
-  -- "    = \\N s z. s (s (s (s (s (s (s (s (s (s z))))))))) in",
-  -- "let hundred = mul ten ten in",
+  -- nat
+  "let Nat : U",
+  "    = (N : U) -> (N -> N) -> N -> N in",
+  "let mul : Nat -> Nat -> Nat",
+  "    = \\a b N s z. a _ (b _ s) z in",
+  "let ten : Nat",
+  "    = \\N s z. s (s (s (s (s (s (s (s (s (s z))))))))) in",
+  "let hundred = mul ten ten in",
 
   -- Leibniz equality
   "let Eq : {A} -> A -> A -> U",
   "    = \\{A} x y. (P : A -> U) -> P x -> P y in",
   "let refl : {A}{x : A} -> Eq x x",
   "    = \\P px. px in",
-  "let foo : Eq {U → U → U}(λ x y. x) (λ x y. x) = refl {U → U → U} in",
 
-  "foo"
+  "the (Eq hundred hundred) refl"
   ]
 
 

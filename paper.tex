@@ -189,6 +189,8 @@ point during elaboration whether implicit abstractions should be inserted.
 \maketitle
 
 
+
+
 \section{Introduction}
 \label{sec:introduction}
 
@@ -846,24 +848,6 @@ output. We explain the cases of the definition in order.
 \end{alignat*}
 \endgroup
 
-%% %% alternative application infer
-  %% &\einfer{t\,u}{ins}{\Theta_0}{\Gamma} :\equiv \edo \\
-  %% &\quad (\Theta_1,\,\theta_1,\,t',\,A) \leftarrow \einfer{t}{\true}{\Theta_0}{\Gamma}\\
-  %% &\quad \ecase\,\,A\,\,\eof\\
-  %% &\qquad   ((x : A)\to B) \To \edo\\
-  %% &\qquad\quad  (\Theta_2,\,\theta_2,\,u') \leftarrow
-  %%                   \echeck{u}{\Theta_1}{(\Gamma[\theta_1])}{A}\\
-  %% &\qquad\quad  \ereturn\,(\einsert{ins}{\Theta_2}{(\Gamma[\theta_1\circ\theta_2])}{(t'[\theta_2]\,u')}{(B[\theta_2][x\mapsto u'])})\\
-  %% &\qquad A \To \fail\\
-  %% &\einfer{t\,\{u\}}{ins}{\Theta_0}{\Gamma} :\equiv \edo \\
-  %% &\quad (\Theta_1,\,\theta_1,\,t',\,A) \leftarrow \einfer{t}{\false}{\Theta_0}{\Gamma}\\
-  %% &\quad \ecase\,\,A\,\,\eof\\
-  %% &\qquad   (\{x : A\}\to B) \To \edo\\
-  %% &\qquad\quad  (\Theta_2,\,\theta_2,\,u') \leftarrow
-  %%                   \echeck{u}{\Theta_1}{(\Gamma[\theta_1])}{A}\\
-  %% &\qquad\quad  \ereturn\,(\einsert{ins}{\Theta_2}{(\Gamma[\theta_1\circ\theta_2])}{(t'[\theta_2]\,\{u'\})}{(B[\theta_2][x\mapsto u'])})\\
-  %% &\qquad A \To \fail\\
-
 \subsubsection{Checking}
 The first two clauses are checking $\lambda$-s, where the expected type exactly
 matches the $\lambda$ binders. Hence, we simply check under binders with
@@ -1043,7 +1027,8 @@ parameters everywhere, and notate recursive calls by indentation. We also omit
 some checking, inference, implicit insertion and unification calls which are not
 essential for illustration.
 \begin{alignat*}{3}
-  & \scriptstyle{0 }\qquad\qquad\quad && \echeckt{cons\,(\lambda\,x.\,x)\,nil}{(List\,(\{A : \U\}\to A \to A))}\\
+  & \scriptstyle{0 }\qquad\qquad && \echeckt{cons\,(\lambda\,x.\,x)\,nil}{(List\,(\{A : \U\}\to A \to A))}
+     \hspace{14em}\\
   & \scriptstyle{1 }  && \quad \einfert{cons\,(\lambda\,x.\,x)\,nil}{\true} \\
   & \scriptstyle{2 }  && \qquad \einfert{cons\,(\lambda\,x.\,x)}{\true}\\
   & \scriptstyle{3 }  && \qquad\quad \einfert{cons}{\true}\\
@@ -1316,9 +1301,9 @@ $\overline{\mathsf{vars}_{\Gamma}}$ so that we use curried function application
 for each record type in $\Gamma$.
 \end{definition}
 
-\subsection{Handling Superfluous Implicit Functions}
+\subsection{Handling Superfluous Implicit Functions}\label{sec:superfluous}
 
-Before we can move on to unification, checking and inference, we have to address
+Before we can move on to unification and elaboration, we have to address
 a curious issue. Assuming $Bool : \U$, $true : Bool$ and $false : Bool$,
 consider the following surface expression:
 \[
@@ -1403,10 +1388,11 @@ returning a weakening substitution.
 \end{definition}
 
 \subsubsection{Algorithmic implementation of constraint solving}
+\label{sec:algorithmic}
 The above specification for constancy constraints is compact but not
 particularly algorithmic: we just magically get new definitional equalities
 whenever we have constraints in contexts. In our prototype implementation, we
-augment the unification procedure with eager removal of solvable constraints.
+implement eager removal of solvable constraints.
 
 After solving a meta $\alpha$ during unification, which yields a unifying
 $\theta$ substitution, we review all ($\constancy_{\Gamma,\,x : \Rec\,A}\,B$)
@@ -1427,6 +1413,8 @@ new meta solution might make a difference.
   \item
     In any other case we simply return $\theta$ and keep the constraint around.
 \end{enumerate}
+Also, when we create a new constancy constraint, we immediately review it
+as described above.
 
 \emph{Remark.} In the case with $x \in \FreeVars(B[\theta])$, it would be also
 sound to solve the constraint when the occurrence is not rigid. However, this
@@ -1453,9 +1441,9 @@ need to add a constancy constraint for it as well.
 We have the symmetric $\unify_{\Theta_0|\Gamma}(\{x_0 : A_0\}\to B')\,(\{x :
 \ol{A}\}\to B)$ case the same way as above.
 
-Now, let us assume that $B'$ is not an implicit function type and not
-meta-headed. Then, we have the following case, where we solve a telescope domain
-to be empty.
+Now, let us assume that $B'$ is not an implicit function type, curried function
+type or meta-headed. Then, we have the following case, where we solve a
+telescope domain to be empty.
 \begin{alignat*}{3}
 & \unify_{\Theta_0|\Gamma}(\{x : \ol{A}\}\to B)\,B' :\equiv \edo\\
 & \quad (\Theta_1,\,\theta_1) \leftarrow \unify_{\Theta_0|\Gamma}\,A\,\epsilon\\
@@ -1467,11 +1455,120 @@ as in the the basic elaborator of Section \ref{sec:bidirectional_elaboration}.
 
 \subsection{Elaboration}
 
+In the definition of checking, we insert a new clause after
+$\echeck{t}{\Theta}{\Gamma}{(\{x : A\}\to B)}$:
+\begin{alignat*}{3}
+& \echeck{t}{\Theta_0}{\Gamma}{(\alpha\,\ol{t})} :\equiv \edo\\
+& \quad (\Theta_1,\,\theta_1,\,A) \leftarrow \freshMeta{\Theta_0}{\Gamma}{\Tel}\\
+& \quad (\Theta_2,\,\theta_2,\,t',\,B) \leftarrow \einfer{t}{\true}{\Theta_1}{\Gamma[\theta_1],\,x:\Rec\,A}\\
+& \quad (\Theta_3,\,\theta_3) \leftarrow \newConstancy{\Theta_2}{\Gamma[\theta_{12}]}{x}{(A[\theta_2])}{B}\\
+& \quad (\Theta_4,\,\theta_4) \leftarrow
+            \unify\, ((\alpha\,\ol{t})[\theta_{123}])\,(\{x : \ol{A[\theta_{23}]}\} \to B[\theta_3])\\
+& \quad \ereturn\,(\Theta_4,\,\theta_{1234},\,(\lambda\,\{x : \ol{A[\theta_{234}]}\}.\,t'[\theta_{34}]))
+\end{alignat*}
+Hence, when checking a term with a meta-headed type, we create a fresh meta with
+$\Tel$ type, infer a type for the term, and wrap the result in a strictly
+curried $\lambda$. We again need to create new constancy constraint. This way,
+if $B$ does not depend on $x : \Rec\,A$, the strictly curried $\lambda$ in the
+output immediately computes away, since $A$ is solved to $\epsilon$.
+
+This concludes the definition of the extended elaborator. The new algorithm is
+sound with respect to the extended core syntax, and it also has the
+conservativity property from Theorem \ref{thm:conservativity} if we additionally
+allow elaboration to insert $\lambda$-s for strictly curried functions. We present
+some examples of the algorithm at action.
 
 
+\begin{example}
+We return to the $polyList$ example from Section \ref{sec:issues}. We trace
+elaboration using the extended algorithm.
+\begin{alignat*}{3}
+  & \scriptstyle{0 }\qquad\qquad && \echeckt{cons\,(\lambda\,x.\,x)\,nil}{(List\,(\{A : \U\}\to A \to A))}
+      \hspace{14em}\\
+  & \scriptstyle{1 }  && \quad \einfert{cons\,(\lambda\,x.\,x)\,nil}{\true} \\
+  & \scriptstyle{2 }  && \qquad \einfert{cons\,(\lambda\,x.\,x)}{\true}\\
+  & \scriptstyle{3 }  && \qquad\quad \einfert{cons}{\true}\\
+  & \scriptstyle{4 }  && \qquad\quad = cons\,\{\alpha_0\}\,:\,\alpha_0 \to List\,\alpha_0 \to List\,\alpha_0\\
+  & \scriptstyle{5 }  && \qquad\quad \echeckt{\lambda\,x.\,x}{\alpha_0}\\
+  & \scriptstyle{6 }  && \qquad\quad = \lambda\,\{y : \ol{\alpha_1}\}.\,\lambda\,x.\,x\\
+  & \scriptstyle{7 }  && \qquad = cons\,
+                       \{\{y : \ol{\alpha_1}\} \to \alpha_2\,\{y : \ol{\alpha_1}\}\to \alpha_2\,\{y : \ol{\alpha_1}\}\}\,
+                       (\lambda\,\{y : \ol{\alpha_1}\}.\,\lambda\,x.\,x)\\
+  & \scriptstyle{8 }  && \qquad \echeckt{nil}{(List\,(\{y : \ol{\alpha_1}\} \to \alpha_2\,\{y : \ol{\alpha_1}\}\to \alpha_2\,\{y : \ol{\alpha_1}\}))}\\
+  & \scriptstyle{9 }  && \qquad = nil\,\{\{y : \ol{\alpha_1}\} \to \alpha_2\,\{y : \ol{\alpha_1}\}\to \alpha_2\,\{y : \ol{\alpha_1}\}\}\\
+                       & \scriptstyle{10} && \quad = cons\,\{\{y : \ol{\alpha_1}\} \to \alpha_2\,\{y : \ol{\alpha_1}\}\to \alpha_2\,\{y : \ol{\alpha_1}\}\}\,(\lambda\,\{y : \ol{\alpha_1}\}.\,\lambda\,x.\,x)\,\\
+                       & && \hspace{4.4em} (nil\,\{\{y : \ol{\alpha_1}\} \to \alpha_2\,\{y : \ol{\alpha_1}\}\to \alpha_2\,\{y : \ol{\alpha_1}\}\})\\
+  & && \hspace{3em} : List\,(\{y : \ol{\alpha_1}\} \to \alpha_2\,\{y : \ol{\alpha_1}\}\to \alpha_2\,\{y : \ol{\alpha_1}\})\\
+  & \scriptstyle{11} && \quad \unify\,(List\,(\{A : \U\}\to A \to A))\,(List\,(\{y : \ol{\alpha_1}\} \to \alpha_2\,\{y : \ol{\alpha_1}\}\to \alpha_2\,\{y : \ol{\alpha_1}\}))\\
+  & \scriptstyle{12} && \qquad \unify\,(\{A : \U\}\to A \to A)\,(\{y : \ol{\alpha_1}\} \to \alpha_2\,\{y : \ol{\alpha_1}\}\to \alpha_2\,\{y : \ol{\alpha_1}\})\\
+  & \scriptstyle{13} && \qquad\quad \unify\,\alpha_1\,((A : \U) \TCons (\alpha_3\,A))\\
+  & \scriptstyle{14} && \qquad \quad \unify\,(A \to A)\,(\{z : \ol{\alpha_3\,A}\} \to \alpha_2\,\{A\}\,\{z : \ol{\alpha_3\,A}\}\to \alpha_2\,\{A\}\,\{z : \ol{\alpha_3\,A}\})\\
+  & \scriptstyle{15} && \qquad \qquad \unify\,(\alpha_3\,A)\,\epsilon\\
+  & \scriptstyle{16} && \qquad \qquad \unify\,(A \to A)\,(\alpha_2\,\{A\} \to \alpha_2\,\{A\})\\
+  & \scriptstyle{17} && \qquad \qquad \quad \unify\,A\,(\alpha_2\,\{A\})\\
+  & \scriptstyle{18} && \qquad \qquad \quad \unify\,A\, A\\
+  & \scriptstyle{19} && = cons\,\{\{A : \U\}\to A \to A\}\,(\lambda\,\{A\}\,x.\,x)\,(nil\,\{\{A : \U\}\to A \to A\})
+\end{alignat*}
+We diverge from the previous attempt at line $\scriptstyle{5}$. Here, we check
+$\lambda\,x.\,x$ with the meta $\alpha_0$, so we create a fresh $\alpha_1 :
+\Tel$ meta and wrap the result as $\lambda\,\{y :
+\ol{\alpha_1}\}.\,\lambda\,x.\,x$. This result has the inferred type $\{y :
+\ol{\alpha_1}\} \to \alpha_2\,\{y : \ol{\alpha_1}\}\to \alpha_2\,\{y :
+\ol{\alpha_1}\}$, and we promptly unify $\alpha_0$ (which stands for the list
+element type) with it. On line $\scriptstyle{10}$, we return the elaborated
+$cons$ expression, where the list element type is made explicit. It only remains
+to unify the inferred and expected types. On line $\scriptstyle{12}$ we have the
+case where a curried function type is matched with an implicit function type, so
+on line $\scriptstyle{13}$ we refine $\alpha_1$ to a non-empty telescope, and
+proceed unifying the domains. Note that on line $\scriptstyle{14}$ we have
+$\alpha_2\,\{A\}\,\{z : \ol{\alpha_3\,A}\}$, which results from applying the
+substitution $y \mapsto (A :: z)$, and computing $\alpha_2\,\{(A :: z) : \ol{(A :
+  \U) \TCons (\alpha_3\,A)}\}$ further using the \LabTirName{app-$\TCons$} rule
+from Figure \ref{fig:telescopes}.
 
+On line $\scriptstyle{14}$ we have the case when a curried function type is
+matched with a type which is not a curried function, implicit function or a
+meta-headed type. We accordingly unify domain telescope $\alpha_3\,A$ with
+$\epsilon$, which causes $\alpha_3$ to be solved as $\lambda\,A.\,\epsilon$
+according to standard pattern unification. Now, $\alpha_2\,\{A\}\,\{z :
+\ol{\alpha_3\,A}\}$ computes to $\alpha_2\,\{A\}\,\{z : \epsilon\}$, which
+further computes to $\alpha_2\,\{A\}$ by \LabTirName{app-$\epsilon$}. From here,
+unification finishes with success. On the last line, the expected output is
+returned: since the $\alpha_1$ telescope meta is now solved, curried function
+types and abstractions are computed away.
+\end{example}
 
-
+\begin{example}
+We illustrate now the action of constancy constraints, using the example from
+Section \ref{sec:superfluous}. Again, assume $Bool : \U$ and $true : Bool$.
+\begin{alignat*}{3}
+& \scriptstyle{0}\qquad\qquad && \einfert{\slet\,x : \_ = true\,\sin\,x}{\true}
+      \hspace{21em}\\
+& \scriptstyle{1} && \quad \echeckt{\_}{\U}\\
+& \scriptstyle{2} && \quad = \alpha_0\\
+& \scriptstyle{3} && \quad \echeckt{true}{\alpha_0}\\
+& \scriptstyle{4} && \qquad \mathsf{freshMeta}\,\Tel\\
+& \scriptstyle{5} && \qquad = \alpha_1\\
+& \scriptstyle{6} && \qquad \einfert{true}{\true}\\
+& \scriptstyle{7} && \qquad = true : Bool\\
+& \scriptstyle{8} && \qquad \mathsf{newConstancy}_{\emptycon,\,x : \Rec\,\alpha_1}\,Bool\\
+& \scriptstyle{9} && \qquad\quad \unify\,\alpha_1\,\epsilon\\
+& \scriptstyle{10} && \qquad \unify\,\alpha_0\,Bool\\
+& \scriptstyle{11} && \quad = true\\
+& \scriptstyle{12} && \quad \einfert{x}{\true}\\
+& \scriptstyle{13} && \quad = true : Bool\\
+& \scriptstyle{14} && = (\slet\,x : Bool = true\,\sin\,x) : Bool
+\end{alignat*}
+First we create a fresh meta $\alpha_0$ for the hole on line $\scriptstyle{2}$,
+then we check $\true$ with it. Since we are checking with a meta-headed type, we
+create a fresh telescope meta $\alpha_1$, then infer $Bool$ for $true$. On line
+$\scriptstyle{8}$ we create a constancy constraint, and immediately try to solve
+it, in accordance with the algorithmic implementation in Section
+\ref{sec:algorithmic}. Since $Bool$ does not depend on the domain, we solve the
+constraint and thereby solve $\alpha_1$ as $\epsilon$. Hence, we simply return
+$true$ on line $\scriptstyle{11}$, since $\lambda\,\{x : \ol{\epsilon}\}.\,true$
+computes to that, and elaboration succeeds with the expected output.
+\end{example}
 
 \begin{acks}
   This work was supported by the European Union, co-financed by the
