@@ -9,10 +9,9 @@
 -- I explained the behavior at
 -- https://github.com/agda/agda/issues/2099#issuecomment-540233457
 
--- let Wrap : U → U
---     = λ A. (Wrap : U) → (A → Wrap) → Wrap in
--- let wrap : {A : U} → A → Wrap A
---     = λ a _ wrap. wrap a in
+-- λ (Wrap : U → U)
+--   (wrap : {A} → A → Wrap A).
+
 -- let the : (A : U) → A → A
 --     = λ A x. x in
 -- let prf : Wrap ({A : U} → A → A)
@@ -77,19 +76,19 @@ foremost.
 -- https://github.com/agda/agda/issues/1079#issuecomment-392325549
 --------------------------------------------------------------------------------
 
-assume Nat : U in
-assume Dec : U → U in
-assume meh : {A} → Dec A in
-assume True : {A} → Dec A → U in
-assume fromWitness : {P}{Q : Dec P} → P → True Q in
-assume T : Nat → U in
+-- λ(Nat : U )
+--  (Dec : U → U )
+--  (meh : {A} → Dec A )
+--  (True : {A} → Dec A → U )
+--  (fromWitness : {P}{Q : Dec P} → P → True Q )
+--  (T : Nat → U )
+--  (coprime : Dec ({i} → T i)).
 
-let Coprime = {i} → T i in
-assume coprime : Dec Coprime in
+-- let Coprime = {i} → T i in
 
-let bla : Coprime → True coprime
-    = λ c. fromWitness c in
-U
+-- let bla : Coprime → True coprime
+--     = λ c. fromWitness c in
+-- U
 
 -- This example works fine in my system. Only lambda insertion is needed.
 
@@ -147,21 +146,21 @@ U
 -- https://github.com/agda/agda/issues/1387#issue-99824785
 --------------------------------------------------------------------------------
 
--- let Bool  : U = (B : _) → B → B → B in
--- let true  : Bool = λ _ t f. t in
--- let false : Bool = λ _ t f. f in
+let Bool  : U = (B : _) → B → B → B in
+let true  : Bool = λ _ t f. t in
+let false : Bool = λ _ t f. f in
 
--- let Eq : {A} → A → A → U = λ {A} x y. (P : A → U) → P x → P y in
--- let refl : {A x} → Eq {A} x x = λ _ px. px in
+let Eq : {A} → A → A → U = λ {A} x y. (P : A → U) → P x → P y in
+let refl : {A x} → Eq {A} x x = λ _ px. px in
 
--- let T : Bool → U = λ b. b _ ({A} → A → A) U in
+let T : Bool → U = λ b. b _ ({A} → A → A) U in
 
--- assume g : (b : Bool) → Eq b true → T b → Bool in
--- assume f : (b : Bool) → T b → Eq b true → Bool in
+let g : (b : Bool) → Eq b true → T b → Bool = _ in
+let f : (b : Bool) → T b → Eq b true → Bool = _ in
 
--- let works : Bool = g _ refl (λ x. x) in
--- let test  : Bool = f _ (λ x. x) refl in
--- U
+let works : Bool = g _ refl (λ x. x) in
+let test  : Bool = f _ (λ x. x) refl in
+U
 
 -- This does not work here because of the lack of postponing:
 -- when we check (λ x.x) in test, we get a non-pattern spine for

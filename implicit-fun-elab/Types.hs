@@ -235,7 +235,18 @@ addSrcPos p act = act `catch` \case
 --------------------------------------------------------------------------------
 
 prettyTm :: Int -> [Name] -> Tm -> ShowS
-prettyTm prec = go (prec /= 0) where
+prettyTm prec = topLams (prec /= 0) "λ" "" where
+
+  -- special case printing of top lambdas, since they are usually used
+  -- to postulate stuff
+  topLams :: Bool -> String -> String -> [Name] -> Tm -> ShowS
+  topLams p pre post ns (Lam (fresh ns -> x) i a t) =
+    showParen p (
+      (pre++)
+    . icit i bracket parens (
+           ((if null x then "_" else x)++) . (" : "++) . go False ns a)
+    . topLams False "\n" ".\n\n" (x:ns) t)
+  topLams _ pre post ns t = (post++) . go False ns t
 
   fresh :: [Name] -> Name -> Name
   fresh _ "_" = "_"
@@ -255,8 +266,8 @@ prettyTm prec = go (prec /= 0) where
   goLamBind :: Name -> Icit -> ShowS
   goLamBind x i = icit i bracket id ((if null x then "_" else x) ++)
 
-  bracket :: ShowS -> ShowS
   bracket s = ('{':).s.('}':)
+  parens  s = ('(':).s.(')':)
 
   goLam :: [Name] -> Tm -> ShowS
   goLam ns (Lam (fresh ns -> x) i a t)  = (' ':) . goLamBind x i . goLam (x:ns) t
@@ -309,8 +320,8 @@ prettyTm prec = go (prec /= 0) where
     Tempty         -> ("[]"++)
     Rec a          -> showParen p (("Rec "++) . go True ns a)
     Tcons t u      -> showParen p (go True ns t . (" ∷ "++). go False ns u)
-    Proj1 t        -> showParen p (("₁ "++). go True ns t)
-    Proj2 t        -> showParen p (("₂ "++). go True ns t)
+    Proj1 t        -> showParen p (("π₁ "++). go True ns t)
+    Proj2 t        -> showParen p (("π₂ "++). go True ns t)
     t@PiTel{}      -> showParen p (goPi ns False t)
     AppTel a (App t u i) u'  ->
       showParen p (go False ns t . (' ':) . goArg ns u i . (' ':) .
@@ -336,7 +347,6 @@ instance Show Tm where show = showTm []
 
 showError :: [Name] -> ElabError -> String
 showError ns = \case
-
   UnifyErrorWhile lhs rhs e ->
     let err1 = case e of
           UnifyError ns lhs rhs -> printf

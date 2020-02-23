@@ -322,6 +322,11 @@ unify cxt l r = go l r where
   unifyError =
     throwIO $ UnifyError (cxt^.names) (quote (cxt^.len) l) (quote (cxt^.len) r)
 
+  flexFlex m sp m' sp' = do
+    try @SpineError (checkSp sp) >>= \case
+      Left{}  -> solveMeta cxt m' sp' (VNe (HMeta m) sp)
+      Right{} -> solveMeta cxt m sp (VNe (HMeta m') sp')
+
   go t t' = case (force t, force t') of
     (VLam x _ a t, VLam _ _ _ t')            -> goBind x a t t'
     (VLam x i a t, t')                       -> goBind x a t (\ ~v -> vApp t' v i)
@@ -338,6 +343,7 @@ unify cxt l r = go l r where
     (VLamTel x a t, VLamTel x' a' t')        -> goBind x (VRec a) t t'
     (VLamTel x a t, t')                      -> goBind x (VRec a) t (vAppTel a t')
     (t, VLamTel x' a' t')                    -> goBind x' (VRec a') (vAppTel a' t) t'
+    (VNe (HMeta m) sp, VNe (HMeta m') sp')   -> flexFlex m sp m' sp'
     (VNe h sp, VNe h' sp') | h == h'         -> goSp (forceSp sp) (forceSp sp')
     (VNe (HMeta m) sp, t')                   -> solveMeta cxt m sp t'
     (t, VNe (HMeta m') sp')                  -> solveMeta cxt m' sp' t
