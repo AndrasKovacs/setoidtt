@@ -151,7 +151,7 @@ in the context of Haskell and ML-like languages, this has been dubbed
 ``impredicative instantiation'' or ``impredicative inference''. We propose a new
 framework for elaborating first-class implicit functions, which is applicable
 for full dependent type theories and compares favorably to prior solutions in
-terms of power, generality and conceptual simplicity. We build atop Norell's
+terms of power, generality and simplicity. We build atop Norell's
 bidirectional elaboration algorithm for Agda, and we note that the key issue is
 incomplete information about insertions of implicit abstractions and
 applications. We make it possible to track and refine information related to
@@ -297,19 +297,24 @@ inferred type is unified with the annotation.
 \begin{itemize}
   \item We propose an elaboration algorithm which translates from a small
     Agda-like surface language to a small Martin-L\"of type theory extended with
-    implicit function types, telescopes and \emph{strictly curried} function
-    types with telescope domain. We use these extensions to accummulate
-    information about implicit insertions.
-  \item Our algorithm is a conservative extension of Norell's bidirectional
-    elaborator for Agda \cite[Chapter~3]{norell07thesis}; it accepts strictly more
-    programs, and does not require new constructs in the surface language.
-  \item Our target language serves as a general platform for elaborating
-    implicit functions. The concrete elaborator presented in this paper is a
-    relatively simple one, and there is plenty of room to develop more advanced
-    elaboration and unification. However, our simple algorithm is already
-    comparable or superior to previous solutions for impredicative inference.
+    implicit function types, telescopes and \emph{strictly curried function
+      types} with telescope domain. We use these extensions to accummulate
+    information about implicit insertions. Our algorithm is a conservative
+    extension of Norell's bidirectional elaborator for Agda
+    \cite[Chapter~3]{norell07thesis}.
+  \item The presented elaborator is generally more powerful than previous
+    solutions for impredicative inference. In particular, it goes beyond prior
+    art by supporting full dependent type theory and by being global,
+    i.e.\ inference may consider the whole program and not just particular n-ary
+    applications.
+  \item The target theory of elaboration serves as a general platform for
+    elaborating implicit function types: our concrete elaborator is a relatively
+    simple one, and there is room to further develop it.
   \item We provide an executable implementation of the elaborator described in
     this paper.
+  \item Our solution is also \emph{simple}: we implemented elaboration,
+    evaluation and unification in 650 lines of Haskell, of which about 200 lines
+    implement the novel enhancements on the top of Norell's basic elaborator.
 \end{itemize}
 
 \subsubsection{Note on terminology}
@@ -532,25 +537,22 @@ functions have the same rules as ``explicit'' functions. The primary purpose of
 implicit function types is to \emph{guide elaboration}: the elaborator will at
 times compute a type and branch on whether it is an implicit function.
 
-\begin{notation}
-Both in the surface and core syntax, we use Agda-like notation:
+\emph{Notations.} We use Agda-like syntactic sugar both in the surface syntax and
+in core syntax.
 \begin{itemize}
   \item We use $A \to B$ to refer to non-dependent functions.
   \item We group domain types together in functions, and omit function arrows,
     as in $\{A\,B : \U\}(x : A) \to B \to A$.
   \item We group multiple $\lambda$-s, as in $\lambda\,\{A\}\,\{B\}\,x\,y.\,x$.
 \end{itemize}
-\end{notation}
-
-\begin{notation}\label{not:spines}
+\begin{definition}[Spines]\label{def:spines}
   We use a spine notation for neutral terms. A spine is a list of
   terms, noted as $\overline{t}$, where terms may be wrapped in brackets to
   signal implicit application. For example, if $\overline{u} \equiv
   (\{A\},\,\{B\},\,x)$, then $t\,\overline{u}$ denotes $t\,\{A\}\,\{B\}\,x$.  In
   $t\,\overline{u}$, we call $t$ the \emph{head} of the neutral term. In
   particular, if $t$ is a metavariable, the neutral term is \emph{meta-headed}.
-\end{notation}
-
+\end{definition}
 \begin{example}
 The core syntax is quite expressive as a programming language, thanks to
 $\slet$-definitions\footnote{In dependent type theories, the $\slet$ rule is not
@@ -566,10 +568,6 @@ types. For example, the following term computes a list of types by mapping:
   & map\,\{\U\}\,\{\U\}\,(\lambda\,A.\, A \to A)\,(\lambda\,L\,cons\,nil.\,cons\,\U\,(cons\,\U\,nil))
 \end{alignat*}
 \end{example}
-%% In the core syntax, all abstractions and applications must be notated. Thanks to
-%% elaboration, in the surface syntax we may omit some of these.
-
-
 
 \subsection{Metasubstitutions}\label{sec:metasubstitutions}
 
@@ -620,6 +618,9 @@ The following are admissible:
              {\\}
              {\p : (\Theta,\,x : A) \To \Theta}
 \end{mathpar}
+
+%% \end{mathpar}
+%% \begin{mathpar}
 
 The identity substitution $\id$ maps each variable to itself. Composition is
 given by pointwise term substitution, $\id$ and $\blank\circ\blank$ yields a
@@ -1583,13 +1584,64 @@ computes to that, and elaboration succeeds with the expected output.
 \section{Implementation}
 \label{sec:impl_and_eval}
 
-We provide a implementation of the elaborator described in Section
+We provide an implementation of the elaborator from Section
 \ref{sec:extending_elaboration}. It is a standalone Haskell program which reads
 a surface expression from standard input, and outputs the result of elaboration,
 or optionally the type or the normal form of the result.
 
+It is implemented in 834 lines of Haskell. Of this, 660 lines constitute the
+core syntax, evaluation, unification and elaboration. Of this 660 lines, 445
+lines implement the basic elaborator of Section
+\ref{sec:bidirectional_elaboration} and 215 lines implement the extended
+elaborator. We give here implementation-specific details and describe
+differences to the presentation in this paper.
+
+Elaboration is implemented in the style of Coquand's algorithm
+\cite{coquand1996algorithm}, where elaboration is interleaved with
+normalization-by-evaluation. Hence, we do not perform any substitution
+operations on core syntax, instead we evaluate core terms into the semantic
+domain, and perform unification, strengthening and occurrence checking on
+semantic values. There is also a quoting (or readback) operation which yields
+normalized core terms from values, and which is used most prominently when we
+have to generate solutions for metavariables.
+
+Metacontexts are a key point in the implementation. We avoid the tedious (and
+inefficient) threading of composed metasubstitutions, instead we have a mutable
+reference which stores the current metasubstitution. We have a ``forcing''
+operation which computes a semantic value to a head normal form, with respect to
+the current metasubstitution. Hence, instead of constantly updating every term
+and type by metasubstitution, we only force them whenever we need to match on
+the shape of types, for example when we are inserting implicit arguments based
+on types. In this paper we still stick with the ``threaded metasubstitution''
+presentation because it is more conventional, and also more straightforward to
+formalize.
+
+We use normalization-by-evaluation in Abel's style (see
+e.g.\ \cite[Chapter~3]{abel2013normalization}), where semantic values use de
+Bruijn levels, and the core syntax uses de Bruijn indices. This is practically
+very favorable, because the evaluator never has to perform weakening on values.
+The implementation of curried functions presents a bit of a complication,
+because the computation rules are type-directed, so we have to annotate
+applications and abstractions with telescopes (just as in our notation for the
+core syntax).
+
+We provide a fairly optimized implementation for constraints: we keep track of
+``blocking'' metas for each constraint, which are relevant to checking the
+constancy condition, and upon solving a meta we only review constraints which
+were blocked on the meta.
+
+\section{Evaluation}
+\label{sec:impl_and_eval}
 
 
+
+
+
+
+%% \begin{itemize}
+%% \item Elaboration is implemented in the style of Coquand's algorithm \cite{coquand1996algorithm},
+%%       where elaboration is interleaved with normalization-by-evaluation.
+%% \end{itemize}
 
 \begin{acks}
   This work was supported by the European Union, co-financed by the
