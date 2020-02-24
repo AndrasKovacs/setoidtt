@@ -13,6 +13,7 @@ import qualified Data.IntSet as IS
 import Types
 import Evaluation
 import ElabState
+import Errors
 
 import Debug.Trace
 

@@ -7,10 +7,14 @@ import System.Exit
 import System.Environment
 
 import Types
+import Pretty
 import Evaluation
 import Elaboration
+import Errors
 import Parser
 import ElabState
+import Zonk
+
 
 helpMsg = unlines [
   "usage: holes [--help|nf|type]",
@@ -348,13 +352,3 @@ ex2 = main' "elab" $ unlines [
 
   "the (Eq hundred hundred) refl"
   ]
-
-
-  -- ?4 {A} (?3 {A})* {?6 {A}},A
-
-  -- α A {β A : γ A} =? A
-
-  -- γ = λ A. A ▶ ∙
-  -- α = λ _ A. A
-
--- the ? (λ {y : γ} x → x){α:γ}

@@ -966,24 +966,34 @@ the surface syntax, algorithmic typechecking \emph{always} finds it. In
 ibid.\ this means figuring out domain types for $\lambda$-s and inserting all
 implicit applications. However, our elaborator targets a far stronger theory,
 and it is beyond our reach to succinctly characterize which annotations are
-inferable in the surface language.
+inferable in the surface language, and we do not know of any prior work which
+accomplishes this for a comparably strong elaborator. Our experience in Agda is
+that it is not tractable in general to figure out which arguments are inferable,
+by looking at function types; often we have to run elaboration to see what
+works.
 
 We can still say something about the behavior of our elaborator. For this, we
 consider a translation from core terms to surface terms, the obvious forgetful
 translation, which maps core terms to surface counterparts. Now, this is an
 ``evil'' construction on core terms, since it does not preserve definitional
-equality. We shall only use this evil notion in the following statement.
+equality, but we shall only use this evil notion in the following statement.
 
 \begin{theorem}[Conservativity]\label{thm:conservativity}
 Elaboration is conservative over the surface syntax, in the sense that for any
 surface term $t$, if checking or inference outputs $t'$, then the forgetful
 translation of $t'$ differs from $t$ only by
   \begin{itemize}
-    \item Having all $\_$ holes filled in by expressions.
+    \item Having all $\_$ holes filled with core expressions.
     \item Having extra implicit $\lambda$-s and implicit applications inserted.
   \end{itemize}
 This follows by straightforward induction on surface syntax. \qed
 \end{theorem}
+
+\emph{Remark.} It is \emph{not} the case that for every term in the core syntax
+there exists a surface term which elaborates to it. The main reason is that
+$\lambda$-s in the surface syntax are not annotated, and it is easy to find core
+$\lambda$ expressions with uninferable domain types. We skip optional surface
+$\lambda$ domain type annotations for the sake of brevity.
 
 \subsubsection{Omitted features}
 
@@ -1570,13 +1580,13 @@ $true$ on line $\scriptstyle{11}$, since $\lambda\,\{x : \ol{\epsilon}\}.\,true$
 computes to that, and elaboration succeeds with the expected output.
 \end{example}
 
-\section{Implementation and Evaluation}
+\section{Implementation}
 \label{sec:impl_and_eval}
 
 We provide a implementation of the elaborator described in Section
-\ref{sec:extending_elaboration}. It is a standalone Haskell program which takes
-as input a file or a string containing a surface expression, and outputs the
-result of elaboration.
+\ref{sec:extending_elaboration}. It is a standalone Haskell program which reads
+a surface expression from standard input, and outputs the result of elaboration,
+or optionally the type or the normal form of the result.
 
 
 
