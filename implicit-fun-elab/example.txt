@@ -50,14 +50,17 @@ let QLerror2 = λ x. cons x ids in
 -- let foo = λ x. runST x in
 -- let QLerror3 : Nat = app (λ x. runST x) argST in
 
-let foo : IdTy → Bool = λ _. true in
-let bar = λ f. foo f in
+let the = λ (A : U)(x : A). x in
 
+-- let g = id {IdTy} (choose id id) in
 
+-- SIMPLE EXAMPLE OF POLY ARG INFERENCE FAIL
+-- let foo : IdTy → Bool = λ _. true in
+-- let bar = λ f. foo f in
 -- FCIF cannot infer polymorphic types for λ-bound arguments
 
-
 U
+
 
 -- let the	   : (A : U) → A → A = λ A x.x in
 -- let id	   : {A} → A → A = λ x. x in

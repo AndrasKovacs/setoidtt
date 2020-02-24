@@ -344,8 +344,8 @@ unify cxt l r = go l r where
     (VLamTel x a t, VLamTel x' a' t')        -> goBind x (VRec a) t t'
     (VLamTel x a t, t')                      -> goBind x (VRec a) t (vAppTel a t')
     (t, VLamTel x' a' t')                    -> goBind x' (VRec a') (vAppTel a' t) t'
-    (VNe (HMeta m) sp, VNe (HMeta m') sp')   -> flexFlex m sp m' sp'
     (VNe h sp, VNe h' sp') | h == h'         -> goSp (forceSp sp) (forceSp sp')
+    (VNe (HMeta m) sp, VNe (HMeta m') sp')   -> flexFlex m sp m' sp'
     (VNe (HMeta m) sp, t')                   -> solveMeta cxt m sp t'
     (t, VNe (HMeta m') sp')                  -> solveMeta cxt m' sp' t
 
