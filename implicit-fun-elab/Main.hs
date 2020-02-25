@@ -43,7 +43,7 @@ mainWith getOpt getTm = do
       elab = do
         reset
         (t, src) <- getTm
-        (t, a) <- infer emptyCxt True t `catch` displayError src
+        (t, a) <- inferTopLams emptyCxt t `catch` displayError src
         t <- pure $ zonk VNil t
         let ~nt = quote 0 $ eval VNil t
         let ~na = quote 0 a
@@ -82,13 +82,14 @@ pruneTest2 = main' "elab" $ unlines [
  ]
 
 test0 = main' "elab" $ unlines [
-  "λ (Bool : U)(true : Bool).",
+  "λ (A : U)(a : A).",
 
-  "let x : _ = true in x"
+  "let x = a in x"
   ]
 
 
 test = main' "elab" $ unlines [
+  "λ (FOO : U)(foobarr : FOO).",
   "let the : (A : U) → A → A = \\A x.x in",
   "let IdTy = {A} → A → A in",
   "let id : IdTy = λ x. x in",

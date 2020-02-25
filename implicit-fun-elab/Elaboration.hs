@@ -443,6 +443,21 @@ check cxt topT ~topA = case (topT, force topA) of
     unifyWhile cxt va topA
     pure t
 
+-- | We specialcase top-level lambdas (serving as postulates) for better
+--   printing: we don't print them in meta spines.
+inferTopLams :: Cxt -> Raw -> IO (Tm, VTy)
+inferTopLams cxt = \case
+  RLam x ann i t -> do
+    a <- case ann of
+      Just ann -> check cxt ann VU
+      Nothing  -> freshMeta cxt VU
+    let ~va = eval (cxt^.vals) a
+    (t, liftVal cxt -> b) <- inferTopLams (bind ('*':x) NOSource va cxt) t
+    pure (Lam x i a t, VPi x i va b)
+  RSrcPos p t ->
+    addSrcPos p $ inferTopLams cxt t
+  t ->
+    infer cxt True t
 
 infer :: Cxt -> MetaInsertion -> Raw -> IO (Tm, VTy)
 infer cxt ins = \case
@@ -453,7 +468,7 @@ infer cxt ins = \case
 
   RVar x -> insert cxt ins $ do
     let go :: [Name] -> [NameOrigin] -> Types -> Int -> IO (Tm, VTy)
-        go (y:xs) (NOSource:os) (TSnoc _  a) i | x == y = pure (Var i, a)
+        go (y:xs) (NOSource:os) (TSnoc _  a) i | x == y || ('*':x) == y = pure (Var i, a)
         go (_:xs) (_       :os) (TSnoc as _) i = go xs os as (i + 1)
         go []     []            TNil         _ = report (cxt^.names) (NameNotInScope x)
         go _ _ _ _ = error "impossible"

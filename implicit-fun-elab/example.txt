@@ -52,11 +52,13 @@ let QLerror2 = λ x. cons x ids in
 
 let the = λ (A : U)(x : A). x in
 
+let foo = _ in
+
 -- let g = id {IdTy} (choose id id) in
 
 -- SIMPLE EXAMPLE OF POLY ARG INFERENCE FAIL
--- let foo : IdTy → Bool = λ _. true in
--- let bar = λ f. foo f in
+let foo : IdTy → Bool = λ _. true in
+let bar = λ f. foo f in
 -- FCIF cannot infer polymorphic types for λ-bound arguments
 
 U
@@ -134,7 +136,7 @@ U
 -- let t3 = poly id in
 -- let t4 = id poly (λ x. x) in
 
--- -- let t5 = λ xs. poly (head xs) in -- we need telescope application insertion
+-- let t5 = λ xs. poly (head xs) in -- we need telescope application insertion
 -- let t6 = length ids in
 -- let t7 = append (single inc) (single id) in
 -- let t8 : ({A} → List A → List A → A) → _ = λ g. g (single id) ids in
