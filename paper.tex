@@ -1550,25 +1550,40 @@ returned: since the $\alpha_1$ telescope meta is now solved, curried function
 types and abstractions are computed away.
 \end{example}
 
+%% \begin{alignat*}{3}
+%% & \scriptstyle{0}\qquad\qquad && \einfert{\slet\,x : \_ = true\,\sin\,x}{\true}
+%%       \hspace{21em}\\
+%% & \scriptstyle{1} && \quad \echeckt{\_}{\U}\\
+%% & \scriptstyle{2} && \quad = \alpha_0\\
+%% & \scriptstyle{3} && \quad \echeckt{true}{\alpha_0}\\
+%% & \scriptstyle{4} && \qquad \mathsf{freshMeta}\,\Tel\\
+%% & \scriptstyle{5} && \qquad = \alpha_1\\
+%% & \scriptstyle{6} && \qquad \einfert{true}{\true}\\
+%% & \scriptstyle{7} && \qquad = true : Bool\\
+%% & \scriptstyle{8} && \qquad \mathsf{newConstancy}_{\emptycon,\,x : \Rec\,\alpha_1}\,Bool\\
+%% & \scriptstyle{9} && \qquad\quad \unify\,\alpha_1\,\epsilon\\
+%% & \scriptstyle{10} && \qquad \unify\,\alpha_0\,Bool\\
+%% & \scriptstyle{11} && \quad = true\\
+%% & \scriptstyle{12} && \quad \einfert{x}{\true}\\
+%% & \scriptstyle{13} && \quad = true : Bool\\
+%% & \scriptstyle{14} && = (\slet\,x : Bool = true\,\sin\,x) : Bool
+%% \end{alignat*}
+
 \begin{example}
 We illustrate now the action of constancy constraints, using the example from
 Section \ref{sec:superfluous}. Again, assume $Bool : \U$ and $true : Bool$.
 \begin{alignat*}{3}
 & \scriptstyle{0}\qquad\qquad && \einfert{\slet\,x : \_ = true\,\sin\,x}{\true}
       \hspace{21em}\\
-& \scriptstyle{1} && \quad \echeckt{\_}{\U}\\
-& \scriptstyle{2} && \quad = \alpha_0\\
+& \scriptstyle{1} && \quad \echeckt{\_}{\U} = \alpha_0\\
 & \scriptstyle{3} && \quad \echeckt{true}{\alpha_0}\\
-& \scriptstyle{4} && \qquad \mathsf{freshMeta}\,\Tel\\
-& \scriptstyle{5} && \qquad = \alpha_1\\
-& \scriptstyle{6} && \qquad \einfert{true}{\true}\\
-& \scriptstyle{7} && \qquad = true : Bool\\
+& \scriptstyle{4} && \qquad \mathsf{freshMeta}\,\Tel = \alpha_1\\
+& \scriptstyle{6} && \qquad \einfert{true}{\true} = true : Bool\\
 & \scriptstyle{8} && \qquad \mathsf{newConstancy}_{\emptycon,\,x : \Rec\,\alpha_1}\,Bool\\
 & \scriptstyle{9} && \qquad\quad \unify\,\alpha_1\,\epsilon\\
 & \scriptstyle{10} && \qquad \unify\,\alpha_0\,Bool\\
 & \scriptstyle{11} && \quad = true\\
-& \scriptstyle{12} && \quad \einfert{x}{\true}\\
-& \scriptstyle{13} && \quad = true : Bool\\
+& \scriptstyle{12} && \quad \einfert{x}{\true} = true : Bool\\
 & \scriptstyle{14} && = (\slet\,x : Bool = true\,\sin\,x) : Bool
 \end{alignat*}
 First we create a fresh meta $\alpha_0$ for the hole on line $\scriptstyle{2}$,
@@ -1638,6 +1653,8 @@ were blocked on the meta.
 \newcommand{\yesst}{\text{Yes*}}
 \newcommand{\no}{\text{No}}
 
+{\small
+
 \begin{figure}
 \begin{tabular}{|lll|}
 \hline
@@ -1681,13 +1698,28 @@ D3 & $runST\,argST$         & \yes \\
 D4 & $app\,runST\,argST$    & \yes \\
 D5 & $revapp\,argST\,runST$ & \yes \\
 \hline
+E & \multicolumn{2}{l|}{\textsc{$\eta$-expansion}}\\
+\hline
+& \multicolumn{2}{l|}{assuming $k : \{A : \U\}\to A \to List\,A \to A$,} \\
+& \multicolumn{2}{l|}{$h : Int \to \{A:\U\}\to A \to A$}\\
+& \multicolumn{2}{l|}{and $lst : List\,(\{A:\U\} \to Int \to A \to A)$} \\
+E1 & $k\,h\,lst$ & \no \\
+E2 & $k\,(\lambda\,x.\,h\,x)\,lst$ & \yesst \\
+E3 & $\lambda\,(r : (\{A :\U\}\to A \to \{B : \U\}\to B \to B) \to Int).\,r\,(\lambda\,x\,y.\,y)$ & \yes \\
+\hline
+\multicolumn{3}{l}{\text{{\footnotesize
+``Yes*'' means that our system can infer a type for the
+expression, but the lack of}}}\\
+\multicolumn{3}{l}{\text{{\footnotesize
+let-generalization causes unsolved metas in the type.}}}
 \end{tabular}
 
 \caption{Elaboration benchmark from \cite{serrano2018guarded}.}
 \end{figure}
 
-%% λ (g : {A} → List A → List A → A). g (single id) ids
+}
 
+%% (h : Int → {A} → A → A)(k : {A} → A → List A → A)(lst : List ({A} → Int → A → A))
 
 
 \begin{acks}
