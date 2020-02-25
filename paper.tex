@@ -65,6 +65,7 @@
 \presetkeys{todonotes}{inline}{}
 \usepackage{scalerel}
 \usepackage{amssymb}
+
 %% \usepackage{cleveref}
 %% \usepackage{hyperref}
 %% \usepackage{nameref}
@@ -1296,7 +1297,7 @@ bound variable does not have a record type, then we do as before\footnote{This
   implies that we close over meta-headed types using plain functions. In theory,
   this causes a higher-order version of the basic implicit insertion problem: we
   are uncertain about whether we should be uncertain about implicit
-  insertions. So far, this higher-order insertion problem seems to seems to be
+  insertions. So far, this higher-order insertion problem seems to be
   irrelevant in practice, in the prototype implementation.}. We prepend the
 following clause to Definition
 \ref{def:closingtype}:
@@ -1305,8 +1306,8 @@ following clause to Definition
 \]
 \end{definition}
 \begin{definition}[Contextualization]
-We extend our spine notation to applications of curried functions. For example,
-we may have a spine $\ol{t} \equiv (\{x : \ol{A}\}\,\{y : \ol{B}\})$. We
+We extend spine notation to applications of curried functions. For example, we
+may have a spine $\ol{t} \equiv (\{x : \ol{A}\}\,\{y : \ol{B}\})$. We
 accordingly revise Definition \ref{def:contextualization} for
 $\overline{\mathsf{vars}_{\Gamma}}$ so that we use curried function application
 for each record type in $\Gamma$.
@@ -1487,7 +1488,7 @@ This concludes the definition of the extended elaborator. The new algorithm is
 sound with respect to the extended core syntax, and it also has the
 conservativity property from Theorem \ref{thm:conservativity} if we additionally
 allow elaboration to insert $\lambda$-s for strictly curried functions. We present
-some examples of the algorithm at action.
+some examples of the algorithm in action.
 
 
 \begin{example}
@@ -1589,8 +1590,6 @@ We provide an implementation of the elaborator from Section
 a surface expression from standard input, and outputs the result of elaboration,
 or optionally the type or the normal form of the result.
 
-\todo{update loc}
-
 It is implemented in about 1200 lines of Haskell. Of this, 673 lines constitute
 the core syntax, evaluation, unification and elaboration. Of this 673 lines, 458
 lines implement the basic elaborator of Section
@@ -1610,13 +1609,13 @@ have to generate solutions for metavariables.
 Metacontexts are a key point in the implementation. We avoid the tedious (and
 inefficient) threading of composed metasubstitutions, instead we have a mutable
 reference which stores the current metasubstitution. We have a ``forcing''
-operation which computes a semantic value to a head normal form, with respect to
+operation which computes a semantic value to a head normal form with respect to
 the current metasubstitution. Hence, instead of constantly updating every term
-and type by metasubstitution, we only force them whenever we need to match on
-the shape of types, for example when we are inserting implicit arguments based
-on types. In this paper we still stick with the ``threaded metasubstitution''
-presentation because it is more conventional, and also more straightforward to
-formalize.
+and type by performing metasubstitution, we only force them whenever we need to
+match on the shape of types, for example when we are inserting implicit
+arguments based on types. In this paper we still stick with the ``threaded
+metasubstitution'' presentation because it is more conventional, and also more
+straightforward to formalize.
 
 We use normalization-by-evaluation in Abel's style (see
 e.g.\ \cite[Chapter~3]{abel2013normalization}), where semantic values use de
@@ -1635,15 +1634,61 @@ were blocked on the meta.
 \section{Evaluation}
 \label{sec:impl_and_eval}
 
+\newcommand{\yes}{\text{Yes}}
+\newcommand{\yesst}{\text{Yes*}}
+\newcommand{\no}{\text{No}}
+
+\begin{figure}
+\begin{tabular}{|lll|}
+\hline
+A & \multicolumn{2}{l|}{\textsc{polymorphic instantiation}}\\
+\hline
+A1 & $\lambda\,x\,y.\,y$ & \yesst\\
+A2 & $choose\,id$ & \yesst \\
+A3 & $choose\,nil\,ids$ & \yes \\
+A4 & $\lambda\,(x : \{A : \U\}\to A \to A).\,x\,x$ & \yesst\\
+A5 & $id\,auto$ & \yes\\
+A6 & $id\,auto'$ & \yesst\\
+A7 & $choose\,id\,auto$ & \yes\\
+A8 & $choose\,id\,auto'$ & \no\\
+A9 & $\lambda\,(f : \{A : \U\}\to(A\to A)\to List\,A \to A).\,f\,(choose\,id)\,ids$ & \yesst\\
+A10 & $poly\,id$ & \yes\\
+A11 & $poly\,(\lambda\,x.\,x)$ & \yes\\
+\hline
+B & \multicolumn{2}{l|}{\textsc{inference of polymorphic arguments}}\\
+\hline
+B1 & $\lambda\,f.\,pair\,(f\,zero)\,(f\,true)$ & \no\\
+B2 & $\lambda\,xs.\,poly\,(head\,xs)$ & \no\\
+\hline
+C & \multicolumn{2}{l|}{\textsc{functions on polymorphic lists}}\\
+\hline
+C1  & $length\,ids$ & \yes \\
+C2  & $tail\,ids$ & \yes \\
+C3  & $head\,ids$ & \yesst \\
+C4  & $single\,id$ & \yesst \\
+C5  & $cons\,id\,ids$ & \yes \\
+C6  & $cons\,(\lambda\,x.\,x)\,ids$ & \yes \\
+C7  & $append\,(single\,inc)\,(single\,id)$ & \yes \\
+C8  & $\lambda\,(g:\{A:\U\}\to List\,A \to List\,A \to A).\,g\,(single\,id)\,ids$ & \yesst \\
+C9  & $map\,poly\,(single\,id)$ & \yes \\
+C10 & $map\,head\,(single\,ids)$ & \yes \\
+\hline
+D & \multicolumn{2}{l|}{\textsc{application functions}}\\
+\hline
+D1 & $app\,poly\,id$        & \yes \\
+D2 & $revapp\,id\,poly$     & \yes \\
+D3 & $runST\,argST$         & \yes \\
+D4 & $app\,runST\,argST$    & \yes \\
+D5 & $revapp\,argST\,runST$ & \yes \\
+\hline
+\end{tabular}
+
+\caption{Elaboration benchmark from \cite{serrano2018guarded}.}
+\end{figure}
+
+%% λ (g : {A} → List A → List A → A). g (single id) ids
 
 
-
-
-
-%% \begin{itemize}
-%% \item Elaboration is implemented in the style of Coquand's algorithm \cite{coquand1996algorithm},
-%%       where elaboration is interleaved with normalization-by-evaluation.
-%% \end{itemize}
 
 \begin{acks}
   This work was supported by the European Union, co-financed by the
