@@ -1,49 +1,56 @@
+{-# OPTIONS --type-in-type #-}
 
-open import Data.Maybe
-open import Data.Product
-open import Level
-open import Relation.Binary.PropositionalEquality
+choose : {A : Set} → A → A → A
+choose x y = x
 
-record ⊤ {i} : Set i where
-  constructor tt
+-- foo = λ x → choose { {A : Set} → A → A} x (λ x → x)
 
-data ⊥ {i} : Set i where
 
-data W {i}{j}(S : Set i) (P : S → Set j) : Set (i ⊔ j) where
-  sup : ∀ s → (P s → W S P) → W S P
+-- open import Data.Maybe
+-- open import Data.Product
+-- open import Level
+-- open import Relation.Binary.PropositionalEquality
 
-Tel : Set₁
-Tel = W (Maybe Set) (maybe (λ A → A) ⊥)
+-- record ⊤ {i} : Set i where
+--   constructor tt
 
-infixr 4 _▶_
-pattern ∙       = sup nothing _
-pattern _▶_ A Γ = sup (just A) Γ
+-- data ⊥ {i} : Set i where
 
-Rec : Tel → Set₁
-Rec ∙       = ⊤
-Rec (A ▶ Δ) = Σ A (λ a → Rec (Δ a))
+-- data W {i}{j}(S : Set i) (P : S → Set j) : Set (i ⊔ j) where
+--   sup : ∀ s → (P s → W S P) → W S P
 
-Π : (Δ : Tel) → (Rec Δ → Set) → Set
-Π ∙       B = B tt
-Π (A ▶ Δ) B = (x : A) → Π (Δ x) λ δ → B (x , δ)
+-- Tel : Set₁
+-- Tel = W (Maybe Set) (maybe (λ A → A) ⊥)
 
-app : ∀ {Δ B} → Π Δ B → (δ : Rec Δ) → B δ
-app {∙}     f x         = f
-app {A ▶ Δ} f (x₀ , x₁) = app (f x₀) x₁
+-- infixr 4 _▶_
+-- pattern ∙       = sup nothing _
+-- pattern _▶_ A Γ = sup (just A) Γ
 
-lam : ∀ {Δ B} → ((δ : Rec Δ) → B δ) → Π Δ B
-lam {∙}     f = f tt
-lam {A ▶ Δ} f = λ x → lam λ δ → f (x , δ)
+-- Rec : Tel → Set₁
+-- Rec ∙       = ⊤
+-- Rec (A ▶ Δ) = Σ A (λ a → Rec (Δ a))
 
-β : ∀ Δ B (f : (δ : Rec Δ) → B δ) δ → app {Δ}{B}(lam f) δ ≡ f δ
-β ∙       B f δ       = refl
-β (A ▶ Δ) B f (x , δ) = β (Δ x) _ (λ δ → f (x , δ)) δ
+-- Π : (Δ : Tel) → (Rec Δ → Set) → Set
+-- Π ∙       B = B tt
+-- Π (A ▶ Δ) B = (x : A) → Π (Δ x) λ δ → B (x , δ)
 
-postulate
-  ext : ∀ {i j}{A : Set i}{B : A → Set j}{f g : ∀ a → B a}
-        → (∀ x → f x ≡ g x)
-        → f ≡ g
+-- app : ∀ {Δ B} → Π Δ B → (δ : Rec Δ) → B δ
+-- app {∙}     f x         = f
+-- app {A ▶ Δ} f (x₀ , x₁) = app (f x₀) x₁
 
-η : ∀ Δ B f → lam {Δ}{B} (app f) ≡ f
-η ∙       B f = refl
-η (A ▶ Δ) B f = ext λ x → η (Δ x) _ (f x)
+-- lam : ∀ {Δ B} → ((δ : Rec Δ) → B δ) → Π Δ B
+-- lam {∙}     f = f tt
+-- lam {A ▶ Δ} f = λ x → lam λ δ → f (x , δ)
+
+-- β : ∀ Δ B (f : (δ : Rec Δ) → B δ) δ → app {Δ}{B}(lam f) δ ≡ f δ
+-- β ∙       B f δ       = refl
+-- β (A ▶ Δ) B f (x , δ) = β (Δ x) _ (λ δ → f (x , δ)) δ
+
+-- postulate
+--   ext : ∀ {i j}{A : Set i}{B : A → Set j}{f g : ∀ a → B a}
+--         → (∀ x → f x ≡ g x)
+--         → f ≡ g
+
+-- η : ∀ Δ B f → lam {Δ}{B} (app f) ≡ f
+-- η ∙       B f = refl
+-- η (A ▶ Δ) B f = ext λ x → η (Δ x) _ (f x)

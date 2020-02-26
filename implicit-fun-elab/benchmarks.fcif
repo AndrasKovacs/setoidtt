@@ -68,7 +68,7 @@ let A6 : {B} → IdTy → B → B = id auto2 in
 
 let A7 = choose id auto in
 
--- FAILS let A8 = choose id auto2 in
+-- let A8 = choose id auto2 in -- FAILS
 --   the reason is simply that the types are definitionally different
 --   the order of implicit args dos not match. FCIF does *not* reorder or float out
 --   implicit args, intentionally, since we support mixing implicit and explicit
@@ -134,10 +134,10 @@ let D5 = revapp argST runST in
 -- D: η-expansion
 --------------------------------------------------------------------------------
 
--- FAILS let E1 =
+-- let E1 =   -- FAILS
 --   λ (h : Int → {A} → A → A)(k : {A} → A → List A → A)(lst : List ({A} → Int → A → A)).
 --   k h lst in
-  -- fails again because of mismatched impl/expl arguments
+--   -- fails again because of mismatched impl/expl arguments
 
 -- No generalization
 let E2 =

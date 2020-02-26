@@ -114,6 +114,10 @@
 \newcommand{\Rec}{\mathsf{Rec}}
 \newcommand{\ol}[1]{\overline{#1}}
 
+\newcommand{\yes}{\text{Yes}}
+\newcommand{\yesst}{\text{Yes*}}
+\newcommand{\no}{\text{No}}
+
 \theoremstyle{remark}
 \newtheorem{notation}{Notation}
 
@@ -1131,7 +1135,7 @@ judgments. Hence, the sides of the equations must have the same types, and in
 particular the left side of the \LabTirName{${[}{]}$-$\eta$} rule has type
 $\Rec\,\epsilon$.
 
-Our telescopes and records are derivable from natural numbers, the unit type and
+Telescopes and records are derivable from natural numbers, the unit type and
 $\Sigma$-types. We use Agda-like pattern matching notation in the following.
 First, we define length-indexed telescopes.
 \begin{alignat*}{3}
@@ -1646,14 +1650,58 @@ We provide a fairly optimized implementation for constraints: we keep track of
 constancy condition, and upon solving a meta we only review constraints which
 were blocked on the meta.
 
-\section{Evaluation}
+\section{Related Works and Evaluation}
 \label{sec:impl_and_eval}
 
-\newcommand{\yes}{\text{Yes}}
-\newcommand{\yesst}{\text{Yes*}}
-\newcommand{\no}{\text{No}}
+In this section we examine how the elaborator fares in practice, its
+limitations, and how it compares to related works. We abbreviate our elaborator
+as FCIF when comparing it to others.
+
+\subsubsection{Related works}
+MLF \cite{le2014mlf} is an extension of System F with polymorphic subtyping
+bounds, which supports strong inference for first class polymorphism. HML
+\cite{leijen2009flexible}) is a simplified variant of MLF. Since these systems
+diverge markedly from (fragments of) Martin-Löf type theory and rely critically
+on subtyping, it is unclear how they could be extended to dependent type
+theories. HMF \cite{leijen2008hmf} is a relatively simple system with
+first-class polymorphism; however, it is also weaker than others in terms of
+inferable annotations, and its more powerful variant (extended with n-ary
+application handling) jumps in complexity.
+
+There have been several attempts in the context of GHC. Boxy types
+\cite{vytiniotis2006boxy} and FPH \cite{vytiniotis2008fph} were two early
+iterations which suffered from complex specification, complex implementation or
+fragility. More recent works are guarded impredicativity (GI)
+\cite{serrano2018guarded} and quick look impredicativity (QL)
+\cite{serrano2020a}. They both try to examine n-ary applications to find
+metavariable instantiations which arise from occurrences guarded by rigid type
+constructors. GI's use of \emph{generalization constraints} anticipates our use
+of telescopes, but overall GI is also burdened by inessential complexity. QL
+streamlines GI by eschewing constraints in favor of an eager preprocessing pass
+on neutral expressions which finds polymorphic instantiations. QL also takes
+advantage of bidirectional type propagation.  Although QL seems to be
+practically the most favorable so far, it is far from being elegant; it does
+multiple checking passes, and the restriction of quick looking to neutral
+applications is rather ad-hoc.
+
 
 {\small
+
+\begin{figure}
+\begin{alignat*}{4}
+  & IdTy   && :\equiv \{A : \U\}\to A \to A   \hspace{10em}         && inc    && : Int \to Int                                        \\
+  & single && : \{A : \U\} \to A \to List\,A                       && auto   && : IdTy \to IdTy                                      \\
+  & id     && : IdTy                                               && auto'  && : \{B : \U\}\to IdTy \to B \to B                     \\
+  & ids    && : List\,IdTy                                         && choose && : \{A : \U\} \to A \to A \to A                       \\
+  & nil    && : \{A : \U\}\to List\,A                              && app    && : \{A\,B : \U\} \to (A \to B) \to A \to B            \\
+  & cons   && : \{A : \U\} \to A \to List\,A \to List\,A           && revapp && : \{A\,B : \U\} \to A \to (A \to B) \to B            \\
+  & head   && : \{A : \U\} List\,A \to A                           && runST  && : \{A : \U\} \to (\{S : \U\} \to ST\,S\,A) \to A     \\
+  & tail   && : \{A : \U\} List\,A \to List\,A                     && argST  && : \{S : \U\}\to ST\,S\,Int                           \\
+  & map    && : \{A B : \U\} \to (A \to B) \to List\,A \to List\,B && poly   && : IdTy \to Pair\,Int\,Bool
+\end{alignat*}
+\caption{Types used in Figure \ref{fig:benchmark}.}
+\label{fig:benchmark_types}
+\end{figure}
 
 \begin{figure}
 \begin{tabular}{|lll|}
@@ -1661,6 +1709,8 @@ were blocked on the meta.
 A & \multicolumn{2}{l|}{\textsc{polymorphic instantiation}}\\
 \hline
 A1 & $\lambda\,x\,y.\,y$ & \yesst\\
+   & \text{we infer a type which may be solved to $\{A\,B : \U\}\to A \to B \to A$} &\\
+   & \text{but not to $\{A : \U\}\to A \to \{B : \U\} \to B \to A$} & \\
 A2 & $choose\,id$ & \yesst \\
 A3 & $choose\,nil\,ids$ & \yes \\
 A4 & $\lambda\,(x : \{A : \U\}\to A \to A).\,x\,x$ & \yesst\\
@@ -1711,15 +1761,88 @@ E3 & $\lambda\,(r : (\{A :\U\}\to A \to \{B : \U\}\to B \to B) \to Int).\,r\,(\l
 ``Yes*'' means that our system can infer a type for the
 expression, but the lack of}}}\\
 \multicolumn{3}{l}{\text{{\footnotesize
-let-generalization causes unsolved metas in the type.}}}
+let-generalization yields unsolved metas in the type.}}}
 \end{tabular}
 
 \caption{Elaboration benchmark from \cite{serrano2018guarded}.}
+\label{fig:benchmark}
 \end{figure}
-
 }
 
-%% (h : Int → {A} → A → A)(k : {A} → A → List A → A)(lst : List ({A} → Int → A → A))
+\subsubsection{Evaluation}
+We borrow a very useful collection of inference benchmarks from the GI
+\cite{serrano2018guarded} and QL \cite{serrano2020a} papers: see Figure
+\ref{fig:benchmark_types} and Figure \ref{fig:benchmark}. We also include a
+source file in the implementation which reproduces these results.  In ibid.\ a
+comparison is presented between multiple systems, but here we only include
+FCIF. The relative performance of FCIC here is easy to remember: it handles
+exactly the same cases as QL (which is slightly more than what GI covers). We
+mark some cases as ``Yes*'', where FCIF successfully infers a type, but since
+FCIC does no let-generalization, the inferred types are not fully constrained
+without extra contextual information.
+
+In the $A1$ case, FCIF inserts only a single curried $\lambda$ on the outside,
+which is why the inferred type is not unifiable with $\{A : \U\}\to A \to \{B :
+\U\} \to B \to A$. However, this could be easily remedied by adding an extra
+curried $\lambda$ insertion in the definition of
+$\einfer{\lambda\,x.\,t}{ins}{\Theta}{\Gamma}$.
+
+In $A8$, the failure is intentional: the types of $id$ and $auto'$ are not
+unifiable because of the mismatched order of implicit and explicit arguments. We
+do not float out or reorder implicit arguments in any way, because we want to
+support arbitrary mixing of implicit/explicit arguments in the surface language,
+and such reordering would be problematic anyway in the presence of dependent
+types. The same situation arises in $E1$, where we cannot unify $\{A : \U\}\to
+Int \to A \to A$ with $Int \to \{A : \U\}\to A \to A$.
+
+While in this benchmark FCIF matches QL, in other ways it is significantly
+stronger. Some general observations on the relative strength of FCIF:
+\begin{itemize}
+  \item
+        Most obviously, FCIF supports dependent type theory and prior solutions
+        do not. It is also doubtful whether prior solutions scale to dependent
+        types. In particular, QL's preprocessing step is not applicable, since in
+        a dependently typed spine we cannot do anything with later arguments until
+        previous arguments are actually elaborated, or else it has to be restricted
+        to non-dependent spines.
+  \item
+        FCIF is global and does not consider neutral spines specially in any
+        way. For an example for global inference, $\slet\,x : \_ =
+        single\,id\,\sin\,$ $cons\,\{IdTy\}\,x\,nil$ works in FCIF but does not
+        work in GI, QL and HMF. It also works in MLF and HML, which are also
+        global in this sense. These work by immediately giving a principal type
+        to $single\,id$ which includes a subtyping bound. In contrast, FCIF
+        makes no promises about principal typing --- which is not feasible with
+        dependent types --- but it can still infer a type for $id$ which can be
+        later constrained to $IdTy$.
+\end{itemize}
+
+\emph{Limitations.} What FCIF definitely cannot do, is inferring an implicit
+function type for a function argument. MLF is the only system which can do this,
+in cases where the polymorphic argument is used only once. Consider the
+following:
+\[
+  \slet\,f : IdTy \to Bool = \lambda\,\_.\,true\,\sin\,\lambda\,x.\,f\,x
+  \]
+FCIF will attempt to elaborate $f\,x$ to $f\,(\lambda\{A\}.\,x)$, but fails to
+infer a type for $x$, because $A$ is not in the scope of $x$'s type. In the next
+section we sketch an extension of FCIF which can handle this, and can also
+handle $B2$ from Figure \ref{fig:benchmark}.
+
+\section{Future Work}
+
+
+
+
+
+\section{Conclusion}
+
+
+%% -- let f : IdTy → Bool = λ x. true in
+%% -- λ x. f x
+
+
+
 
 
 \begin{acks}
