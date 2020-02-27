@@ -284,12 +284,12 @@ There is significant literature on type inference in the presence of first-class
 polymorphic types, mainly in relation to GHC and ML-like languages; see
 e.g.\ \cite{leijen2008hmf,leijen2009flexible,serrano2018guarded,vytiniotis2006boxy}.
 The above issue in Agda is a specific instance of the challenges described in
-the mentioned works. So far, none of the above solutions have landed in
+the mentioned works. Currently none of the above solutions are supported in
 production compilers, for reasons of complexity, fragility and interaction with
 other language features. A recent GHC development \cite{serrano2020a} offers a
 solution which is relatively simple, and which is likely to land in an official
-GHC release. However, none of these solutions support dependent types, and they
-also have other limitations which we would like to address.
+GHC release. However, none of these works support dependent types, which is a
+key point in our work.
 
 The solution presented in this paper is to gradually accummulate information
 about implicit insertions, and to have a setup where insertions can be refined
@@ -303,23 +303,22 @@ inferred type is unified with the annotation.
   \item We propose an elaboration algorithm which translates from a small
     Agda-like surface language to a small Martin-L\"of type theory extended with
     implicit function types, telescopes and \emph{strictly curried function
-      types} with telescope domain. We use these extensions to accummulate
-    information about implicit insertions. Our algorithm is a conservative
-    extension of Norell's bidirectional elaborator for Agda
-    \cite[Chapter~3]{norell07thesis}.
-  \item The presented elaborator is generally more powerful than previous
-    solutions for impredicative inference. In particular, it goes beyond prior
-    art by supporting full dependent type theory and by being global,
-    i.e.\ inference may consider the whole program and not just particular n-ary
-    applications.
+      types} with telescope domain. We use these extensions to accumulate
+    information about implicit insertions. Our algorithm is based on Norell's
+    bidirectional elaborator for Agda \cite[Chapter~3]{norell07thesis}.
+  \item
+    In the System F fragment, the presented elaborator is comparable or superior
+    to previous solutions for impredicative inference. However, it also supports
+    full dependent type theory. Our inference is also global, i.e.\ it can
+    consider the whole program and not just particular n-ary applications.
+  \item We provide an executable implementation of the elaborator described in
+    this paper.
+  \item Our solution is simple: we implemented elaboration,
+    evaluation and unification in about 670 lines of Haskell, of which 210 lines
+    implement the novel enhancements on the top of Norell's basic elaborator.
   \item The target theory of elaboration serves as a general platform for
     elaborating implicit function types: our concrete elaborator is a relatively
     simple one, and there is room to further develop it.
-  \item We provide an executable implementation of the elaborator described in
-    this paper.
-  \item Our solution is also \emph{simple}: we implemented elaboration,
-    evaluation and unification in about 670 lines of Haskell, of which 210 lines
-    implement the novel enhancements on the top of Norell's basic elaborator.
 \end{itemize}
 
 \subsubsection{Note on terminology}
@@ -966,7 +965,7 @@ give any other semantics to the surface syntax, nor does it support any other
 operation.
 
 We do not present any \emph{completeness} result for elaboration in this
-paper. For an example of what this would entail, in \cite{dunfield2013complete},
+paper. For an example of what this would entail, in \cite{dunfield2013complete}
 completeness means that whenever there is a way to fill in missing details in
 the surface syntax, algorithmic typechecking \emph{always} finds it. In
 ibid.\ this means figuring out domain types for $\lambda$-s and inserting all
@@ -975,11 +974,11 @@ and it is beyond our reach to succinctly characterize which annotations are
 inferable in the surface language, and we do not know of any prior work which
 accomplishes this for a comparably strong elaborator. Our experience in Agda is
 that it is not tractable in general to figure out which arguments are inferable,
-by looking at function types; often we have to run elaboration to see what
+by looking at function types, and often we have to run elaboration to see what
 works.
 
 We can still say something about the behavior of our elaborator. For this, we
-consider a translation from core terms to surface terms, the obvious forgetful
+consider a translation from core terms to surface terms, the evident forgetful
 translation, which maps core terms to surface counterparts. Now, this is an
 ``evil'' construction on core terms, since it does not preserve definitional
 equality, but we shall only use this evil notion in the following statement.
@@ -1292,8 +1291,8 @@ In the following, we shall only enhance $\lambda$-insertions. This allows a
 simple implementation which only requires minimal changes to unification, and
 which is already remarkably powerful. It seems that handling implicit
 application insertions requires extending unification; we discuss this in
-Section \ref{TODO}. First, we modify closing types and contextualization to take
-advantage of telescopes.
+Section \ref{sec:appinsert}. First, we modify closing types and
+contextualization to take advantage of telescopes.
 
 \begin{definition}[Closing types]
 We use curried function types to close over record types in the scope. If a
@@ -1607,14 +1606,11 @@ computes to that, and elaboration succeeds with the expected output.
 We provide an implementation of the elaborator from Section
 \ref{sec:extending_elaboration}. It is a standalone Haskell program which reads
 a surface expression from standard input, and outputs the result of elaboration,
-or optionally the type or the normal form of the result.
-
-It is implemented in about 1200 lines of Haskell. Of this, 673 lines constitute
-the core syntax, evaluation, unification and elaboration. Of this 673 lines, 458
-lines implement the basic elaborator of Section
-\ref{sec:bidirectional_elaboration} and 215 lines implement the extended
-elaborator. We give here implementation-specific details and describe
-differences to the presentation in this paper.
+or optionally the type or the normal form of the result. It is implemented in
+about 1200 lines of Haskell. Of this, 673 lines constitute the core syntax,
+evaluation, unification and elaboration. Of this 673 lines, 458 lines implement
+the basic elaborator of Section \ref{sec:bidirectional_elaboration} and 215
+lines implement the extended elaborator.
 
 Elaboration is implemented in the style of Coquand's algorithm
 \cite{coquand1996algorithm}, where elaboration is interleaved with
@@ -1631,7 +1627,7 @@ reference which stores the current metasubstitution. We have a ``forcing''
 operation which computes a semantic value to a head normal form with respect to
 the current metasubstitution. Hence, instead of constantly updating every term
 and type by performing metasubstitution, we only force them whenever we need to
-match on the shape of types, for example when we are inserting implicit
+pattern match on the shape of types, for example when we are inserting implicit
 arguments based on types. In this paper we still stick with the ``threaded
 metasubstitution'' presentation because it is more conventional, and also more
 straightforward to formalize.
@@ -1643,12 +1639,9 @@ very favorable, because the evaluator never has to perform weakening on values.
 The implementation of curried functions presents a bit of a complication,
 because the computation rules are type-directed, so we have to annotate
 applications and abstractions with telescopes (just as in our notation for the
-core syntax).
-
-We provide a fairly optimized implementation for constraints: we keep track of
-``blocking'' metas for each constraint, which are relevant to checking the
-constancy condition, and upon solving a meta we only review constraints which
-were blocked on the meta.
+core syntax). We implement constraints in a fairly optimized way: we keep track
+of relevant ``blocking'' metas for each constraint and upon solving a meta we
+only review constraints which were blocked on the meta.
 
 \section{Related Works and Evaluation}
 \label{sec:impl_and_eval}
@@ -1657,7 +1650,7 @@ In this section we examine how the elaborator fares in practice, its
 limitations, and how it compares to related works. We abbreviate our elaborator
 as FCIF when comparing it to others.
 
-\subsubsection{Related works}
+\subsection{Related Works}
 MLF \cite{le2014mlf} is an extension of System F with polymorphic subtyping
 bounds, which supports strong inference for first class polymorphism. HML
 \cite{leijen2009flexible}) is a simplified variant of MLF. Since these systems
@@ -1680,9 +1673,9 @@ of telescopes, but overall GI is also burdened by inessential complexity. QL
 streamlines GI by eschewing constraints in favor of an eager preprocessing pass
 on neutral expressions which finds polymorphic instantiations. QL also takes
 advantage of bidirectional type propagation.  Although QL seems to be
-practically the most favorable so far, it is far from being elegant; it does
-multiple checking passes, and the restriction of quick looking to neutral
-applications is rather ad-hoc.
+practically the most favorable so far, it is far from being elegant: it rechecks
+expressions multiple times, and the restriction of preprocessing to (nested)
+neutral applications is rather ad-hoc.
 
 
 {\small
@@ -1769,16 +1762,16 @@ let-generalization yields unsolved metas in the type.}}}
 \end{figure}
 }
 
-\subsubsection{Evaluation}
+\subsection{Evaluation}
 We borrow a very useful collection of inference benchmarks from the GI
 \cite{serrano2018guarded} and QL \cite{serrano2020a} papers: see Figure
 \ref{fig:benchmark_types} and Figure \ref{fig:benchmark}. We also include a
 source file in the implementation which reproduces these results.  In ibid.\ a
 comparison is presented between multiple systems, but here we only include
-FCIF. The relative performance of FCIC here is easy to remember: it handles
+FCIF. The relative performance of FCIF here is easy to remember: it handles
 exactly the same cases as QL (which is slightly more than what GI covers). We
 mark some cases as ``Yes*'', where FCIF successfully infers a type, but since
-FCIC does no let-generalization, the inferred types are not fully constrained
+FCIF does no let-generalization, the inferred types are not fully constrained
 without extra contextual information.
 
 In the $A1$ case, FCIF inserts only a single curried $\lambda$ on the outside,
@@ -1795,51 +1788,43 @@ and such reordering would be problematic anyway in the presence of dependent
 types. The same situation arises in $E1$, where we cannot unify $\{A : \U\}\to
 Int \to A \to A$ with $Int \to \{A : \U\}\to A \to A$.
 
-While in this benchmark FCIF matches QL, in other ways it is significantly
-stronger. Some general observations on the relative strength of FCIF:
-\begin{itemize}
-  \item
-        Most obviously, FCIF supports dependent type theory and prior solutions
-        do not. It is also doubtful whether prior solutions scale to dependent
-        types. In particular, QL's preprocessing step is not applicable, since in
-        a dependently typed spine we cannot do anything with later arguments until
-        previous arguments are actually elaborated, or else it has to be restricted
-        to non-dependent spines.
-  \item
-        FCIF is global and does not consider neutral spines specially in any
-        way. For an example for global inference, $\slet\,x : \_ =
-        single\,id\,\sin\,$ $cons\,\{IdTy\}\,x\,nil$ works in FCIF but does not
-        work in GI, QL and HMF. It also works in MLF and HML, which are also
-        global in this sense. These work by immediately giving a principal type
-        to $single\,id$ which includes a subtyping bound. In contrast, FCIF
-        makes no promises about principal typing --- which is not feasible with
-        dependent types --- but it can still infer a type for $id$ which can be
-        later constrained to $IdTy$.
-\end{itemize}
+Some general comments on the comparison of FCIF to prior works. First, FCIF
+supports dependent types and prior solutions do not. It is also unclear whether
+prior solutions can scale to dependent types. In particular, QL's preprocessing
+step is not applicable, since in a dependently typed spine we cannot do anything
+with later arguments until previous arguments are actually elaborated, or else
+it has to be restricted to non-dependent spines.
 
-\emph{Limitations.} What FCIF definitely cannot do, is inferring an implicit
-function type for a function argument. MLF is the only system which can do this,
-in cases where the polymorphic argument is used only once. Consider the
-following:
+Secondly, FCIF supports global inference and does not handle neutral spines
+specially. For an example for global inference, $\slet\,x : \_ =
+single\,id\,\sin\,$ $cons\,\{IdTy\}\,x\,nil$ works in FCIF, MLF and HMF but does
+not work in GI, QL and HMF. MLF and HML work here by immediately giving a
+principal type to $single\,id$ which involves generalization with a subtyping
+bound. In contrast, FCIF makes no promises about principal typing --- which is
+not feasible with dependent types --- and does no generalization, but it can
+still infer a type for $id$ which can be later constrained to $IdTy$.
+
+
+\subsection{Inferring Polymorphic Types for Function Arguments}
+\label{sec:appinsert}
+
+It is apparent from the $B1$ and $B2$ cases on Figure \ref{fig:benchmark} that FCIF
+cannot infer implicit function types for function arguments.  MLF is the only
+system which can do this, in cases where the polymorphic argument is used only
+once. Consider the following:
 \[
   \slet\,f : IdTy \to Bool = \lambda\,\_.\,true\,\sin\,\lambda\,x.\,f\,x
   \]
 FCIF will attempt to elaborate $f\,x$ to $f\,(\lambda\{A\}.\,x)$, but fails to
-infer a type for $x$, because $A$ is not in the scope of $x$'s type. In the next
-section we sketch an extension of FCIF which can handle this, and can also
-handle $B2$ from Figure \ref{fig:benchmark}.
-
-\section{Future Work}
-
+infer a type for $x$, because $A$ is not in the scope of $x$'s type. We sketch
+an extension of FCIF with \emph{implicit application insertion}, which could
+possibly handle this example. We note though that this is not yet fleshed out
+and is a subject of future work.
 
 
 
+\section{Future Work and Conclusion}
 
-\section{Conclusion}
-
-
-%% -- let f : IdTy → Bool = λ x. true in
-%% -- λ x. f x
 
 
 
