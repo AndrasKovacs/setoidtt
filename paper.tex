@@ -1659,7 +1659,7 @@ on subtyping, it is unclear how they could be extended to dependent type
 theories. HMF \cite{leijen2008hmf} is a relatively simple system with
 first-class polymorphism; however, it is also weaker than others in terms of
 inferable annotations, and its more powerful variant (extended with n-ary
-application handling) jumps in complexity.
+application handling) is more complex.
 
 There have been several attempts in the context of GHC. Boxy types
 \cite{vytiniotis2006boxy} and FPH \cite{vytiniotis2008fph} were two early
@@ -1790,10 +1790,10 @@ Int \to A \to A$ with $Int \to \{A : \U\}\to A \to A$.
 
 Some general comments on the comparison of FCIF to prior works. First, FCIF
 supports dependent types and prior solutions do not. It is also unclear whether
-prior solutions can scale to dependent types. In particular, QL's preprocessing
-step is not applicable, since in a dependently typed spine we cannot do anything
-with later arguments until previous arguments are actually elaborated, or else
-it has to be restricted to non-dependent spines.
+prior solutions can scale to dependent types. MLF and HML rely on subtyping, and
+solutions which work one neutral spine at a time (HMF, GI, QL) also face issues
+with dependently typed spines, since it is not possible to do anything with
+later arguments in such spines until previous arguments are elaborated.
 
 Secondly, FCIF supports global inference and does not handle neutral spines
 specially. For an example for global inference, $\slet\,x : \_ =
