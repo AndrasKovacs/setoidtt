@@ -91,7 +91,7 @@
 \newcommand{\echeck}[4]{\llbracket#1\rrbracket\!\Downarrow\,_{#2|#3}\,#4}
 \newcommand{\einfer}[3]{\llbracket#1\rrbracket\!\Uparrow\,_{#2|#3}}
 \newcommand{\echeckt}[2]{\llbracket#1\rrbracket\!\Downarrow\,#2}
-\newcommand{\einfert}[2]{\llbracket#1\rrbracket\!\Uparrow\,#2}
+\newcommand{\einfert}[1]{\llbracket#1\rrbracket\!\Uparrow}
 \newcommand{\edo}{\boldsymbol{\mathsf{do}}}
 \newcommand{\ereturn}{\boldsymbol{\mathsf{return}}}
 \newcommand{\eif}{\boldsymbol{\mathsf{if}}}
@@ -153,8 +153,8 @@ language. This holds in Agda and partially holds in GHC. Inference and
 elaboration in the presence of first-class implicit functions poses a challenge;
 in the context of Haskell and ML-like languages, this has been dubbed
 ``impredicative instantiation'' or ``impredicative inference''. We propose a new
-framework for elaborating first-class implicit functions, which is applicable
-for full dependent type theories and compares favorably to prior solutions in
+solution for elaborating first-class implicit functions, which is applicable
+to full dependent type theories and compares favorably to prior solutions in
 terms of power, generality and simplicity. We build atop Norell's
 bidirectional elaboration algorithm for Agda, and we note that the key issue is
 incomplete information about insertions of implicit abstractions and
@@ -201,9 +201,9 @@ point during elaboration whether implicit abstractions should be inserted.
 Programmers and users of proof assistants do not like to write out obvious
 things. Type inference and elaboration serve the purpose of filling in tedious
 details, translating terse surface-level languages to explicit core
-languages. Modern compilers such as Agda have gotten quite adept at this
-task. However, in practice, programmers still have to tell the compiler when and
-where to try filling in details on its own.
+languages. Modern systems such as Agda have gotten quite adept at this
+task. However, in practice, programmers still have to tell the compiler where to
+try filling in details on its own.
 
 \textbf{Implicit function types} are a common mechanism for conveying to the
 compiler that particular function arguments should be inferred by default. In
@@ -227,7 +227,8 @@ systems, there is also a way to explicitly specify implicit arguments: in Agda
 we may put arguments in brackets as we have seen, in Coq we can prefix a name
 with $\kw{@}$ to make every implicit argument explicit, as in
 $\kw{@}id\,bool\,true$, and in GHC we can enable the language extension
-$\mathsf{TypeApplications}$ and write $id\,\kw{@}Bool\,True$.
+$\mathsf{TypeApplications}$ \cite{eisenberg2016visible} and write
+$id\,\kw{@}Bool\,True$.
 
 Implicit functions are \textbf{first-class} if they can be manipulated like any
 other type. Coq is an example for a system where this is \emph{not} the case.
@@ -508,7 +509,8 @@ fully formal presentation in this paper. Some notes on what is elided:
 \end{itemize}
 
 From now on, we will only consider well-formed core syntax, and unless otherwise
-mentioned, constructions on core syntax which respect definitional equality.
+mentioned, presented constructions on the core syntax respect definitional
+equality.
 
 Alternatively, one could present the syntax as a generalized algebraic theory
 \cite{sterling2019algebraic} or a quotient inductive-inductive type
@@ -679,7 +681,7 @@ A),\,\p,\,\alpha\,\overline{\mathsf{vars}_{\Gamma}})$, where $\alpha$ is fresh i
 $\Theta$, satisfies this specification. We extend $\Theta$ with a fresh meta,
 which has the closing type $\Gamma \To A$. The $\p$ weakening relates the new
 metacontext to the old one, by ``dropping'' the new entry. Lastly,
-$\alpha\,\overline{\mathsf{vars}_{\Gamma}}$ is the new meta
+$\alpha\,\overline{\mathsf{vars}_{\Gamma}}$ is the fresh meta
 applied to all bound variables.
 \end{definition}
 
@@ -744,7 +746,7 @@ We present the specifications and definitions below, then we describe them in or
   &\einsert\,(\Theta_1,\,\theta_1,\,t,\,A) && :\equiv&& \ereturn\,(\Theta_1,\,\theta_1,\,t,\,A)\\
   &\einsert\,\fail && :\equiv && \fail
 \end{alignat*}
-%% \pagebreak
+\pagebreak
 \begingroup
 \allowdisplaybreaks
 \begin{mathpar}
@@ -877,37 +879,28 @@ and the elaboration output is $\lambda\,\{n\}\,f\,m.\,\suc\,(f\,m)$.  Hence, in
 this case we do not have to write implicit $\lambda$ in the surface syntax.
 
 For $\echeck{\slet\,x:A=t\,\sin\,u}{\Theta_0}{\Gamma}{B}$, we simply let
-checking fall through. The definition here is a bit noisy, because we need to
-thread metasubstitutions through, and we always have to ``update'' core terms
-and contexts with the current metasubstitution.
-
-For $\echeck{\_}{\Theta}{\Gamma}{A}$, we return a fresh metavariable with the
-expected type. In any other $\echeck{t}{\Theta_0}{\Gamma}{A}$ case, we have a
-\emph{change of direction}: we infer a type for $t$, then unify the expected and
+checking fall through. For $\echeck{\_}{\Theta}{\Gamma}{A}$, we return a fresh
+metavariable with the expected type. In any other
+$\echeck{t}{\Theta_0}{\Gamma}{A}$ case, we have a \emph{change of direction}: we
+infer a type for $t$ (with implicit insertions) then unify the expected and
 inferred types.
 
 \subsubsection{Inferring}
 
-For $\einfer{x}{ins}{\Theta}{\Gamma}$, we look up the type of $x$ in $\Gamma$,
-and insert implicit applications if needed. In the case of $\U$, we always
-succeed and infer $\U$ as type. In the cases for function types, we check that
-the domains and codomains have type $\U$.
+For $\einfer{x}{\Theta}{\Gamma}$, we look up the type of $x$ in $\Gamma$. In the
+case of $\U$, we always succeed and infer $\U$ as type. In the cases for
+function types, we check that the domains and codomains have type $\U$.  For
+$\lambda$-s, we create a fresh meta for the domain type (since our surface
+$\lambda$-s are not annotated), and infer types for the bodies.
 
-For $\lambda$-s, we create a fresh meta for the domain type (since our surface
-$\lambda$-s are not annotated), and infer types for the bodies. In the case of
-$\einfer{\lambda\,\{x\}.\,t}{ins}{\Theta_0}{\Gamma}$, we additionally perform
-$\einsert$ on the output.
-
-The $\einfer{t\,u}{ins}{\Theta_0}{\Gamma}$ and
-$\einfer{t\,\{u\}}{ins}{\Theta_0}{\Gamma}$ cases are again interesting. Here, we
-first infer a type for the term which is being applied, then refine the type to
-a function type, and lastly check the argument with the domain type. Note the
-difference between the explicit and implicit case. In the former case, we use
-$\einfer{t}{\true}{\Theta_0}{\Gamma}$, which inserts implicit applications. In
-the latter case we do no insertion.  This, together with the inference
-definition for variables, ensures that implicit applications in the surface
-syntax behave similarly as in Agda. For example, given $id : \{A : \U\}\to A\to
-A$ in scope, we elaborate $id\,\U$ as follows:
+The $\einfer{t\,u}{\Theta_0}{\Gamma}$ and $\einfer{t\,\{u\}}{\Theta_0}{\Gamma}$
+cases are again interesting. Here, we first infer a type for $t$, then refine
+the type to a function type, and lastly check the argument with the domain
+type. Note the difference between the explicit and implicit case. In the former
+case we use $\einsert\,(\einfer{t}{\Theta_0}{\Gamma})$, which inserts implicit
+applications. In the latter case we do no insertion. This ensures that implicit
+applications in the surface syntax behave similarly as in Agda. For example,
+given $id : \{A : \U\}\to A\to A$ in scope, we elaborate $id\,\U$ as follows:
 \begin{enumerate}
   \item The expression is an explicit application, so we infer $\id$ and insert implicit
         arguments, returning $id\,\{\alpha\}$, where $\alpha$ is a fresh meta.
@@ -920,10 +913,10 @@ On the other hand, we elaborate $id\,\{\U\}$ as follows:
   \item This is an implicit application, so we infer a type for $id$ without inserting
     implicit arguments. This yields the inferred type $\{A : \U\}\to A\to A$, and
     we check that $\U$ has type $\U$.
-  \item This changes direction again, and we infer $\U$ type for $\U$, and
-    successfully unify $\U$ with $\U$.
+  \item We change direction and infer $\U$ as type for $\U$, and successfully
+    unify $\U$ with $\U$.
 \end{enumerate}
-Note that it would be more efficient (and also allow more user-friendly error
+It would be more efficient (and also allow more user-friendly error
 messages) to not immediately refine the inferred type of $t$ to a function type,
 but rather match on the inferred type, and only perform refining when the type
 is meta-headed. We present the unoptimized version here for the sake of brevity.
@@ -933,7 +926,7 @@ for the $\slet$ body. For $\einfer{\_}{ins}{\Theta}{\Gamma}$, we create a fresh 
 for the type of the hole, and another fresh meta for the hole itself.
 
 \subsubsection{Starting and finishing elaboration} Given a surface term $t$,
-we initiate elaboration by computing $\einfer{t}{\true}{\emptycon}{\emptycon}$. If this
+we initiate elaboration by computing $\einfer{t}{\emptycon}{\emptycon}$. If this
 succeeds, we get a $(\Theta,\,\theta,t')$ result. Elaboration is successful overall
 if $\Theta = \emptycon$ and $\theta = \id$, i.e.\ no unsolved metas remain.
 
@@ -1021,13 +1014,18 @@ $\lambda$ domain type annotations for the sake of brevity.
 \section{Issues with First-Class Implicit Functions}
 \label{sec:issues}
 
+%% \begin{alignat*}{3}
+%%   & List && : \U \to \U \\
+%%   & nil  && : \{A : \U\} \to List\,A\\
+%%   & cons && : \{A : \U\} \to A \to List\,A
+%% \end{alignat*}
+
 We revisit now the $polyList$ example from Section \ref{sec:introduction}. We
 assume the following:
-\begin{alignat*}{3}
-  & List && : \U \to \U \\
-  & nil  && : \{A : \U\} \to List\,A\\
-  & cons && : \{A : \U\} \to A \to List\,A
-\end{alignat*}
+\[
+List : \U \to \U \qquad nil : \{A : \U\} \to List\,A \qquad
+cons : \{A : \U\} \to A \to List\,A
+\]
 In the following, we present a trace of checking $cons\,(\lambda\,x.\,x)\,nil$
 at type $List\,(\{A : \U\}\to A \to A)$. We omit context and metacontext
 parameters everywhere, and notate recursive calls by indentation. We also omit
@@ -1036,9 +1034,9 @@ essential for illustration.
 \begin{alignat*}{3}
   & \scriptstyle{0 }\qquad\qquad && \echeckt{cons\,(\lambda\,x.\,x)\,nil}{(List\,(\{A : \U\}\to A \to A))}
      \hspace{14em}\\
-  & \scriptstyle{1 }  && \quad \einfert{cons\,(\lambda\,x.\,x)\,nil}{\true} \\
-  & \scriptstyle{2 }  && \qquad \einfert{cons\,(\lambda\,x.\,x)}{\true}\\
-  & \scriptstyle{3 }  && \qquad\quad \einfert{cons}{\true}\\
+  & \scriptstyle{1 }  && \quad \einfert{cons\,(\lambda\,x.\,x)\,nil} \\
+  & \scriptstyle{2 }  && \qquad \einfert{cons\,(\lambda\,x.\,x)}\\
+  & \scriptstyle{3 }  && \qquad\quad \einfert{cons}\\
   & \scriptstyle{4 }  && \qquad\quad = cons\,\{\alpha_0\}\,:\,\alpha_0 \to List\,\alpha_0 \to List\,\alpha_0\\
   & \scriptstyle{5 }  && \qquad\quad \echeckt{\lambda\,x.\,x}{\alpha_0}\\
   & \scriptstyle{6 }  && \qquad\quad = \lambda\,x.\,x\\
@@ -1066,38 +1064,34 @@ $\lambda$. At the heart of the issue is that elaboration makes insertion choices
 based on core types.
 \begin{enumerate}
 \item $\echeck{t}{\Theta}{\Gamma}{A}$ can insert a $\lambda$ only if $A$ is an implicit function type.
-\item $\einsert{\true}{A}$ inserts an application only if $A$ is an implicit function type.
+\item $\einsert\,(\Theta,\,\theta,\,t,\,A)$ inserts an application only if $A$ is an implicit function type.
 \end{enumerate}
 In both of these cases, if $A$ is of the form $\alpha\,\overline{u}$
 (i.e.\ meta-headed), then it is possible that $\alpha$ is later refined to an
 implicit function, but at that point we have already missed our shot at implicit
 insertion.
 
-At least for $\lambda$-insertion, there is a potential solution: just
-\emph{postpone} checking a term until the shape of the checking type is known
-for sure. This was included as part of a proposed solution for smarter
-$\lambda$-insertions in \cite{johansson2015eliminating}. This means that
-checking with a meta-headed type returns a ``guarded constant''
-\cite[Chapter~3]{norell07thesis}, an opaque stand-in which only computes to an
-actual core term when the checking type becomes known. In practice, this
-solution has a painful drawback: \emph{we get no information at all from checked
-  terms before the guard is unblocked}. For an example for unexpected behavior
-with this solution, let us assume $Bool : \U$ and $true : Bool$, and try to
-infer type for the following surface term:
-\begin{alignat*}{2}
-  \slet\,x : \_ = true\,\sin\, x
-\end{alignat*}
-We first insert a fresh meta $\alpha$ for the hole, and then check $true$ with
-$\alpha$. We postpone this checking, returning a guarded constant, and then
-infer a type for $x$, which is $\alpha$. Hence, this small example yields an
-unsolved meta and a guarded constant in the output.
+There is a potential naive solution: just \emph{postpone} checking a term until
+the shape of the checking type is known for sure. This was included as part of a
+proposed solution for smarter $\lambda$-insertions in
+\cite{johansson2015eliminating}. This means that checking with a meta-headed
+type returns a ``guarded constant'' \cite[Chapter~3]{norell07thesis}, an opaque
+stand-in which only computes to an actual core term when the checking type
+becomes known. In practice, this solution has a painful drawback: \emph{we get
+  no information at all from checked terms before the guard is unblocked}.
+
+For an example for unexpected behavior with this solution, let us assume $Bool :
+\U$ and $true : Bool$, and try to infer type for the surface term $\slet\,x : \_
+= true\,\sin\, x$. We first insert a fresh meta $\alpha$ for the hole, and then
+check $true$ with $\alpha$. We postpone this checking, returning a guarded
+constant, and then infer a type for $x$, which is $\alpha$. Hence, this small
+example yields an unsolved meta and a guarded constant in the output.
 
 Now, this particular example can be repaired by special-casing the elaboration
-of a $\slet$-definition without an explicit type annotation. However, the
-current author's experience from playing with an implementation of this
-solution, is that we are missing too much information by postponing, and this
-cascades in an unfortunate way: postponing yields more unsolved metas, which
-cause more postponing.
+of a $\slet$-definition without an explicit type annotation. However, our
+experience from playing with an implementation of this solution, is that we are
+missing too much information by postponing, and this cascades in an unfortunate
+way: postponing yields more unsolved metas, which cause more postponing.
 
 \section{Telescopes and Strictly Curried Functions}
 
@@ -1111,9 +1105,9 @@ $\Tel$ as the type of telescopes. Elements of $\Tel$ are right-nested telescopes
 of types, with $\epsilon$ denoting the empty telescope, and $\blank\TCons\blank$
 telescope extension. For example, we can define the signature of natural number
 algebras as follows:
-\begin{alignat*}{3}
-  & \slet\,NatAlgSig : \Tel = (N : \U) \TCons (zero : N) \TCons (suc : N \to N) \TCons \epsilon\,\sin\,...
-\end{alignat*}
+\[
+  \slet\,NatAlgSig : \Tel = (N : \U) \TCons (zero : N) \TCons (suc : N \to N) \TCons \epsilon\,\sin\,...
+\]
 We interpret an $A : \Tel$ as a record type as $\Rec\,A$, which behaves as the
 evident iterated $\Sigma$-type corresponding to the telescope. Hence,
 $\Rec\,\epsilon$ is isomorphic to the unit type, with inhabitant ${[}{]}$, and
@@ -1277,7 +1271,7 @@ elaboration. Recall from Section \ref{sec:issues} that the old elaborator makes
 two kinds of unforced insertion choices:
 \begin{enumerate}
 \item $\echeck{t}{\Theta}{\Gamma}{A}$ does not insert an implicit $\lambda$ when $A$ is meta-headed.
-\item $\einsert{\true}{A}$ does not insert an implicit application if $A$ is meta-headed.
+\item $\einsert\,(\Theta,\,\theta,\,t,\,A)$ does not insert an implicit application when $A$ is meta-headed.
 \end{enumerate}
 In the following, we shall only enhance $\lambda$-insertions. This allows a
 simple implementation which only requires minimal changes to unification, and
@@ -1410,12 +1404,11 @@ new meta solution might make a difference.
   \item If we have $x \in \FreeVars(B[\theta])$, where $x$ occurs rigidly in
     $B[\theta]$, i.e.\ the occurrence is not in a spine of a meta, then no
     metasubstitution can possibly remove this occurrence. In this case the
-    constraint holds vacuously, so we can use the rule
-    \LabTirName{metasub/constancy} to return a $\theta'$ substitution which also
-    solves the constraint.
+    constraint holds vacuously, so we can use the \LabTirName{metasub/constancy}
+    rule to return a $\theta'$ substitution which also solves the constraint.
   \item If we have $x \notin \FreeVars(B[\theta])$, we recursively unify
     $A[\theta]$ with $\epsilon$. If that succeeds, we get a $\theta'$ which
-    unifies $A$ and $\epsilon$ and thus forces the constraint to hold, so we
+    unifies $A[\theta]$ and $\epsilon$ and thus forces the constraint to hold, so we
     can again use \LabTirName{metasub/constancy} to solve the constraint.
   \item
     In any other case we simply return $\theta$ and keep the constraint around.
@@ -1425,7 +1418,7 @@ as described above.
 
 \emph{Remark.} In the case with $x \in \FreeVars(B[\theta])$, it would be also
 sound to solve the constraint when the occurrence is not rigid. However, this
-way we could lose potential non-$\epsilon$ solutions of $A$.
+way we could lose potential non-$\epsilon$ solutions of $A[\theta]$.
 
 \subsection{Unification For Strictly Curried Functions}
 Although we omit most details of unification, we shall discuss it for curried
@@ -1437,10 +1430,10 @@ telescope. Since we invent a fresh $A_1$ domain for a curried function type, we
 need to add a constancy constraint for it as well.
 \begin{alignat*}{3}
 & \unify_{\Theta_0|\Gamma}(\{x : \ol{A}\}\to B)\,(\{x_0 : A_0\}\to B') :\equiv \edo\\
-& \quad (\Theta_1,\,\theta_1,\,A_1) \leftarrow \freshMeta{\Theta_0}{\Gamma,\,x_0 : A_0}{\Tel}\\
+& \quad \slet\,(\Theta_1,\,\theta_1,\,A_1) = \freshMeta{\Theta_0}{\Gamma,\,x_0 : A_0}{\Tel}\\
 & \quad (\Theta_2,\,\theta_2) \leftarrow
   \unify_{\Theta_1|\Gamma[\theta_1]}\,(A[\theta_1])\,((x : A_0[\theta_1])\TCons A_1)\\
-& \quad (\Theta_3,\,\theta_3) \leftarrow
+& \quad \slet\,(\Theta_3,\,\theta_3) =
     \newConstancy{\Theta_2}{\Gamma[\theta_{12}],\,x_0 : A_0[\theta_{12}]}{x_1}{(A_1[\theta_2])}{(B[\theta_{12}][x\mapsto (x_0 :: x_1)])}\\
 & \quad\unify_{\Theta_3|\Gamma[\theta_{123}],\,x_0 : A_0[\theta_{123}]}\,
          (\{x_1 : A_1[\theta_{23}]\}\to B[\theta_{123}][x\mapsto (x_0 :: x_1)])\,B'
@@ -1466,9 +1459,9 @@ In the definition of checking, we insert a new clause after
 $\echeck{t}{\Theta}{\Gamma}{(\{x : A\}\to B)}$:
 \begin{alignat*}{3}
 & \echeck{t}{\Theta_0}{\Gamma}{(\alpha\,\ol{t})} :\equiv \edo\\
-& \quad (\Theta_1,\,\theta_1,\,A) \leftarrow \freshMeta{\Theta_0}{\Gamma}{\Tel}\\
+& \quad \slet\,(\Theta_1,\,\theta_1,\,A) = \freshMeta{\Theta_0}{\Gamma}{\Tel}\\
 & \quad (\Theta_2,\,\theta_2,\,t',\,B) \leftarrow \einfer{t}{\true}{\Theta_1}{\Gamma[\theta_1],\,x:\Rec\,A}\\
-& \quad (\Theta_3,\,\theta_3) \leftarrow \newConstancy{\Theta_2}{\Gamma[\theta_{12}]}{x}{(A[\theta_2])}{B}\\
+& \quad \slet\,(\Theta_3,\,\theta_3) = \newConstancy{\Theta_2}{\Gamma[\theta_{12}]}{x}{(A[\theta_2])}{B}\\
 & \quad (\Theta_4,\,\theta_4) \leftarrow
             \unify\, ((\alpha\,\ol{t})[\theta_{123}])\,(\{x : \ol{A[\theta_{23}]}\} \to B[\theta_3])\\
 & \quad \ereturn\,(\Theta_4,\,\theta_{1234},\,(\lambda\,\{x : \ol{A[\theta_{234}]}\}.\,t'[\theta_{34}]))
@@ -1492,9 +1485,9 @@ elaboration using the extended algorithm.
 \begin{alignat*}{3}
   & \scriptstyle{0 }\qquad\qquad && \echeckt{cons\,(\lambda\,x.\,x)\,nil}{(List\,(\{A : \U\}\to A \to A))}
       \hspace{14em}\\
-  & \scriptstyle{1 }  && \quad \einfert{cons\,(\lambda\,x.\,x)\,nil}{\true} \\
-  & \scriptstyle{2 }  && \qquad \einfert{cons\,(\lambda\,x.\,x)}{\true}\\
-  & \scriptstyle{3 }  && \qquad\quad \einfert{cons}{\true}\\
+  & \scriptstyle{1 }  && \quad \einfert{cons\,(\lambda\,x.\,x)\,nil} \\
+  & \scriptstyle{2 }  && \qquad \einfert{cons\,(\lambda\,x.\,x)} \\
+  & \scriptstyle{3 }  && \qquad\quad \einfert{cons}\\
   & \scriptstyle{4 }  && \qquad\quad = cons\,\{\alpha_0\}\,:\,\alpha_0 \to List\,\alpha_0 \to List\,\alpha_0\\
   & \scriptstyle{5 }  && \qquad\quad \echeckt{\lambda\,x.\,x}{\alpha_0}\\
   & \scriptstyle{6 }  && \qquad\quad = \lambda\,\{y : \ol{\alpha_1}\}.\,\lambda\,x.\,x\\
@@ -1568,12 +1561,12 @@ types and abstractions are computed away.
 We illustrate now the action of constancy constraints, using the example from
 Section \ref{sec:superfluous}. Again, assume $Bool : \U$ and $true : Bool$.
 \begin{alignat*}{3}
-& \scriptstyle{0}\qquad\qquad && \einfert{\slet\,x : \_ = true\,\sin\,x}{\true}
+& \scriptstyle{0}\qquad\qquad && \einfert{\slet\,x : \_ = true\,\sin\,x}
       \hspace{21em}\\
 & \scriptstyle{1} && \quad \echeckt{\_}{\U} = \alpha_0\\
 & \scriptstyle{3} && \quad \echeckt{true}{\alpha_0}\\
 & \scriptstyle{4} && \qquad \mathsf{freshMeta}\,\Tel = \alpha_1\\
-& \scriptstyle{6} && \qquad \einfert{true}{\true} = true : Bool\\
+& \scriptstyle{6} && \qquad \einfert{true}\,= true : Bool\\
 & \scriptstyle{8} && \qquad \mathsf{newConstancy}_{\emptycon,\,x : \Rec\,\alpha_1}\,Bool\\
 & \scriptstyle{9} && \qquad\quad \unify\,\alpha_1\,\epsilon\\
 & \scriptstyle{10} && \qquad \unify\,\alpha_0\,Bool\\
@@ -1584,12 +1577,12 @@ Section \ref{sec:superfluous}. Again, assume $Bool : \U$ and $true : Bool$.
 First we create a fresh meta $\alpha_0$ for the hole on line $\scriptstyle{2}$,
 then we check $\true$ with it. Since we are checking with a meta-headed type, we
 create a fresh telescope meta $\alpha_1$, then infer $Bool$ for $true$. On line
-$\scriptstyle{8}$ we create a constancy constraint, and immediately try to solve
-it, in accordance with the algorithmic implementation in Section
-\ref{sec:algorithmic}. Since $Bool$ does not depend on the domain, we solve the
-constraint and thereby solve $\alpha_1$ as $\epsilon$. Hence, we simply return
-$true$ on line $\scriptstyle{11}$, since $\lambda\,\{x : \ol{\epsilon}\}.\,true$
-computes to that, and elaboration succeeds with the expected output.
+$\scriptstyle{8}$ we create a constancy constraint and immediately try to solve
+it, as described in Section \ref{sec:algorithmic}. Since $Bool$ does not depend
+on the domain, we solve the constraint and thereby solve $\alpha_1$ as
+$\epsilon$. Hence, we simply return $true$ on line $\scriptstyle{11}$, since
+$\lambda\,\{x : \ol{\epsilon}\}.\,true$ computes to that, and elaboration
+succeeds with the expected output.
 \end{example}
 
 \section{Implementation}
@@ -1639,16 +1632,15 @@ only review constraints which were blocked on the meta.
 \label{sec:impl_and_eval}
 
 In this section we examine how the elaborator fares in practice, its
-limitations, and how it compares to related works. We abbreviate our elaborator
-as FCIF when comparing it to others.
+limitations, and how it compares to related works. We refer to our elaborator as
+FCIF when comparing it to others.
 
 \subsection{Related Works}
-MLF \cite{le2014mlf} is an extension of System F with polymorphic subtyping
-bounds, which supports strong inference for first class polymorphism. HML
-\cite{leijen2009flexible}) is a simplified variant of MLF. Since these systems
-diverge markedly from (fragments of) Martin-Löf type theory and rely critically
-on subtyping, it is unclear how they could be extended to dependent type
-theories. HMF \cite{leijen2008hmf} is a relatively simple system with
+MLF \cite{le2014mlf} extends System F with polymorphic subtyping
+bounds, and supports strong inference for first class polymorphism. HML
+\cite{leijen2009flexible}) is a simplified variant of MLF. These systems rely
+critically on subtyping and thus diverge markedly from (fragments of) Martin-Löf
+type theory. HMF \cite{leijen2008hmf} is a relatively simple system with
 first-class polymorphism; however, it is also weaker than others in terms of
 inferable annotations, and its more powerful variant (extended with n-ary
 application handling) is more complex.
@@ -1658,10 +1650,10 @@ There have been several attempts in the context of GHC. Boxy types
 iterations which suffered from complex specification, complex implementation or
 fragility. More recent works are guarded impredicativity (GI)
 \cite{serrano2018guarded} and quick look impredicativity (QL)
-\cite{serrano2020a}. They both try to examine n-ary applications to find
+\cite{serrano2020a}. They both work by examining n-ary applications to find
 metavariable instantiations which arise from occurrences guarded by rigid type
 constructors. GI's use of \emph{generalization constraints} anticipates our use
-of telescopes, but overall GI is also burdened by inessential complexity. QL
+of telescopes, but overall GI is also burdened by a great deal of complexity. QL
 streamlines GI by eschewing constraints in favor of an eager preprocessing pass
 on neutral expressions which finds polymorphic instantiations. QL also takes
 advantage of bidirectional type propagation.  Although QL seems to be
@@ -1770,7 +1762,7 @@ In the $A1$ case, FCIF inserts only a single curried $\lambda$ on the outside,
 which is why the inferred type is not unifiable with $\{A : \U\}\to A \to \{B :
 \U\} \to B \to A$. However, this could be easily remedied by adding an extra
 curried $\lambda$ insertion in the definition of
-$\einfer{\lambda\,x.\,t}{ins}{\Theta}{\Gamma}$.
+$\einfer{\lambda\,x.\,t}{\Theta}{\Gamma}$.
 
 In $A8$, the failure is intentional: the types of $id$ and $auto'$ are not
 unifiable because of the mismatched order of implicit and explicit arguments. We
@@ -1787,14 +1779,14 @@ solutions which work one neutral spine at a time (HMF, GI, QL) also face issues
 with dependently typed spines, since it is not possible to do anything with
 later arguments in such spines until previous arguments are elaborated.
 
-Secondly, FCIF supports global inference and does not handle neutral spines
-specially. For an example for global inference, $\slet\,x : \_ =
-single\,id\,\sin\,$ $cons\,\{IdTy\}\,x\,nil$ works in FCIF, MLF and HMF but does
-not work in GI, QL and HMF. MLF and HML work here by immediately giving a
-principal type to $single\,id$ which involves generalization with a subtyping
-bound. In contrast, FCIF makes no promises about principal typing --- which is
-not feasible with dependent types --- and does no generalization, but it can
-still infer a type for $id$ which can be later constrained to $IdTy$.
+Secondly, FCIF supports global inference. For an example for global inference,
+$\slet\,x : \_ = single\,id\,\sin\,$ $cons\,\{IdTy\}\,x\,nil$ works in FCIF, MLF
+and HMF but does not work in GI, QL and HMF. MLF and HML work here by
+immediately giving a principal type to $single\,id$ which involves
+generalization with a subtyping bound. In contrast, FCIF makes no promises about
+principal typing --- which is not feasible with dependent types --- and does no
+generalization, but it can still infer a type for $id$ which can be later
+constrained to $IdTy$.
 
 
 \subsection{Inferring Polymorphic Types for Function Arguments}
