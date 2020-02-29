@@ -1,3 +1,5 @@
 # icfp20sub
 
-Draft: [paper.pdf](paper.pfd)
+Draft paper: [paper.pdf](paper.pfd)
+
+Implementation: [fcif](fcif)
