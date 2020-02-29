@@ -4,9 +4,7 @@ module Types (
   module Text.Megaparsec
   ) where
 
-import Control.Exception
 import Text.Megaparsec (SourcePos(..), unPos, initialPos)
-import Text.Printf
 import Lens.Micro.Platform
 
 import qualified Data.IntMap.Strict as IM

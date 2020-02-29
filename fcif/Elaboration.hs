@@ -1,5 +1,4 @@
 
-
 module Elaboration where
 
 import Control.Exception
@@ -14,8 +13,6 @@ import Types
 import Evaluation
 import ElabState
 import Errors
-
-import Debug.Trace
 
 -- Context operations
 --------------------------------------------------------------------------------
