@@ -385,9 +385,8 @@ unify cxt l r = go l r where
 -- Elaboration
 --------------------------------------------------------------------------------
 
-insert :: Cxt -> MetaInsertion -> IO (Tm, VTy) -> IO (Tm, VTy)
-insert cxt False act = act
-insert cxt True  act = do
+insert :: Cxt -> IO (Tm, VTy) -> IO (Tm, VTy)
+insert cxt act = do
   (t, va) <- act
   let go t va = case force va of
         VPi x Impl a b -> do
@@ -422,7 +421,8 @@ check cxt topT ~topA = case (topT, force topA) of
     x <- ("Γ"++) . show <$> readIORef nextMId
     dom <- freshMeta cxt VTel
     let vdom = eval (cxt^.vals) dom
-    (t, liftVal cxt -> a) <- infer (bind x NOInserted (VRec vdom) cxt) True t
+    let cxt' = bind x NOInserted (VRec vdom) cxt
+    (t, liftVal cxt -> a) <- insert cxt' $ infer cxt' t
     newConstancy cxt vdom a
     unifyWhile cxt topA (VPiTel x vdom a)
     pure $ LamTel x dom t
@@ -439,11 +439,11 @@ check cxt topT ~topA = case (topT, force topA) of
     freshMeta cxt topA
 
   (t, topA) -> do
-    (t, va) <- infer cxt True t
+    (t, va) <- insert cxt $ infer cxt t
     unifyWhile cxt va topA
     pure t
 
--- | We specialcase top-level lambdas (serving as postulates) for better
+-- | We special case top-level lambdas (serving as postulates) for better
 --   printing: we don't print them in meta spines.
 inferTopLams :: Cxt -> Raw -> IO (Tm, VTy)
 inferTopLams cxt = \case
@@ -456,17 +456,16 @@ inferTopLams cxt = \case
     pure (Lam x i a t, VPi x i va b)
   RSrcPos p t ->
     addSrcPos p $ inferTopLams cxt t
-  t ->
-    infer cxt True t
 
-infer :: Cxt -> MetaInsertion -> Raw -> IO (Tm, VTy)
-infer cxt ins = \case
-  RSrcPos p t ->
-    addSrcPos p $ infer cxt ins t
+  t -> insert cxt $ infer cxt t
+
+infer :: Cxt -> Raw -> IO (Tm, VTy)
+infer cxt = \case
+  RSrcPos p t -> addSrcPos p $ infer cxt t
 
   RU -> pure (U, VU)
 
-  RVar x -> insert cxt ins $ do
+  RVar x -> do
     let go :: [Name] -> [NameOrigin] -> Types -> Int -> IO (Tm, VTy)
         go (y:xs) (NOSource:os) (TSnoc _  a) i | x == y || ('*':x) == y = pure (Var i, a)
         go (_:xs) (_       :os) (TSnoc as _) i = go xs os as (i + 1)
@@ -480,8 +479,9 @@ infer cxt ins = \case
     b <- check (bind x NOSource va cxt) b VU
     pure (Pi x i a b, VU)
 
-  RApp t u i -> insert cxt ins $ do
-    (t, va) <- infer cxt (i == Expl) t
+  RApp t u i -> do
+    (t, va) <- case i of Expl -> insert cxt $ infer cxt t
+                         _    -> infer cxt t
     case force va of
       va -> do
         a0 <- eval (cxt^.vals) <$> freshMeta cxt VU
@@ -492,8 +492,9 @@ infer cxt ins = \case
         pure (App t u i, a1' (eval (cxt^.vals) u))
 
   -- -- variant with better error messages and fewer generated metavariables
-  -- RApp t u i -> insert cxt ins $ do
-  --   (t, va) <- infer cxt (i == Expl) t
+  -- RApp t u i -> do
+  --   (t, va) <- case i of Expl -> insert cxt $ infer cxt t
+  --                        _    -> infer cxt t
   --   case force va of
   --     VPi x i' a b -> do
   --       unless (i == i') $
@@ -510,12 +511,13 @@ infer cxt ins = \case
   --     _ ->
   --       report (cxt^.names) $ ExpectedFunction (quote (cxt^.len) va)
 
-  RLam x ann i t -> insert cxt ins $ do
+  RLam x ann i t -> do
     a <- case ann of
       Just ann -> check cxt ann VU
       Nothing  -> freshMeta cxt VU
     let ~va = eval (cxt^.vals) a
-    (t, liftVal cxt -> b) <- infer (bind x NOSource va cxt) True t
+    let cxt' = bind x NOSource va cxt
+    (t, liftVal cxt -> b) <- insert cxt' $ infer cxt' t
     pure (Lam x i a t, VPi x i va b)
 
   RHole -> do
@@ -529,5 +531,5 @@ infer cxt ins = \case
     let ~va = eval (cxt^.vals) a
     t <- check cxt t va
     let ~vt = eval (cxt^.vals) t
-    (u, b) <- infer (define x va vt cxt) ins u
+    (u, b) <- infer (define x va vt cxt) u
     pure (Let x a t u, b)

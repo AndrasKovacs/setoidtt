@@ -69,6 +69,7 @@ main = mainWith getArgs parseStdin
 main' :: String -> String -> IO ()
 main' mode src = mainWith (pure [mode]) ((,src) <$> parseString src)
 
+
 pruneTest = main' "elab" $ unlines [
   "λ (Bool : U)(not : Bool → Bool → Bool)(true : Bool).",
   "λ f (x : Bool). not (f x)"
@@ -84,7 +85,8 @@ pruneTest2 = main' "elab" $ unlines [
 test0 = main' "elab" $ unlines [
   "λ (A : U)(a : A).",
 
-  "let x = a in x"
+  "let id : {A} → A → A = λ x. x in",
+  "_"
   ]
 
 

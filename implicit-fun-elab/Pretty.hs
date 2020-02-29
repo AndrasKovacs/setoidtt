@@ -68,7 +68,7 @@ isMetaSp (AppTel _ t _) = isMetaSp t
 isMetaSp _              = False
 
 goMetaSp :: [Name] -> Tm -> ShowS
-goMetaSp ns (App t (Var x) i) | '_':_ <- ns !! x =
+goMetaSp ns (App t (Var x) i) | '*':_ <- ns !! x =
   goMetaSp ns t
 goMetaSp ns (App t u i)    =
   goMetaSp ns t . (' ':) . goArg ns u i

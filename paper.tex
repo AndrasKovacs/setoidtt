@@ -89,7 +89,7 @@
 \newcommand{\echeckblank}{\llbracket\blank\rrbracket\!\Downarrow}
 \newcommand{\einferblank}{\llbracket\blank\rrbracket\!\Uparrow}
 \newcommand{\echeck}[4]{\llbracket#1\rrbracket\!\Downarrow\,_{#2|#3}\,#4}
-\newcommand{\einfer}[4]{\llbracket#1\rrbracket\!\Uparrow\,_{#3|#4}\,#2}
+\newcommand{\einfer}[3]{\llbracket#1\rrbracket\!\Uparrow\,_{#2|#3}}
 \newcommand{\echeckt}[2]{\llbracket#1\rrbracket\!\Downarrow\,#2}
 \newcommand{\einfert}[2]{\llbracket#1\rrbracket\!\Uparrow\,#2}
 \newcommand{\edo}{\boldsymbol{\mathsf{do}}}
@@ -101,8 +101,7 @@
 \newcommand{\eof}{\boldsymbol{\mathsf{of}}}
 \newcommand{\true}{\mathsf{true}}
 \newcommand{\false}{\mathsf{false}}
-\newcommand{\einsert}[3]{\mathsf{insert}\,#1\,#2\,#3}
-\newcommand{\einsertpar}[5]{\mathsf{insert}_{#1|#2}\,#3\,#4\,#5}
+\newcommand{\einsert}{\mathsf{insert}}
 \newcommand{\Set}{\mathsf{Set}}
 \renewcommand{\tt}{\mathsf{tt}}
 
@@ -653,10 +652,11 @@ $\Gamma \To A$ by recursion on $\Gamma$, such that $\Theta|\emptycon\vdash
   \end{alignat*}
 \end{definition}
 
-\begin{definition}[Contextualization]\label{def:contextualization} For each $\Theta|\Gamma \vdash t : \Gamma\To A$,
-we define the spine $\overline{\mathsf{vars}_{\Gamma}}$ such that that
-$\Theta|\Gamma\vdash t\,\overline{\mathsf{vars}_{\Gamma}} : A$. Informally, this
-is $t$ applied to all bound variables in $\Gamma$.
+\begin{definition}[Contextualization]\label{def:contextualization}
+For each $\Theta|\Gamma \vdash t : \Gamma\To A$, we define the spine
+$\overline{\mathsf{vars}_{\Gamma}}$ such that that $\Theta|\Gamma\vdash
+t\,\overline{\mathsf{vars}_{\Gamma}} : A$, which is $t$ applied to all bound
+variables in $\Gamma$.
   \begin{alignat*}{3}
     &(t\,\overline{\mathsf{vars}_{\Gamma,\,x:A}})   && :\equiv (t\,\overline{\mathsf{vars}_{\Gamma}})\,x \\
     &(t\,\overline{\mathsf{vars}_{\Gamma,\,x:A=t}}) && :\equiv (t\,\overline{\mathsf{vars}_{\Gamma}}) \\
@@ -682,31 +682,6 @@ metacontext to the old one, by ``dropping'' the new entry. Lastly,
 $\alpha\,\overline{\mathsf{vars}_{\Gamma}}$ is the new meta
 applied to all bound variables.
 \end{definition}
-
-\subsection{Implicit Argument Insertion}
-
-We define a helper function which inserts implicit applications around a core
-term. For example, if we have a defined name $id$ with type $\{A : \U\}\to A \to
-A$ in a surface program, we usually want to expand $id$ to $id\,\{\alpha\}$,
-where $\alpha$ is a fresh metavariable.
-\begin{mathpar}
-\inferrule*{ins \in \{\true,\,\false\} \\ \Theta|\Gamma\vdash t : A}
-           {\einsert{ins}{t}{A} \in \{(\Theta',\,\theta\,t',\,A')\,|\,
-             (\theta : \Theta' \To \Theta)\,\land\,(\Theta'|\Gamma[\theta]\vdash t' : A')\}}
-\end{mathpar}
-We have an additional $ins \in \{\true,\,\false\}$ parameter, which simply
-toggles whether any insertion is to be performed. We will use this in the
-definition of elaboration. Insertion is defined by recursion on $ins$ and the
-$A$ type, as follows. Here, we notate $\Theta$ and $\Gamma$ as subscripts but
-later we will leave them implicit. The clauses of the following definition are
-matched top-down.
-\begin{alignat*}{3}
-  &\einsertpar{\Theta}{\Gamma}{\false}{t}{A} && :\equiv\,\,&& (\Theta,\,\id,\,t,\,A)\\
-  &\einsertpar{\Theta}{\Gamma}{\true\,}{t}{(\{x : A\}\to B)} && :\equiv&&
-       \slet\,(\Theta',\,\theta,\,u) = \freshMeta{\Theta}{\Gamma}{A}\\
-  & && &&\sin\,\einsertpar{\Theta'}{\Gamma[\theta']}{\true}{((t[\theta])\,\{u\})}{(B[\theta][x\mapsto u])}\\
-  &\einsertpar{\Theta}{\Gamma}{\true\,}{t}{A} && :\equiv&& (\Theta,\,\id,\,t,\,A)
-\end{alignat*}
 
 \subsection{Unification}
 
@@ -737,27 +712,41 @@ supports basic pattern unification and metavariable pruning.
 
 \subsection{Elaboration}
 
-In this section we define the elaboration algorithm. First, we explain the used notations.
-
+Elaboration consists of two (partial) functions, checking and inferring, which
+are defined by mutual induction on surface syntax. We also have implicit
+argument insertion as a helper function, which is defined by recursion on core
+types, and which is used as a post-processing step after inference. First, about
+the used notations:
 \begin{itemize}
   \item We use a Haskell-like monadic pseudocode notation, where the side effect is
     failure via $\fail$.
   \item We use pattern matching notation on core terms; e.g.\ we may match on
     whether a type is a function type. This assumes an evaluation/normalization
-    procedure on core terms; but note that we already assume this in implicit
-    argument insertion and unification.
+    procedure on core terms; but note that we already assume this in
+    unification.
   \item We abbreviate $\theta_1 \circ \theta_2$ as $\theta_{12}$, $\theta_1
     \circ \theta_2 \circ \theta_3$ as $\theta_{123}$ and analogously in other
     cases. We do this to reduce the visual noise caused by threading composed
     metasubstitutions everywhere in the elaboration algorithm.
 \end{itemize}
-
-Elaboration consists of two (partial) functions, checking and inferring, which
-are defined by mutual induction on surface syntax. They are specified as
-follows. We also have the additional $ins \in \{\true,\,\false\}$ argument for
-inference, which toggles whether we perform implicit argument insertion on the
-output. We explain the cases of the definition in order.
-
+We present the specifications and definitions below, then we describe them in order.
+\begin{mathpar}
+\inferrule*[lab=insert]{\Theta_0|\Gamma\vdash \\ (\Theta,\,\theta,\,t,\,A) \in
+             \{(\Theta,\,\theta,\,t,\,A)\,|\,(\theta : \Theta_0 \To \Theta)\,\land\,
+               (\Theta|\Gamma[\theta]\vdash t : A)\}\cup\{\fail\}}
+           {\einsert(\Theta,\,\theta,\,t,\,A) \in \{(\Theta,\,\theta,\,t,\,A)\,|\,
+             (\theta : \Theta_0 \To \Theta)\,\land\,(\Theta|\Gamma[\theta]\vdash t : A)\}\cup\{\fail\}}
+\end{mathpar}
+\begin{alignat*}{3}
+  &\einsert\,(\Theta_1,\,\theta_1,\,t,\,\{x : A\}\to B) && :\equiv\hspace{0.5em}&&
+       \slet\,(\Theta_2,\,\theta_2,\,u) = \freshMeta{\Theta}{\Gamma}{A}\\
+  & && &&\sin\,\einsert\,(\Theta_2,\,\theta_{12},\,(t[\theta_2])\,\{u\},\,B[\theta_2][x\mapsto u])\\
+  &\einsert\,(\Theta_1,\,\theta_1,\,t,\,A) && :\equiv&& \ereturn\,(\Theta_1,\,\theta_1,\,t,\,A)\\
+  &\einsert\,\fail && :\equiv && \fail
+\end{alignat*}
+%% \pagebreak
+\begingroup
+\allowdisplaybreaks
 \begin{mathpar}
 \inferrule*[lab=check]
            {\text{$t$ is a surface expression} \\ \Theta|\Gamma \vdash A : \U}
@@ -767,16 +756,12 @@ output. We explain the cases of the definition in order.
            }
 
 \inferrule*[lab=infer]
-           {ins \in \{\true,\,\false\} \\
-                \text{$t$ is a surface expression} \\ \Theta|\Gamma \vdash}
-           {\einfer{t}{ins}{\Theta}{\Gamma} \in
+           {\text{$t$ is a surface expression} \\ \Theta|\Gamma \vdash}
+           {\einfer{t}{\Theta}{\Gamma}\,\in
              \{(\Theta',\,\theta,\,t',\,A)\,|\,(\theta : \Theta' \To \Theta)\,\land\,
                (\Theta'|\Gamma[\theta]\vdash t' : A)\}\cup\{\fail\}
            }
 \end{mathpar}
-
-\begingroup
-\allowdisplaybreaks
 \begin{alignat*}{3}
   &\echeck{\lambda\,x.\,t}{\Theta}{\Gamma}{((x : A)\to B)} :\equiv \edo \\
   &\quad(\Theta',\,\theta,\,t') \leftarrow \echeck{t}{\Theta}{\Gamma,\,x:A} B\\
@@ -797,61 +782,68 @@ output. We explain the cases of the definition in order.
   &\echeck{\_}{\Theta}{\Gamma}{A} :\equiv \edo \\
   &\quad\ereturn\,(\freshMeta{\Theta}{\Gamma}{A})\\
   &\echeck{t}{\Theta_0}{\Gamma}{A} :\equiv \edo \\
-  &\quad(\Theta_1,\,\theta_1,\,t',\,B) \leftarrow \einfer{t}{\true}{\Theta_0}{\Gamma}\\
+  &\quad(\Theta_1,\,\theta_1,\,t',\,B) \leftarrow \einsert\,(\einfer{t}{\Theta_0}{\Gamma})\\
   &\quad(\Theta_2,\,\theta_2) \leftarrow \unify\,(A[\theta_1])\,B\\
   &\quad\ereturn\,(\Theta_2,\,\theta_{12},\,t'[\theta_2])\\\\
-  &\einfer{x}{ins}{\Theta}{\Gamma} :\equiv \edo\\
+  &\einfer{x}{\Theta}{\Gamma} :\equiv \edo\\
   &\quad\eif\,(\Gamma = (\Gamma_0,\,x : A,\,\Gamma_1))\,\lor\,(\Gamma = (\Gamma_0,\,x : A = t,\,\Gamma_1)) \\
-  &\qquad   \ethen\, \ereturn\,(\einsert{ins}{x}{A})\\
+  &\qquad   \ethen\, \ereturn\,(\Theta,\,\id,\,x,\,A)\\
   &\qquad   \eelse\, \fail\\
-  &\einfer{\U}{ins}{\Theta}{\Gamma} :\equiv \edo\\
+  &\einfer{\U}{\Theta}{\Gamma} :\equiv \edo\\
   &\quad\ereturn\,(\Theta,\,\id,\,\U,\,\U)\\
-  &\einfer{(x : A)\to B}{ins}{\Theta_0}{\Gamma} :\equiv \edo\\
+  &\einfer{(x : A)\to B}{\Theta_0}{\Gamma} :\equiv \edo\\
   &\quad(\Theta_1,\,\theta_1,\,A') \leftarrow \echeck{A}{\Theta_1}{\Gamma}{\U}\\
   &\quad(\Theta_2,\,\theta_2,\,B') \leftarrow
                  \echeck{B}{\Theta_2}{\Gamma[\theta_1],\,x : A'}{\U}\\
   &\quad\ereturn\,(\Theta_2,\,\theta_{12},
                  \,((x : A'[\theta_2])\to B'),\,\U)\\
-  &\einfer{\{x : A\}\to B}{ins}{\Theta_0}{\Gamma} :\equiv \edo\\
+  &\einfer{\{x : A\}\to B}{\Theta_0}{\Gamma} :\equiv \edo\\
   &\quad(\Theta_1,\,\theta_1,\,A') \leftarrow \echeck{A}{\Theta_1}{\Gamma}{\U}\\
   &\quad(\Theta_2,\,\theta_2,\,B') \leftarrow
                  \echeck{B}{\Theta_2}{\Gamma[\theta_1],\,x : A'}{\U}\\
   &\quad\ereturn\,(\Theta_2,\,\theta_{12},
                  \,(\{x : A'[\theta_2]\}\to B'),\,\U)\\
-  &\einfer{\lambda\,x.\,t}{ins}{\Theta_0}{\Gamma} :\equiv \edo \\
-  &\quad(\Theta_1,\,\theta_1,\,A)\leftarrow \freshMeta{\Theta_0}{\Gamma}{\U}\\
-  &\quad(\Theta_2,\,\theta_2,\,t',\,B)\leftarrow \einfer{t}{\true}{\Theta_1}{\Gamma[\theta_1],\,x:A}\\
+  &\einfer{\lambda\,x.\,t}{\Theta_0}{\Gamma} :\equiv \edo \\
+  &\quad \slet\, (\Theta_1,\,\theta_1,\,A) = \freshMeta{\Theta_0}{\Gamma}{\U}\\
+  &\quad(\Theta_2,\,\theta_2,\,t',\,B)\leftarrow \einsert\,(\einfer{t}{\Theta_1}{\Gamma[\theta_1],\,x:A})\\
   &\quad\ereturn\,(\Theta_2,\,\theta_{12},\,\lambda\,x.\,t',\,(x : A[\theta_2])\to B)\\
-  &\einfer{\lambda\,\{x\}.\,t}{ins}{\Theta_0}{\Gamma} :\equiv \edo \\
-  &\quad(\Theta_1,\,\theta_1,\,A)\leftarrow \freshMeta{\Theta_0}{\Gamma}{\U}\\
-  &\quad(\Theta_2,\,\theta_2,\,t',\,B)\leftarrow \einfer{t}{\true}{\Theta_1}{\Gamma[\theta_1],\,x:A}\\
-  &\quad\ereturn\,(\einsert{ins}{(\lambda\,\{x\}.\,t')}{(\{x : A[\theta_2]\}\to B)})\\
-  &\einfer{t\,u}{ins}{\Theta_0}{\Gamma} :\equiv \edo \\
-  &\quad (\Theta_1,\,\theta_1,\,t',\,A) \leftarrow \einfer{t}{\true}{\Theta_0}{\Gamma}\\
-  &\quad (\Theta_2,\,\theta_2,A_0) \leftarrow \freshMeta{\Theta_1}{\Gamma[\theta_1]}{\U}\\
-  &\quad (\Theta_3,\,\theta_3,A_1) \leftarrow \freshMeta{\Theta_2}{\Gamma[\theta_{12}],\,x:A_0}{\U}\\
+  &\einfer{\lambda\,\{x\}.\,t}{\Theta_0}{\Gamma} :\equiv \edo \\
+  &\quad \slet\,(\Theta_1,\,\theta_1,\,A) = \freshMeta{\Theta_0}{\Gamma}{\U}\\
+  &\quad(\Theta_2,\,\theta_2,\,t',\,B)\leftarrow \einsert\,(\einfer{t}{\Theta_1}{\Gamma[\theta_1],\,x:A})\\
+  &\quad\ereturn\,(\Theta_2,\,\theta_{12},\,\lambda\,\{x\}.\,t',\,\{x : A[\theta_2]\}\to B)\\
+  &\einfer{t\,u}{\Theta_0}{\Gamma} :\equiv \edo \\
+  &\quad (\Theta_1,\,\theta_1,\,t',\,A) \leftarrow \einsert\,(\einfer{t}{\Theta_0}{\Gamma})\\
+  &\quad \slet\,(\Theta_2,\,\theta_2,A_0) = \freshMeta{\Theta_1}{\Gamma[\theta_1]}{\U}\\
+  &\quad \slet\,(\Theta_3,\,\theta_3,A_1) = \freshMeta{\Theta_2}{\Gamma[\theta_{12}],\,x:A_0}{\U}\\
   &\quad (\Theta_4,\,\theta_4) \leftarrow \unify\,(A[\theta_{23}])\,((x : A_0[\theta_3])\to A_1)\\
   &\quad (\Theta_5,\,\theta_5,\,u') \leftarrow \echeck{u}{\Theta_4}{\Gamma[\theta_{1234}]}{(A_0[\theta_{34}])}\\
-  &\quad \ereturn\,(\mathsf{insert}\,{ins}\,{((t'[\theta_{2345}])\,u')}\,{(A_1[\theta_{45}][x\mapsto u'])})\\
-  &\einfer{t\,\{u\}}{ins}{\Theta_0}{\Gamma} :\equiv \edo \\
-  &\quad (\Theta_1,\,\theta_1,\,t',\,A) \leftarrow \einfer{t}{\false}{\Theta_0}{\Gamma}\\
-  &\quad (\Theta_2,\,\theta_2,A_0) \leftarrow \freshMeta{\Theta_1}{\Gamma[\theta_1]}{\U}\\
-  &\quad (\Theta_3,\,\theta_3,A_1) \leftarrow \freshMeta{\Theta_2}{\Gamma[\theta_{12}],\,x:A_0}{\U}\\
+  &\quad \ereturn\,(\Theta_5,\,\theta_{12345},\,(t'[\theta_{2345}])\,u',\,A_1[\theta_{45}][x\mapsto u'])\\
+  &\einfer{t\,\{u\}}{\Theta_0}{\Gamma} :\equiv \edo \\
+  &\quad (\Theta_1,\,\theta_1,\,t',\,A) \leftarrow \einfer{t}{\Theta_0}{\Gamma}\\
+  &\quad \slet\,(\Theta_2,\,\theta_2,A_0) = \freshMeta{\Theta_1}{\Gamma[\theta_1]}{\U}\\
+  &\quad \slet\,(\Theta_3,\,\theta_3,A_1) = \freshMeta{\Theta_2}{\Gamma[\theta_{12}],\,x:A_0}{\U}\\
   &\quad (\Theta_4,\,\theta_4) \leftarrow \unify\,(A[\theta_{23}])\,(\{x : A_0[\theta_3]\}\to A_1)\\
   &\quad (\Theta_5,\,\theta_5,\,u') \leftarrow \echeck{u}{\Theta_4}{\Gamma[\theta_{1234}]}{(A_0[\theta_{34}])}\\
-  &\quad \ereturn\,(\mathsf{insert}\,{ins}\,{((t'[\theta_{2345}])\,\{u'\})}\,{(A_1[\theta_{45}][x\mapsto u'])})\\
-  &\einfer{\slet\,x:A=t\,\sin\,u}{ins}{\Theta_0}{\Gamma} :\equiv \edo \\
+  &\quad \ereturn\,(\Theta_5,\,\theta_{12345},\,(t'[\theta_{2345}])\,\{u'\},\,A_1[\theta_{45}][x\mapsto u'])\\
+  &\einfer{\slet\,x:A=t\,\sin\,u}{\Theta_0}{\Gamma} :\equiv \edo \\
   &\quad(\Theta_1,\,\theta_1,\,A') \leftarrow \echeck{A}{\Theta_0}{\Gamma}{\U}\\
   &\quad(\Theta_2,\,\theta_2,\,t') \leftarrow \echeck{t}
                 {\Theta_1}{\Gamma[\theta_1]}{A'}\\
   &\quad(\Theta_3,\,\theta_3,\,u',\,B) \leftarrow
-                \einfer{u}{ins}{\Theta_2}{\Gamma[\theta_{12}]}\\
+                \einfer{u}{\Theta_2}{\Gamma[\theta_{12}]}\\
   &\quad\ereturn\,(\Theta_3,\,\theta_{123},\,(\slet\,x:A'[\theta_{23}]=t'[\theta_3]\,\sin\,u'),\,B)\\
-  &\einfer{\_}{ins}{\Theta}{\Gamma} :\equiv \edo \\
+  &\einfer{\_}{\Theta}{\Gamma} :\equiv \edo \\
   &\quad \slet\,(\Theta',\,\theta,\,A) = \freshMeta{\Theta}{\Gamma}{\U}\\
   &\quad \ereturn\,(\freshMeta{\Theta'}{\Gamma[\theta]}{A})\\
 \end{alignat*}
 \endgroup
+\subsubsection{Implicit argument insertion}
+This inserts implicit applications around a core term. For example, if we have a
+defined name $id$ with type $\{A : \U\}\to A \to A$ in a surface program, we
+usually want to expand $id$ to $id\,\{\alpha\}$, where $\alpha$ is a fresh
+metavariable. We define $\einsert$ to take as input the output of
+$\einferblank$, so that it is more convenient to use as an optional
+post-processing step after inference.
 
 \subsubsection{Checking}
 The first two clauses are checking $\lambda$-s, where the expected type exactly
@@ -1607,8 +1599,8 @@ We provide an implementation of the elaborator from Section
 \ref{sec:extending_elaboration}. It is a standalone Haskell program which reads
 a surface expression from standard input, and outputs the result of elaboration,
 or optionally the type or the normal form of the result. It is implemented in
-about 1200 lines of Haskell. Of this, 673 lines constitute the core syntax,
-evaluation, unification and elaboration. Of this 673 lines, 458 lines implement
+1061 lines of Haskell. Of this, 673 lines constitute the core syntax,
+evaluation, unification and elaboration. Of these 673 lines, 458 lines implement
 the basic elaborator of Section \ref{sec:bidirectional_elaboration} and 215
 lines implement the extended elaborator.
 
