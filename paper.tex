@@ -734,10 +734,10 @@ the used notations:
 We present the specifications and definitions below, then we describe them in order.
 \begin{mathpar}
 \inferrule*[lab=insert]{\Theta_0|\Gamma\vdash \\ (\Theta,\,\theta,\,t,\,A) \in
-             \{(\Theta,\,\theta,\,t,\,A)\,|\,(\theta : \Theta_0 \To \Theta)\,\land\,
+             \{(\Theta,\,\theta,\,t,\,A)\,|\,(\theta : \Theta \To \Theta_0)\,\land\,
                (\Theta|\Gamma[\theta]\vdash t : A)\}\cup\{\fail\}}
            {\einsert(\Theta,\,\theta,\,t,\,A) \in \{(\Theta,\,\theta,\,t,\,A)\,|\,
-             (\theta : \Theta_0 \To \Theta)\,\land\,(\Theta|\Gamma[\theta]\vdash t : A)\}\cup\{\fail\}}
+             (\theta : \Theta \To \Theta_0)\,\land\,(\Theta|\Gamma[\theta]\vdash t : A)\}\cup\{\fail\}}
 \end{mathpar}
 \begin{alignat*}{3}
   &\einsert\,(\Theta_1,\,\theta_1,\,t,\,\{x : A\}\to B) && :\equiv\hspace{0.5em}&&
@@ -1776,8 +1776,10 @@ Some general comments on the comparison of FCIF to prior works. First, FCIF
 supports dependent types and prior solutions do not. It is also unclear whether
 prior solutions can scale to dependent types. MLF and HML rely on subtyping, and
 solutions which work one neutral spine at a time (HMF, GI, QL) also face issues
-with dependently typed spines, since it is not possible to do anything with
-later arguments in such spines until previous arguments are elaborated.
+with dependently typed spines. With such spines, we cannot simply process later
+arguments when previous ones are not yet elaborated, as return types depend on
+argument values, and skipping over arguments may clog up type computation in an
+unacceptable way.
 
 Secondly, FCIF supports global inference. For an example for global inference,
 $\slet\,x : \_ = single\,id\,\sin\,$ $cons\,\{IdTy\}\,x\,nil$ works in FCIF, MLF
@@ -1802,7 +1804,7 @@ once. Consider the following:
 FCIF will attempt to elaborate $f\,x$ to $f\,(\lambda\{A\}.\,x)$, but fails to
 infer a type for $x$, because $A$ is not in the scope of $x$'s type. We sketch
 an extension of FCIF with \emph{curried application insertion}, which could
-possibly handle this example. We extend $\einsert$ with the following case. We
+possibly handle this example. We extend insertion with the following case. We
 omit metacontexts and metasubstitutions for brevity.
 \begin{alignat*}{3}
 & \einsert\,(t,\,\alpha\,\ol{u}) :\equiv \edo \\
@@ -1821,21 +1823,64 @@ we try to unify expected and inferred types, we have $x : \{y :
 $\unify\,(\alpha_1\,\{\alpha_2\,x\,A : \ol{\alpha_0}\})\,(A \to A)$. This
 problem does not fall in any usual pattern fragment, and does not have an
 obvious most general solution. However, it is reasonable to make the following
-assumption: metas like $\alpha_2$ are only solved with \emph{order-preserving
-  embeddings}, so for $\alpha_2$ the four potential solutions are
-$(\lambda\,x\,A.\,[])$, $(\lambda\,x\,A.\,(A :: []))$, $(\lambda\,x\,A.\,(x ::
-[]))$ and $(\lambda\,x\,A.\,(x :: A :: []))$. The reason for only allowing such
-solutions is that these cases can possibly yield solvable pattern unification
-problems, while solutions containing arbitrary terms or non-linear variable
-occurrences cannot. Out of these, $(\lambda\,x\,A.\,(x :: A :: []))$ and
-$(\lambda\,x\,A.\,(x :: []))$ are ruled out because they would require a cyclic
-solution for $\alpha_0$, and $(\lambda\,x\,A.\,[])$ is ruled out because it
-would yield the unsolvable $\unify\,\alpha_1\,(A \to A)$ problem. Hence, there
-is a unique order-preserving embedding solution in this case, which does yield
-the expected elaboration output. However, note that this idea is far from being
-fully fleshed out, and it could be subject of future research.
+assumption: metas which return in unknown record types, like $\alpha_2$, are
+only solved with \emph{order-preserving embeddings}, so for $\alpha_2$ the four
+potential solutions are $(\lambda\,x\,A.\,[])$, $(\lambda\,x\,A.\,(A :: []))$,
+$(\lambda\,x\,A.\,(x :: []))$ and $(\lambda\,x\,A.\,(x :: A :: []))$. The reason
+for only allowing such solutions is that these can possibly yield solvable
+pattern unification problems, while solutions containing arbitrary terms or
+non-linear variable occurrences cannot. Out of these, $(\lambda\,x\,A.\,(x :: A
+:: []))$ and $(\lambda\,x\,A.\,(x :: []))$ are ruled out because they would
+require a cyclic solution for $\alpha_0$, and $(\lambda\,x\,A.\,[])$ is ruled
+out because it would yield the unsolvable $\unify\,\alpha_1\,(A \to A)$
+problem. Thus, $(\lambda\,x\,A.\,(A :: []))$ is the unique order-preserving
+embedding solution in this case, which does yield the expected elaboration
+output. However, this idea is far from being fully fleshed out, and it
+could be subject of future research.
 
-\section{Conclusions and Future Work}
+\section{Conclusion and Future Work}
+
+In type theory, it is a common endeavor to search for theories and features
+which confer the greatest amount of expressive power for the least amount of
+formal and conceptual complexity. In relation to elaboration and inference
+algorithms, we would similarly like to use tools and concepts with high
+power-to-weight ratio. Sometimes core theories need to be extended to allow more
+powerful elaboration. Certainly, type inference would be cumbersome without the
+notion of metavariables. Likewise, contextual metavariables are essential
+for elaboration in the presence of type dependencies.
+
+In this paper we propose the concept of strictly curried functions, which
+supports elaboration of first-class implicit functions. It seems that trying to
+solve this problem by fiddling with postponing and heuristics, without extending
+the core theory, does not really cut it. In a dependently typed spine $t\,u\,v$, when
+elaborating $v$ we already want to have an elaborated version of $u$ with
+computational behavior. While contextual metavariables yield a nice modal type
+theory which computes in the presence of \emph{unknown terms}, our curried
+functions extend this to a system which also computes in the presence of
+unknown \emph{implicit insertions}. Since implicit insertions are in a way also
+just unknown terms, we can reuse most of the infrastructure of contextual/crisp
+type theory, and only add modest extensions.
+
+Often it is the case that constructions on dependent type theory are forced to
+be more principled and structured than constructions on less powerful theories,
+because the many interactions and intricacies leave less room for whims. In our
+case, we believe that focusing on dependent type theory helped us hone in on the
+essential parts of the problem, and it is likely that restrictions of our
+solution would be also favorably simple and powerful in simpler settings such as
+System F.
+
+In future work, we would like to
+\begin{itemize}
+\item Investigate extending elaboration with curried application insertions, along the lines
+      of Section \ref{sec:appinsert}.
+\item Formalize elaboration and unification from an algebraic/categorical perspective, in particular
+      give algebraic definitions for the core theories.
+\item Investigate whether features of our elaborator could be implemented in a
+      reasonably practical way in production systems such as Agda. Also, investigate
+      simplifying our algorithm to non-dependent (e.g.\ System F) settings.
+\item Investigate completeness and properties related to inferability.
+\end{itemize}
+
 
 
 

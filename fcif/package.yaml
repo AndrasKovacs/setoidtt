@@ -1,14 +1,9 @@
 
-name:                implicit-fun-elab
-version:             0.1.0.0
-# github:              "AndrasKovacs/"
-license:             BSD3
-author:              "András Kovács"
-maintainer:          "puttamalac@gmail.com"
-copyright:           "2020 András Kovács"
-category:            Language
-
-description:         "Small implementation of elaboration for first-class implicit function types"
+name:        fcif
+version:     0.1.0.0
+license:     BSD3
+category:    Language
+description: "Implementation of \"Elaboration with First-Class Implicit Function Types\""
 
 default-extensions:
 - BangPatterns
@@ -43,7 +38,6 @@ ghc-options:
 - -Wno-unused-do-bind
 - -Wno-unused-matches
 - -Wno-partial-type-signatures
-- -Wno-unused-imports
 - -Wno-type-defaults
 
 dependencies:

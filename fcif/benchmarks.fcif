@@ -1,8 +1,24 @@
 
+-- usage e.g : cat example.txt | fcif elab
+
 -- Examples for elaborating first-class polymorphism from
 --   https://www.microsoft.com/en-us/research/uploads/prod/2017/07/impredicative-pldi18.pdf
 -- the same examples are also found in
 --   https://www.microsoft.com/en-us/research/publication/a-quick-look-at-impredicativity/
+
+-- Note: extra features compared to the paper:
+--   - optional type annotations on lambdas, e.g. (λ (A : U). A)
+--   - optional omission of type annotation on implicit binder and let,
+--     e.g.  let foo = U in foo   and   {A} → A → A
+--   - special treatment of top-level lambdas, e.g. as in this file.
+--     top-level lambdas a printed roughly as formatted in this file, and
+--     they are also not printed in spines of unsolved metas in elaboration output.
+
+-- Note: when we print elaboration output, curried functions are *not* computed away.
+--     This is partly because I just haven't yet implemented the evaluator which removes them,
+--     (although of course normalization removes them - the point is to *only* compute curried
+--      functions!), partly because it is highly useful for debugging and visualizing elaboration
+--     to see all inserted curried lambdas.
 
 -- preliminary types and definitions
 ------------------------------------------------------------
