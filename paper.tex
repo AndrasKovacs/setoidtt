@@ -1458,12 +1458,12 @@ as in the the basic elaborator of Section \ref{sec:bidirectional_elaboration}.
 In the definition of checking, we insert a new clause after
 $\echeck{t}{\Theta}{\Gamma}{(\{x : A\}\to B)}$:
 \begin{alignat*}{3}
-& \echeck{t}{\Theta_0}{\Gamma}{(\alpha\,\ol{t})} :\equiv \edo\\
+& \echeck{t}{\Theta_0}{\Gamma}{(\alpha\,\ol{u})} :\equiv \edo\\
 & \quad \slet\,(\Theta_1,\,\theta_1,\,A) = \freshMeta{\Theta_0}{\Gamma}{\Tel}\\
 & \quad (\Theta_2,\,\theta_2,\,t',\,B) \leftarrow \einfer{t}{\true}{\Theta_1}{\Gamma[\theta_1],\,x:\Rec\,A}\\
 & \quad \slet\,(\Theta_3,\,\theta_3) = \newConstancy{\Theta_2}{\Gamma[\theta_{12}]}{x}{(A[\theta_2])}{B}\\
 & \quad (\Theta_4,\,\theta_4) \leftarrow
-            \unify\, ((\alpha\,\ol{t})[\theta_{123}])\,(\{x : \ol{A[\theta_{23}]}\} \to B[\theta_3])\\
+            \unify\, ((\alpha\,\ol{u})[\theta_{123}])\,(\{x : \ol{A[\theta_{23}]}\} \to B[\theta_3])\\
 & \quad \ereturn\,(\Theta_4,\,\theta_{1234},\,(\lambda\,\{x : \ol{A[\theta_{234}]}\}.\,t'[\theta_{34}]))
 \end{alignat*}
 Hence, when checking a term with a meta-headed type, we create a fresh meta with
@@ -1801,13 +1801,42 @@ once. Consider the following:
   \]
 FCIF will attempt to elaborate $f\,x$ to $f\,(\lambda\{A\}.\,x)$, but fails to
 infer a type for $x$, because $A$ is not in the scope of $x$'s type. We sketch
-an extension of FCIF with \emph{implicit application insertion}, which could
-possibly handle this example. We note though that this is not yet fleshed out
-and is a subject of future work.
+an extension of FCIF with \emph{curried application insertion}, which could
+possibly handle this example. We extend $\einsert$ with the following case. We
+omit metacontexts and metasubstitutions for brevity.
+\begin{alignat*}{3}
+& \einsert\,(t,\,\alpha\,\ol{u}) :\equiv \edo \\
+& \quad A \leftarrow \mathsf{freshMeta}_{\Gamma}\,\Tel\\
+& \quad B \leftarrow \mathsf{freshMeta}_{\Gamma,\,x: \Rec\,A}\,\U\\
+& \quad \unify\,(\alpha\,\ol{u})\,(\{x : \ol{A}\} \to B)\\
+& \quad \mathsf{newConstancy}_{\Gamma, x : \Rec\,A}\,B\\
+& \quad u \leftarrow \mathsf{freshMeta}_{\Gamma}\,(\Rec\,A)\\
+& \quad \ereturn\,(t\,\{u : \ol{A}\},\,B[x \mapsto u])
+\end{alignat*}
+In short, we insert a new curried application whenever we $\einsert$ with
+meta-headed type. Now, elaboration returns
+$f\,(\lambda\,\{A\}.\,x\,\{\alpha_2\,x\,A : \ol{\alpha_0}\})$, and right before
+we try to unify expected and inferred types, we have $x : \{y :
+\ol{\alpha_0}\}\to \alpha_1\,y$, and we have to compute
+$\unify\,(\alpha_1\,\{\alpha_2\,x\,A : \ol{\alpha_0}\})\,(A \to A)$. This
+problem does not fall in any usual pattern fragment, and does not have an
+obvious most general solution. However, it is reasonable to make the following
+assumption: metas like $\alpha_2$ are only solved with \emph{order-preserving
+  embeddings}, so for $\alpha_2$ the four potential solutions are
+$(\lambda\,x\,A.\,[])$, $(\lambda\,x\,A.\,(A :: []))$, $(\lambda\,x\,A.\,(x ::
+[]))$ and $(\lambda\,x\,A.\,(x :: A :: []))$. The reason for only allowing such
+solutions is that these cases can possibly yield solvable pattern unification
+problems, while solutions containing arbitrary terms or non-linear variable
+occurrences cannot. Out of these, $(\lambda\,x\,A.\,(x :: A :: []))$ and
+$(\lambda\,x\,A.\,(x :: []))$ are ruled out because they would require a cyclic
+solution for $\alpha_0$, and $(\lambda\,x\,A.\,[])$ is ruled out because it
+would yield the unsolvable $\unify\,\alpha_1\,(A \to A)$ problem. Hence, there
+is a unique order-preserving embedding solution in this case, which does yield
+the expected elaboration output. However, note that this idea is far from being
+fully fleshed out, and it could be subject of future research.
 
+\section{Conclusions and Future Work}
 
-
-\section{Future Work and Conclusion}
 
 
 
