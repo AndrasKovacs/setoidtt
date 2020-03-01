@@ -4,7 +4,7 @@ Implementation of the elaborator in the draft paper "Elaboration with
 First-Class Implicit Function Types".
 
 We also have here a small supplementary Agda file,
-[TelescopeDerivation.agda](TelescopeDerivation), which contains a derivation
+[TelescopeDerivation.agda](TelescopeDerivation.agda), which contains a derivation
 of telescopes and curried functions from Section 4 of the paper.
 
 #### Installation
