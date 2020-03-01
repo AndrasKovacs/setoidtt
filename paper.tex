@@ -467,14 +467,14 @@ algorithm and illustrate the key issues. We extend this elaborator in Section
 \end{figure}
 
 \subsection{Surface syntax}
-Figure \ref{fig:surface} shows the the possible constructs in the surface
+Figure \ref{fig:surface} shows the possible constructs in the surface
 language. We only have terms, as we have Russell-style universe in the core, and
 we can conflate types and terms for convenience. The surface syntax does not
 have semantics or any well-formedness relations attached; its sole purpose is to
 serve as input to elaboration. Hence, the surface syntax can be also viewed as a
 small untyped tactic language which is interpreted by the elaborator.
 
-The syntactic constructs are the almost the same in the surface language as in
+The syntactic constructs are almost the same in the surface language as in
 the core syntax. The difference is that $\_$ holes only appear in surface
 syntax. The $\_$ can be used to request a term to be inferred by elaboration,
 the same way as in Agda.  This can be used to give let-definitions without type
@@ -529,8 +529,9 @@ variables pointing into it. This corresponds to a particularly simple variant of
 type operators or functions with crisp (``meta'') domain. The non-meta typing
 context additionally supports \emph{defined variables}, which is used in the
 typing rule for $\slet$-definitions, and we have that any defined variable is
-equal to its definition. We mainly support this as a convenience feature in the
-surface language.
+equal to its definition. We support $\slet$ as a convenience feature which
+is important for defining more involved example programs\footnote{In dependent type theories, the $\slet$ rule is not
+  derivable from function application, unlike in simple type theories.}.
 
 The universe $\U$ is Russell-style, and we have the type-in-type rule.
 This causes our core syntax to be non-total, and our elaboration algorithm to be
@@ -560,9 +561,8 @@ in core syntax.
 \end{definition}
 \begin{example}
 The core syntax is quite expressive as a programming language, thanks to
-$\slet$-definitions\footnote{In dependent type theories, the $\slet$ rule is not
-  derivable from function application, unlike in simple type theories.} and the
-type-in-type rule which allows Church-encodings of a large class of inductive
+$\slet$-definitions and the
+type-in-type rule which allows Church-encodings for a large class of inductive
 types. For example, the following term computes a list of types by mapping:
 \begin{alignat*}{3}
   & \slet\,List : \U\to\U\\
@@ -655,7 +655,7 @@ $\Gamma \To A$ by recursion on $\Gamma$, such that $\Theta|\emptycon\vdash
 \end{definition}
 
 \begin{definition}[Contextualization]\label{def:contextualization}
-For each $\Theta|\Gamma \vdash t : \Gamma\To A$, we define the spine
+For each $\Theta|\emptycon \vdash t : \Gamma\To A$, we define the spine
 $\overline{\mathsf{vars}_{\Gamma}}$ such that that $\Theta|\Gamma\vdash
 t\,\overline{\mathsf{vars}_{\Gamma}} : A$, which is $t$ applied to all bound
 variables in $\Gamma$.
@@ -1366,8 +1366,8 @@ new kind of context extension for metacontexts. The rules are given in Figure
 In the rule \LabTirName{metacon/constancy} we specify extension of a metacontext
 with a constraint. The \LabTirName{constancy-$\equiv$} rule expresses that,
 assuming we have a constancy constraint for $A$ and $B$ in context, if $B$ does
-not depend on the $x : \Rec\,A$ domain variable, then $A$ is equal to the the
-empty telescope $\epsilon$.
+not depend on the $x : \Rec\,A$ domain variable, then $A$ is equal to the empty
+telescope $\epsilon$.
 
 The \LabTirName{metasub/constancy} rule defines metasubstitutions whose
 codomains are extended with constraints. Intuitively, while the
@@ -1450,7 +1450,7 @@ telescope domain to be empty.
 \end{alignat*}
 Again, we also have the symmetric case. For $\lambda\,\{x : \ol{A}\}.\,t$ and
 $t\,\{u : \ol{A}\}$, unification is structural, and other cases remain the same
-as in the the basic elaborator of Section \ref{sec:bidirectional_elaboration}.
+as in the basic elaborator of Section \ref{sec:bidirectional_elaboration}.
 
 \subsection{Elaboration}
 
