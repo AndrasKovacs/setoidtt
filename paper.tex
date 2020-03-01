@@ -1819,7 +1819,7 @@ In short, we insert a new curried application whenever we $\einsert$ with
 meta-headed type. Now, elaboration returns
 $f\,(\lambda\,\{A\}.\,x\,\{\alpha_2\,x\,A : \ol{\alpha_0}\})$, and right before
 we try to unify expected and inferred types, we have $x : \{y :
-\ol{\alpha_0}\}\to \alpha_1\,y$, and we have to compute
+\ol{\alpha_0}\}\to \alpha_1\,\{y : \ol{\alpha_0}\}$, and we have to compute
 $\unify\,(\alpha_1\,\{\alpha_2\,x\,A : \ol{\alpha_0}\})\,(A \to A)$. This
 problem does not fall in any usual pattern fragment, and does not have an
 obvious most general solution. However, it is reasonable to make the following
