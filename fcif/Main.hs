@@ -16,11 +16,11 @@ import Zonk
 
 
 helpMsg = unlines [
-  "usage: holes [--help|nf|type]",
+  "usage: fcif [--help|elab|nf|type]",
   "  --help : display this message",
-  "  elab   : read & elaborate expression from stdin",
+  "  elab   : read & elaborate expression from stdin, print elaboration output",
   "  nf     : read & elaborate expression from stdin, print its normal form",
-  "  type   : read & elaborate expression from stdin, print its type"]
+  "  type   : read & elaborate expression from stdin, print its (normal) type"]
 
 displayError :: String -> Err -> IO a
 displayError file (Err ns err (Just (SPos (SourcePos path (unPos -> linum) (unPos -> colnum))))) = do

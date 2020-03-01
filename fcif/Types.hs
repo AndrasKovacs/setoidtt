@@ -28,6 +28,7 @@ icit :: Icit -> a -> a -> a
 icit Impl i e = i
 icit Expl i e = e
 
+-- | Surface syntax.
 data Raw
   = RVar Name                        -- ^ x
   | RLam Name (Maybe Raw) Icit Raw   -- ^ λx.t  or λ{x}.t with optional type annotation
@@ -61,7 +62,7 @@ data MetaEntry
   | Constancy Cxt VTy VTy BlockedBy
 
 
--- | A partial mapping from levels to levels. Undefined domain reresents
+-- | A partial mapping from levels to levels. Undefined domain represents
 --   out-of-scope or "illegal" variables.
 type Renaming = IM.IntMap Lvl
 
@@ -71,7 +72,7 @@ data Str = Str {
   _strDom :: Lvl,        -- ^ size of renaming domain
   _strCod :: Lvl,        -- ^ size of renaming codomain
   _strRen :: Renaming,   -- ^ partial renaming
-  _strOcc :: Maybe MId   -- ^ meta for occurs strengthening
+  _strOcc :: Maybe MId   -- ^ meta for occurs checking
   }
 
 -- | Lift over a bound variable.
@@ -82,9 +83,12 @@ liftStr (Str c d r occ) = Str (c + 1) (d + 1) (IM.insert d c r) occ
 skipStr :: Str -> Str
 skipStr (Str c d r occ) = Str c (d + 1) r occ
 
-
+-- | Value environment. `VSkip` skips over a bound variable.
 data Vals  = VNil | VDef Vals ~Val | VSkip Vals
+
+-- | Type environment.
 data Types = TNil | TDef Types ~VTy | TBound Types ~VTy
+
 type Ix    = Int
 type Lvl   = Int
 type Ty    = Tm
@@ -100,11 +104,13 @@ pattern TSnoc as a <- ((\case TBound as a -> Just (as, a)
 lvlName :: [Name] -> Lvl -> Name
 lvlName ns x = ns !! (length ns - x - 1)
 
+-- | We need to distinguish invented names from source names, as
+--   we don't want the former to shadow the latter during name lookup
+--   in elaboration.
 data NameOrigin =
     NOSource        -- ^ Names which come from surface syntax.
   | NOInserted      -- ^ Names of binders inserted by elaboration.
 
-type MetaInsertion = Bool
 
 -- | Context for elaboration and unification.
 data Cxt = Cxt {

@@ -1,4 +1,8 @@
 
+-- | Top-level mutable state involved in elaboration. We use actual mutable
+--   top-level references simply because it's convenient and our simple
+--   program does not call for anything more sophisticated.
+
 module ElabState where
 
 import Data.IORef

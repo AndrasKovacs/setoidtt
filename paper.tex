@@ -314,7 +314,7 @@ inferred type is unified with the annotation.
   \item We provide an executable implementation of the elaborator described in
     this paper.
   \item Our solution is simple: we implemented elaboration,
-    evaluation and unification in about 670 lines of Haskell, of which 210 lines
+    evaluation and unification in about 670 lines of Haskell, of which 215 lines
     implement the novel enhancements on the top of Norell's basic elaborator.
   \item The target theory of elaboration serves as a general platform for
     elaborating implicit function types: our concrete elaborator is a relatively
@@ -1592,8 +1592,8 @@ We provide an implementation of the elaborator from Section
 \ref{sec:extending_elaboration}. It is a standalone Haskell program which reads
 a surface expression from standard input, and outputs the result of elaboration,
 or optionally the type or the normal form of the result. It is implemented in
-1061 lines of Haskell. Of this, 673 lines constitute the core syntax,
-evaluation, unification and elaboration. Of these 673 lines, 458 lines implement
+1056 lines of Haskell. Of this, 669 lines constitute the core syntax,
+evaluation, unification and elaboration. Of these 669 lines, 454 lines implement
 the basic elaborator of Section \ref{sec:bidirectional_elaboration} and 215
 lines implement the extended elaborator.
 

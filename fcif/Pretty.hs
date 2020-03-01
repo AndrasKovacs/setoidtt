@@ -4,15 +4,17 @@ module Pretty (showTm, showTopTm) where
 
 import Types
 
--- special case printing of top lambdas, since they are usually used
--- to postulate stuff
+-- | We specialcase printing of top lambdas, since they are usually used
+--   to postulate stuff. We use '*' in a somewhat hacky way to mark
+--   names bound in top lambdas, so that later we can avoid printing
+--   them in meta spines.
 topLams :: Bool -> String -> String -> [Name] -> Tm -> ShowS
 topLams p pre post ns (Lam (fresh ns -> x) i a t) =
   showParen p (
     (pre++)
   . icit i bracket parens (
          ((if null x then "_" else x)++) . (" : "++) . go False ns a)
-  . topLams False "\n " ".\n\n" (('*':x):ns) t)
+  . topLams False "\n " ".\n\n" (('*':x):ns) t) -- note the '*'
 topLams _ pre post ns t = (post++) . go False ns t
 
 fresh :: [Name] -> Name -> Name

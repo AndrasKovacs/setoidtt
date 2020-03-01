@@ -131,6 +131,7 @@ newConstancy cxt dom cod =
 -- | Checks that a spine consists only of distinct bound vars.
 --   Returns a partial variable renaming on success, alongside the size
 --   of the spine, and the list of variables in the spine.
+--   May throw SpineError.
 checkSp :: Spine -> IO (Renaming, Lvl, [Lvl])
 checkSp = (over _3 reverse <$>) . go . forceSp where
   go :: Spine -> IO (Renaming, Lvl, [Lvl])
@@ -176,8 +177,9 @@ closingTm = go 0 where
       LamTel x (quote d a) $ go (d + 1) (b (VVar d), len-1, drop 1 xs) rhs
     _            -> error "impossible"
 
--- | Strengthen a value, returns quoted normal result. This performs scope
+-- | Strengthens a value, returns a quoted normal result. This performs scope
 --   checking, meta occurs checking and (recursive) pruning at the same time.
+--   May throw StrengtheningError.
 strengthen :: Str -> Val -> IO Tm
 strengthen str = go where
 
@@ -269,6 +271,7 @@ strengthen str = go where
     SProj1 sp      -> Proj1 <$> goSp h sp
     SProj2 sp      -> Proj2 <$> goSp h sp
 
+-- | May throw UnifyError.
 solveMeta :: Cxt -> MId -> Spine -> Val -> IO ()
 solveMeta cxt m sp rhs = do
 
@@ -307,13 +310,14 @@ freshMeta cxt (quote (cxt^.len) -> a) = do
   let sp = fst $ vars (cxt^.types)
   pure (quote (cxt^.len) (VNe (HMeta m) sp))
 
-
+-- | Wrap the inner UnifyError arising from unification in an UnifyErrorWhile.
 unifyWhile :: Cxt -> Val -> Val -> IO ()
 unifyWhile cxt l r =
   unify cxt l r
   `catch`
   (report (cxt^.names) . UnifyErrorWhile (quote (cxt^.len) l) (quote (cxt^.len) r))
 
+-- | May throw UnifyError.
 unify :: Cxt -> Val -> Val -> IO ()
 unify cxt l r = go l r where
 
@@ -440,7 +444,7 @@ check cxt topT ~topA = case (topT, force topA) of
     unifyWhile cxt va topA
     pure t
 
--- | We special case top-level lambdas (serving as postulates) for better
+-- | We specialcase top-level lambdas (serving as postulates) for better
 --   printing: we don't print them in meta spines.
 inferTopLams :: Cxt -> Raw -> IO (Tm, VTy)
 inferTopLams cxt = \case
