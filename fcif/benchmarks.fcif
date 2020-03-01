@@ -1,5 +1,5 @@
 
--- usage e.g : cat example.txt | fcif elab
+-- usage e.g : cat example.fcif | fcif elab
 
 -- Examples for elaborating first-class polymorphism from
 --   https://www.microsoft.com/en-us/research/uploads/prod/2017/07/impredicative-pldi18.pdf

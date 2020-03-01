@@ -1275,7 +1275,7 @@ two kinds of unforced insertion choices:
 \end{enumerate}
 In the following, we shall only enhance $\lambda$-insertions. This allows a
 simple implementation which only requires minimal changes to unification, and
-which is already remarkably powerful. It seems that handling implicit
+which is already remarkably powerful. It seems that enhancing implicit
 application insertions requires extending unification; we discuss this in
 Section \ref{sec:appinsert}. First, we modify closing types and
 contextualization to take advantage of telescopes.
@@ -1826,7 +1826,7 @@ obvious most general solution. However, it is reasonable to make the following
 assumption: metas which return in unknown record types, like $\alpha_2$, are
 only solved with \emph{order-preserving embeddings}, so for $\alpha_2$ the four
 potential solutions are $(\lambda\,x\,A.\,[])$, $(\lambda\,x\,A.\,(A :: []))$,
-$(\lambda\,x\,A.\,(x :: []))$ and $(\lambda\,x\,A.\,(x :: A :: []))$. The reason
+$(\lambda\,x\,A.\,(x :: []))$ and $(\lambda\,x\,A.\,(x :: A :: []))$\footnote{Technically, we could also allow permutations such as $\lambda\,x\,A.\,(A :: x :: [])$, but these are superfluous since nothing in our system depends on the ordering of permutable function arguments.}. The reason
 for only allowing such solutions is that these can possibly yield solvable
 pattern unification problems, while solutions containing arbitrary terms or
 non-linear variable occurrences cannot. Out of these, $(\lambda\,x\,A.\,(x :: A
@@ -1880,12 +1880,6 @@ In future work, we would like to
       simplifying our algorithm to non-dependent (e.g.\ System F) settings.
 \item Investigate completeness and properties related to inferability.
 \end{itemize}
-
-
-
-
-
-
 
 
 \begin{acks}
