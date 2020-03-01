@@ -24,4 +24,4 @@ The executable `fcif` reads an expression from standard input.
 - `fcif nf` prints normal form.
 - `fcif type` prints the type of the expression.
 
-See [benchmark.fcif](benchmark.fcif) here for an example file.
+See [benchmarks.fcif](benchmarks.fcif) here for an example file.
