@@ -1243,25 +1243,24 @@ equations in Figure \ref{fig:telescopes} hold definitionally, except
 \LabTirName{curried-$\beta$} and \LabTirName{curried-$\eta$}. These do not hold
 strictly, because $\Pi^C$, $\mathsf{app}$ and $\mathsf{lam}$ are all defined by
 recursion on the $A$ telescope, but the $\beta\eta$ rules are specified
-generically for an arbitrary (possibly neutral)
-telescope. \LabTirName{curried-$\beta$} is still provable as a propositional
+generically for arbitrary (possibly neutral)
+telescopes. \LabTirName{curried-$\beta$} is still provable as a propositional
 equality, and assuming function extensionality \LabTirName{curried-$\eta$} is
 provable as well. For details, see our Agda formalization of these definitions,
 which is included alongside the prototype implementation.
 
 Hence, we can derive a somewhat weaker version of curried functions, with
-propositional $\beta$ and $\eta$. From this, we still get consistency almost for
-free. That is because whenever we have a model of the base theory with $\Nat$,
-$\top$ and $\Sigma$, such that the model also validates equality reflection,
-then every propositionally provable equation is also validated as a definitional
-equation. And fortunately for us, standard models which prove consistency
-usually validate equality reflection, e.g.\ set-theoretical models or standard
-models in extensional type theory.
+propositional $\beta$ and $\eta$. From this, we still get consistency and
+canonicity very cheaply. This is because models proving consistency or
+canonicity for the base theory with $\Nat$, $\top$ and $\Sigma$ usually support
+equality reflection. For consistency, standard set-theoretical models and models
+in extensional type theory have this property, for canonicity, glued models
+e.g.\ as in \cite{kaposi2019gluing, sterling2019algebraic} also have this property.
 
-In contrast, showing canonicity, normalization and decidability of conversion
-would require some extra work. We leave this to future work, but we expect that
-it is straightforward to extend previous proofs to cover strict $\beta$ and
-$\eta$ for curried functions.
+In contrast, showing normalization and decidability of conversion would require
+some extra work. We leave this to future work, but we expect that it is not
+difficult to extend previous proofs to cover strict $\beta$ and $\eta$ for
+curried functions.
 
 \section{Extending Elaboration}
 \label{sec:extending_elaboration}
