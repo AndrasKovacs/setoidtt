@@ -21,7 +21,7 @@ of telescopes and curried functions from Section 4 of the paper.
 The executable `fcif` reads an expression from standard input.
 
 - `fcif elab` prints elaboration output.
-- `fcif nf` prints normal form.
-- `fcif type` prints the type of the expression.
+- `fcif nf` prints the normal form of the input.
+- `fcif type` prints the type of the input.
 
 See [benchmarks.fcif](benchmarks.fcif) here for an example file.
