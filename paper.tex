@@ -741,7 +741,7 @@ We present the specifications and definitions below, then we describe them in or
 \end{mathpar}
 \begin{alignat*}{3}
   &\einsert\,(\Theta_1,\,\theta_1,\,t,\,\{x : A\}\to B) && :\equiv\hspace{0.5em}&&
-       \slet\,(\Theta_2,\,\theta_2,\,u) = \freshMeta{\Theta}{\Gamma}{A}\\
+       \slet\,(\Theta_2,\,\theta_2,\,u) = \freshMeta{\Theta_1}{\Gamma[\theta_1]}{A}\\
   & && &&\sin\,\einsert\,(\Theta_2,\,\theta_{12},\,(t[\theta_2])\,\{u\},\,B[\theta_2][x\mapsto u])\\
   &\einsert\,(\Theta_1,\,\theta_1,\,t,\,A) && :\equiv&& \ereturn\,(\Theta_1,\,\theta_1,\,t,\,A)\\
   &\einsert\,\fail && :\equiv && \fail
@@ -864,7 +864,7 @@ higher-order function where some arguments have implicit function type. For
 example, in the surface syntax, assume natural numbers, and an induction
 principle for them:
 \[
-NatInd : \{P : Nat \to \U\}\to \,P\,\zero \to (\{n : Nat\}\to P\,n \to
+NatInd : (P : Nat \to \U)\to \,P\,\zero \to (\{n : Nat\}\to P\,n \to
          P\,(\suc\,n)) \to (n : Nat) \to P\,n
 \]
 Then, define addition using induction:
@@ -1014,17 +1014,11 @@ $\lambda$ domain type annotations for the sake of brevity.
 \section{Issues with First-Class Implicit Functions}
 \label{sec:issues}
 
-%% \begin{alignat*}{3}
-%%   & List && : \U \to \U \\
-%%   & nil  && : \{A : \U\} \to List\,A\\
-%%   & cons && : \{A : \U\} \to A \to List\,A \to List\,A
-%% \end{alignat*}
-
 We revisit now the $polyList$ example from Section \ref{sec:introduction}. We
 assume the following:
 \[
 List : \U \to \U \qquad nil : \{A : \U\} \to List\,A \qquad
-cons : \{A : \U\} \to A \to List\,A
+cons : \{A : \U\} \to A \to List\,A \to List\,A
 \]
 In the following, we present a trace of checking $cons\,(\lambda\,x.\,x)\,nil$
 at type $List\,(\{A : \U\}\to A \to A)$. We omit context and metacontext
@@ -1295,7 +1289,7 @@ following clause to Definition
 \end{definition}
 \begin{definition}[Contextualization]
 We extend spine notation to applications of curried functions. For example, we
-may have a spine $\ol{t} \equiv (\{x : \ol{A}\}\,\{y : \ol{B}\})$. We
+may have a spine $\ol{t} \equiv (\{x : \ol{A}\},\,\{y : \ol{B}\})$. We
 accordingly revise Definition \ref{def:contextualization} for
 $\overline{\mathsf{vars}_{\Gamma}}$ so that we use curried function application
 for each record type in $\Gamma$.
