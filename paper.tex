@@ -1665,8 +1665,8 @@ neutral applications is rather ad-hoc.
   & ids    && : List\,IdTy                                         && choose && : \{A : \U\} \to A \to A \to A                       \\
   & nil    && : \{A : \U\}\to List\,A                              && app    && : \{A\,B : \U\} \to (A \to B) \to A \to B            \\
   & cons   && : \{A : \U\} \to A \to List\,A \to List\,A           && revapp && : \{A\,B : \U\} \to A \to (A \to B) \to B            \\
-  & head   && : \{A : \U\} List\,A \to A                           && runST  && : \{A : \U\} \to (\{S : \U\} \to ST\,S\,A) \to A     \\
-  & tail   && : \{A : \U\} List\,A \to List\,A                     && argST  && : \{S : \U\}\to ST\,S\,Int                           \\
+  & head   && : \{A : \U\} \to List\,A \to A                           && runST  && : \{A : \U\} \to (\{S : \U\} \to ST\,S\,A) \to A     \\
+  & tail   && : \{A : \U\} \to List\,A \to List\,A                     && argST  && : \{S : \U\}\to ST\,S\,Int                           \\
   & map    && : \{A B : \U\} \to (A \to B) \to List\,A \to List\,B && poly   && : IdTy \to Pair\,Int\,Bool
 \end{alignat*}
 \caption{Types used in Figure \ref{fig:benchmark}.}
