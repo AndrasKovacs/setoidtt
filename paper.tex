@@ -1453,7 +1453,7 @@ $\echeck{t}{\Theta}{\Gamma}{(\{x : A\}\to B)}$:
 \begin{alignat*}{3}
 & \echeck{t}{\Theta_0}{\Gamma}{(\alpha\,\ol{u})} :\equiv \edo\\
 & \quad \slet\,(\Theta_1,\,\theta_1,\,A) = \freshMeta{\Theta_0}{\Gamma}{\Tel}\\
-& \quad (\Theta_2,\,\theta_2,\,t',\,B) \leftarrow \einfer{t}{\true}{\Theta_1}{\Gamma[\theta_1],\,x:\Rec\,A}\\
+& \quad (\Theta_2,\,\theta_2,\,t',\,B) \leftarrow \einfer{t}{\Theta_1}{\Gamma[\theta_1],\,x:\Rec\,A}\\
 & \quad \slet\,(\Theta_3,\,\theta_3) = \newConstancy{\Theta_2}{\Gamma[\theta_{12}]}{x}{(A[\theta_2])}{B}\\
 & \quad (\Theta_4,\,\theta_4) \leftarrow
             \unify\, ((\alpha\,\ol{u})[\theta_{123}])\,(\{x : \ol{A[\theta_{23}]}\} \to B[\theta_3])\\
