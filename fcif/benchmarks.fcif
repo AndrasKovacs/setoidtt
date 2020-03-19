@@ -85,8 +85,8 @@ let A6 : {B} → IdTy → B → B = id auto2 in
 let A7 = choose id auto in
 
 -- let A8 = choose id auto2 in -- FAILS
---   the reason is simply that the types are definitionally different
---   the order of implicit args dos not match. FCIF does *not* reorder or float out
+--   the reason is simply that the types are definitionally different,
+--   the order of implicit args does not match. FCIF does *not* reorder or float out
 --   implicit args, intentionally, since we support mixing implicit and explicit
 --   args in arbitrary order.
 
