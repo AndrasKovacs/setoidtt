@@ -11,7 +11,7 @@
 --   - optional omission of type annotation on implicit binder and let,
 --     e.g.  let foo = U in foo   and   {A} → A → A
 --   - special treatment of top-level lambdas, e.g. as in this file.
---     top-level lambdas a printed roughly as formatted in this file, and
+--     top-level lambdas are printed roughly as formatted in this file, and
 --     they are also not printed in spines of unsolved metas in elaboration output.
 
 -- Note: when we print elaboration output, curried functions are *not* computed away.
