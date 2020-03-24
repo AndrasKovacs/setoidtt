@@ -35,7 +35,7 @@ pBind    = pIdent <|> symbol "_"
 
 keyword :: String -> Bool
 keyword x =
-  x == "let" || x == "in" || x == "λ" || x == "U" || x == "assume"
+  x == "let" || x == "in" || x == "λ" || x == "Set" || x == "Prop"
 
 pIdent :: Parser Name
 pIdent = try $ do
@@ -46,7 +46,7 @@ pIdent = try $ do
 pAtom :: Parser Raw
 pAtom  =
       withPos (    (RVar <$> pIdent)
-               <|> (RU <$ char 'U')
+               <|> (RSet <$ symbol "Set")
                <|> (RHole <$ char '_'))
   <|> parens pTm
 

@@ -34,7 +34,8 @@ data Raw
   | RLam Name (Maybe Raw) Icit Raw   -- ^ λx.t  or λ{x}.t with optional type annotation
                                      --   on x
   | RApp Raw Raw Icit                -- ^ t u  or  t {u}
-  | RU                               -- ^ U
+  | RSet                             -- ^ Set
+  | RProp                            -- ^ Prop
   | RPi Name Icit Raw Raw            -- ^ (x : A) → B  or  {x : A} → B
   | RLet Name Raw Raw Raw            -- ^ let x : A = t in u
   | RHole                            -- ^ _
@@ -56,11 +57,6 @@ type BlockedBy = IS.IntSet
 data MetaEntry
   = Unsolved Blocking ~VTy
   | Solved Val
-
-  -- | Constancy (Γ, x : Rec A) B   + a list of blocking metas.
-  --   When B becomes constant, A is solved to ε
-  | Constancy Cxt VTy VTy BlockedBy
-
 
 -- | A partial mapping from levels to levels. Undefined domain represents
 --   out-of-scope or "illegal" variables.
@@ -87,19 +83,21 @@ skipStr (Str c d r occ) = Str c (d + 1) r occ
 data Vals  = VNil | VDef Vals ~Val | VSkip Vals
 
 -- | Type environment.
-data Types = TNil | TDef Types ~VTy | TBound Types ~VTy
+data Types = TNil | TDef Types ~VTy ~VUniv | TBound Types ~VTy ~VUniv
 
 type Ix    = Int
 type Lvl   = Int
 type Ty    = Tm
 type VTy   = Val
 type MCxt  = IM.IntMap MetaEntry
+type Univ  = Ty
+type VUniv = VTy
 
 -- | Extending `Types` with any type.
-pattern TSnoc :: Types -> VTy -> Types
-pattern TSnoc as a <- ((\case TBound as a -> Just (as, a)
-                              TDef as a   -> Just (as, a)
-                              TNil        -> Nothing) -> Just (as, a))
+pattern TSnoc :: Types -> VTy -> VUniv -> Types
+pattern TSnoc as a un <- ((\case TBound as a un -> Just (as, a, un)
+                                 TDef as a un   -> Just (as, a, un)
+                                 TNil           -> Nothing) -> Just (as, a, un))
 
 lvlName :: [Name] -> Lvl -> Name
 lvlName ns x = ns !! (length ns - x - 1)
@@ -121,39 +119,21 @@ data Cxt = Cxt {
   cxtLen        :: Int}
 
 data Tm
-  = Var Ix             -- ^ x
-  | Let Name Ty Tm Tm  -- ^ let x : A = t in u
+  = Var Ix                -- ^ x
+  | Let Name Ty Ty Tm Tm  -- ^ let x : A : B = t in u
 
-  | Pi Name Icit Ty Ty  -- ^ (x : A) → B)  or  {x : A} → B
-  | Lam Name Icit Ty Tm -- ^ λ(x : A).t  or  λ{x : A}.t
-  | App Tm Tm Icit      -- ^ t u  or  t {u}
+  | Pi Name Icit Ty Univ Ty  -- ^ (x : A : U) → B)  or  {x : A : U} → B
+  | Lam Name Icit Ty Univ Tm -- ^ λ(x : A : U).t  or  λ{x : A : U}.t
+  | App Tm Tm Univ Icit        -- ^ t u  or  t {u}, last Ty is u's universe
 
-  | Tel               -- ^ Tel
-  | TEmpty            -- ^ ε
-  | TCons Name Ty Ty  -- ^ (x : A) ▷ B
-  | Rec Tm            -- ^ Rec A
-
-  | Tempty            -- ^ []
-  | Tcons Tm Tm       -- ^ t :: u
-  | Proj1 Tm          -- ^ π₁ t
-  | Proj2 Tm          -- ^ π₂ t
-
-  | PiTel Name Ty Ty  -- ^ {x : A⃗} → B
-  | AppTel Ty Tm Tm   -- ^ t {u : A⃗}
-
-  | LamTel Name Ty Tm -- ^ λ{x : A⃗}.t
-
-  | U                 -- ^ U
+  | Set
+  | Prop
   | Meta MId          -- ^ α
-
   | Skip Tm           -- ^ explicit weakening (convenience feature in closing types)
 
 data Spine
   = SNil
-  | SApp Spine ~Val Icit
-  | SAppTel ~Val Spine ~Val
-  | SProj1 Spine
-  | SProj2 Spine
+  | SApp Spine ~Val ~VTy Icit
 
 valsLen :: Vals -> Int
 valsLen = go 0 where
@@ -168,20 +148,10 @@ data Head
 
 data Val
   = VNe Head Spine
-
-  | VPi Name Icit ~VTy (VTy -> VTy)
-  | VLam Name Icit ~VTy (Val -> Val)
-  | VU
-
-  | VTel
-  | VRec ~Val
-  | VTEmpty
-  | VTCons Name ~Val (Val -> Val)
-  | VTempty
-  | VTcons ~Val ~Val
-
-  | VPiTel Name ~Val (Val -> Val)
-  | VLamTel Name ~Val (Val -> Val)
+  | VPi Name Icit ~VTy ~VUniv (VTy -> VTy)
+  | VLam Name Icit ~VTy ~VUniv (Val -> Val)
+  | VSet
+  | VProp
 
 pattern VVar :: Lvl -> Val
 pattern VVar x = VNe (HVar x) SNil

@@ -30,6 +30,7 @@ data ElabError
   = UnifyErrorWhile Tm Tm UnifyError
   | NameNotInScope Name
   | ExpectedFunction Tm
+  | ExpectedType Tm Tm
   | IcitMismatch Icit Icit
 
 data Err = Err {
@@ -93,6 +94,11 @@ showError ns = \case
     "Name not in scope: " ++ x
   ExpectedFunction ty ->
     "Expected a function type, instead inferred:\n\n  " ++ showTm ns ty
+  ExpectedType a un -> printf (
+    "Expected type Set or Prop for expression:\n\n" ++
+    "  %s\n\n" ++
+    "inferred type\n\n" ++
+    "  %s") (showTm ns a) (showTm ns un)
   IcitMismatch i i' -> printf (
     "Function icitness mismatch: expected %s, got %s.")
     (show i) (show i')
