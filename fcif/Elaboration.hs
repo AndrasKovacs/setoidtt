@@ -1,4 +1,6 @@
 
+{-# OPTIONS_GHC -Wno-unused-imports #-}
+
 module Elaboration where
 
 {-| TODO
@@ -35,6 +37,9 @@ import Types
 import Evaluation
 import ElabState
 import Errors
+import Pretty
+
+import Debug.Trace
 
 -- Context operations
 --------------------------------------------------------------------------------
@@ -174,6 +179,8 @@ strengthen str = go where
     VPi x i a au b   -> Pi x i <$> go a <*> pure au <*> goBind b
     VLam x i a au t  -> Lam x i <$> go a <*> pure au <*> goBind t
     VU u             -> pure (U u)
+    VTop             -> pure Top
+    VTt              -> pure Tt
 
   goBind t = strengthen (liftStr str) (t (VVar (str^.cod)))
 
@@ -219,12 +226,6 @@ freshMeta cxt (quote (cxt^.len) -> a) au = do
   let sp = fst $ vars (cxt^.types)
   pure (quote (cxt^.len) (VNe (HMeta m) sp))
 
--- wrapUnify :: Cxt -> Val -> Val -> IO a -> IO a
--- wrapUnify cxt l r act = do
---   act
---   `catch`
---   (report (cxt^.names) . UnifyErrorWhile (quote (cxt^.len) l) (quote (cxt^.len) r))
-
 unifyWhile cxt un l r =
   unify cxt un l r
   `catch`
@@ -247,16 +248,13 @@ unifyU u u' = case (forceU u, forceU u') of
   (u,       UMeta x )           -> solveU x u
   (u,       u'      )           -> throwIO $ UnifyError [] (U u) (U u')
 
-subsumeU :: U -> U -> IO ()
-subsumeU u u' = case (forceU u, forceU u') of
-  (Prop, Set) -> pure ()
-  (u   , u' ) -> unifyU u u'
-
 -- | subsume : (u : U) -> Ty u -> Ty u -> IO ()
 subsume :: Cxt -> U -> VTy -> VTy -> IO ()
 subsume cxt u l r = case forceU u of
   Set -> case (force l, force r) of
-    (VU u,           VU u'              ) -> subsumeU u u'
+    (VU u, VU u') -> case (forceU u, forceU u') of
+      (Prop, Set) -> pure ()
+      (u   , u' ) -> unifyU u u'
     (VPi x i a au b, VPi x' i' a' au' b') -> do
       unifyU au au'
       unify cxt au a a'
@@ -287,11 +285,15 @@ unify cxt un l r = go un l r where
        VPi x' i' a' au' b') | i == i'        -> unifyU au au' >>
                                                 go au a a' >> goBind x a au Set b b'
     (VU u, VU u')                            -> unifyU u u'
+    (VTop, VTop)                             -> pure ()
+    (VTt, VTt)                               -> pure ()
     (VNe h sp, VNe h' sp') | h == h'         -> goSp sp sp'
     (VNe (HMeta m) sp, VNe (HMeta m') sp')   -> flexFlex m sp m' sp'
     (VNe (HMeta m) sp, t')                   -> solveMeta cxt m sp t'
     (t, VNe (HMeta m') sp')                  -> solveMeta cxt m' sp' t
-    _                                        -> case un of Prop -> pure ();_ -> unifyError
+    _                                        -> case forceU un of
+                                                  Prop -> pure ()
+                                                  _    -> unifyError
 
   goBind :: Name -> VTy -> U -> U -> (Val -> Val) -> (Val -> Val) -> IO ()
   goBind x a au un t t' =
@@ -375,7 +377,7 @@ check cxt topT ~topA ~topU = case (topT, force topA) of
 
   (t, topA) -> do
     (t, va, au) <- insert cxt $ infer cxt t
-    unifyU au topU
+    subsumeWhile cxt Set (VU au) (VU topU)
     subsumeWhile cxt au va topA
     pure t
 
@@ -460,3 +462,9 @@ infer cxt = \case
     let ~vt = eval (cxt^.vals) t
     (u, b, bu) <- infer (define x va au vt cxt) u
     pure (Let x a au t u, b, bu)
+
+  RTop ->
+    pure (Top, VProp, Set)
+
+  RTt ->
+    pure (Tt, VTop, Prop)

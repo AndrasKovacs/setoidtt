@@ -52,6 +52,8 @@ eval vs = go where
     App t u uu i   -> vApp (go t) (go u) uu i
     Skip t         -> eval (VSkip vs) t
     U u            -> VU u
+    Top            -> VTop
+    Tt             -> VTt
 
   goBind t v = eval (VDef vs v) t
 
@@ -69,5 +71,7 @@ quote d = go where
     VLam x i a au t -> Lam x i (go a) au (goBind t)
     VPi x i a au b  -> Pi x i (go a) au (goBind b)
     VU u            -> U (forceU u)
+    VTop            -> Top
+    VTt             -> Tt
 
   goBind t = quote (d + 1) (t (VVar d))

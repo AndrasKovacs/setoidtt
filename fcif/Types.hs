@@ -40,6 +40,8 @@ data Raw
   | RHole                            -- ^ _
   | RSrcPos SPos Raw                 -- ^ source position annotation, added by parsing
 
+  | RTop
+  | RTt
 deriving instance Show Raw
 
 
@@ -117,6 +119,7 @@ data U
   = Prop
   | Set
   | UMeta MId
+  deriving Show
 
 data Tm
   = Var Ix               -- ^ x
@@ -129,6 +132,9 @@ data Tm
   | U U
   | Meta MId          -- ^ α
   | Skip Tm           -- ^ explicit weakening (convenience feature in closing types)
+
+  | Top
+  | Tt
 
 data Spine
   = SNil
@@ -150,6 +156,9 @@ data Val
   | VPi Name Icit ~VTy U (VTy -> VTy)
   | VLam Name Icit ~VTy U (Val -> Val)
   | VU U
+
+  | VTop
+  | VTt
 
 pattern VSet :: Val
 pattern VSet = VU Set

@@ -69,12 +69,28 @@ main' mode src = mainWith (pure [mode]) ((,src) <$> parseString src)
 
 ------------------------------------------------------------
 
-test = main' "elab" $ unlines [
+test1 = main' "elab" $ unlines [
   "λ (Nat : Set)",
   "  (zero : Nat)",
   "  (suc : Nat → Nat)",
   "  (f : Nat → Prop)",
   "  (foo : Nat → Set). ",
   "let g : Nat → Prop = f in",
+  "Set"
+  ]
+
+-- does not work bc we only keep track of universe in unif
+test2 = main' "elab" $ unlines [
+  "let Eq : {A : Set} → A → A → Set = λ {A} x y. (P : _ → Set) → P x → P y in",
+  "let refl : {A x} → Eq {A} x x = λ P px. px in",
+  "let p1 : Eq {⊤ → ⊤ → ⊤}(λ (x : ⊤)(y : ⊤). x) (λ x y. y) = refl in",
+  "Set"
+  ]
+
+-- works
+test3 = main' "elab" $ unlines [
+  "let Eq : {A : Prop} → A → A → Set = λ x y. (P : _ → Set) → P x → P y in",
+  "let refl : {A x} → Eq {A} x x = λ P px. px in",
+  "let p1 : Eq (λ (x : ⊤)(y : ⊤). x) (λ x y. y) = refl in",
   "Set"
   ]

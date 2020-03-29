@@ -35,3 +35,5 @@ zonk vs t = go t where
     Lam x i a au t -> Lam x i (go a) (forceU au) (goBind t)
     Let x a au t u -> Let x (go a) (forceU au) (go t) (goBind u)
     Skip t         -> Skip (goBind t)
+    Top            -> Top
+    Tt             -> Tt

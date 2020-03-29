@@ -45,13 +45,16 @@ goLam :: [Name] -> Tm -> ShowS
 goLam ns (Lam (fresh ns -> x) i a _ t) = (' ':) . goLamBind x i . goLam (x:ns) t
 goLam ns t = (". "++) . go False ns t
 
-goPiBind :: [Name] -> Name -> Icit -> Tm -> ShowS
-goPiBind ns x i a =
-  icit i bracket (showParen True) ((x++) . (" : "++) . go False ns a)
+goPiBind :: [Name] -> Name -> Icit -> Tm -> U -> ShowS
+goPiBind ns x i a au =
+  icit i bracket (showParen True) (
+    (x++) . (" : "++) . go False ns a
+    -- . (" : "++) . (show au++)
+    )
 
 goPi :: [Name] -> Bool -> Tm -> ShowS
-goPi ns p (Pi (fresh ns -> x) i a _ b)
-  | x /= "_" = goPiBind ns x i a . goPi (x:ns) True b
+goPi ns p (Pi (fresh ns -> x) i a au b)
+  | x /= "_" = goPiBind ns x i a au . goPi (x:ns) True b
   | otherwise =
      (if p then (" → "++) else id) .
      go (case a of App{} -> False; _ -> True) ns a .
@@ -90,6 +93,8 @@ go p ns = \case
   t@Pi{}         -> showParen p (goPi ns False t)
   U u            -> goU u
   Skip t         -> go p ("_":ns) t
+  Top            -> ("⊤"++)
+  Tt             -> ("tt"++)
 
 showTm :: [Name] -> Tm -> String
 showTm ns t = go False ns t []
