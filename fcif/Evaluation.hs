@@ -16,8 +16,7 @@ vMeta m = case runLookupMeta m of
   Unsolved{} -> VMeta m
   Solved v   -> v
 
--- | Force the outermost constructor in a value, do not force the spine
---   of a neutral value.
+-- | Force the outermost constructor in a value.
 force :: Val -> Val
 force = \case
   v@(VNe (HMeta m) sp) -> case runLookupMeta m of
@@ -25,41 +24,36 @@ force = \case
     Solved v   -> force (vAppSp v sp)
   v            -> v
 
--- | Force a spine, computing telescope applications where possible.
-forceSp :: Spine -> Spine
-forceSp sp =
-  -- This is a cheeky hack, the point is that (VVar (-1)) blocks computation, and
-  -- we get back the new spine.  We use (-1) in order to make the hack clear in
-  -- potential debugging situations.
-  case vAppSp (VVar (-1)) sp of
-    VNe _ sp -> sp
-    _        -> error "impossible"
+forceU :: U -> U
+forceU = \case
+  u@(UMeta m) -> case runLookupU m of
+    Just u  -> u
+    Nothing -> u
+  u           -> u
 
-vApp :: Val -> Val -> VUniv -> Icit -> Val
-vApp (VLam _ _ _ _ t) ~un ~u i = t u
-vApp (VNe h sp)       ~un ~u i = VNe h (SApp sp u un i)
-vApp _                ~un _ _  = error "impossible"
+vApp :: Val -> Val -> U -> Icit -> Val
+vApp (VLam _ _ _ _ t) ~u un i = t u
+vApp (VNe h sp)       ~u un i = VNe h (SApp sp u un i)
+vApp _                _  un _  = error "impossible"
 
 vAppSp :: Val -> Spine -> Val
 vAppSp h = go where
   go SNil             = h
-  go (SApp sp u un i) = vApp (go sp) u un i
+  go (SApp sp u uu i) = vApp (go sp) u uu i
 
 eval :: Vals -> Tm -> Val
 eval vs = go where
   go = \case
     Var x          -> vVar x vs
-    Let x _ _ t u  -> goBind u (go t)
-    Set            -> VSet
-    Prop           -> VProp
+    Let x a au t u -> goBind u (go t)
     Meta m         -> vMeta m
-    Pi x i a un b  -> VPi x i (go a) (go un) (goBind b)
-    Lam x i a un t -> VLam x i (go a) (go un) (goBind t)
-    App t u un i   -> vApp (go t) (go u) (go un) i
+    Pi x i a au b  -> VPi x i (go a) au (goBind b)
+    Lam x i a au t -> VLam x i (go a) au (goBind t)
+    App t u uu i   -> vApp (go t) (go u) uu i
     Skip t         -> eval (VSkip vs) t
+    U u            -> VU u
 
-  goBind t x = eval (VDef vs x) t
-
+  goBind t v = eval (VDef vs v) t
 
 quote :: Lvl -> Val -> Tm
 quote d = go where
@@ -69,12 +63,11 @@ quote d = go where
       let goSp SNil = case h of
             HMeta m -> Meta m
             HVar x  -> Var (d - x - 1)
-          goSp (SApp sp u un i) = App (goSp sp) (go u) (go un) i
-      in goSp (forceSp sp)
+          goSp (SApp sp u uu i) = App (goSp sp) (go u) uu i
+      in goSp sp
 
-    VLam x i a un t -> Lam x i (go a) (go un) (goBind t)
-    VPi x i a un b  -> Pi x i (go a) (go un) (goBind b)
-    VSet            -> Set
-    VProp           -> Prop
+    VLam x i a au t -> Lam x i (go a) au (goBind t)
+    VPi x i a au b  -> Pi x i (go a) au (goBind b)
+    VU u            -> U (forceU u)
 
   goBind t = quote (d + 1) (t (VVar d))

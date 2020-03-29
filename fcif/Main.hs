@@ -41,7 +41,7 @@ mainWith getOpt getTm = do
       elab = do
         reset
         (t, src) <- getTm
-        (t, a) <- inferTopLams emptyCxt t `catch` displayError src
+        (t, a, au) <- inferTopLams emptyCxt t `catch` displayError src
         t <- pure $ zonk VNil t
         let ~nt = quote 0 $ eval VNil t
         let ~na = quote 0 a
@@ -66,3 +66,15 @@ main = mainWith getArgs parseStdin
 -- | Run main with inputs as function arguments.
 main' :: String -> String -> IO ()
 main' mode src = mainWith (pure [mode]) ((,src) <$> parseString src)
+
+------------------------------------------------------------
+
+test = main' "elab" $ unlines [
+  "λ (Nat : Set)",
+  "  (zero : Nat)",
+  "  (suc : Nat → Nat)",
+  "  (f : Nat → Prop)",
+  "  (foo : Nat → Set). ",
+  "let g : Nat → Prop = f in",
+  "Set"
+  ]

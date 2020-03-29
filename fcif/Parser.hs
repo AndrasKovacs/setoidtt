@@ -45,8 +45,9 @@ pIdent = try $ do
 
 pAtom :: Parser Raw
 pAtom  =
-      withPos (    (RVar <$> pIdent)
-               <|> (RSet <$ symbol "Set")
+      withPos (    (RVar  <$> pIdent)
+               <|> (RSet  <$ symbol "Set")
+               <|> (RProp <$ symbol "Prop")
                <|> (RHole <$ char '_'))
   <|> parens pTm
 

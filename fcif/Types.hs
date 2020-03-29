@@ -8,7 +8,6 @@ import Text.Megaparsec (SourcePos(..), unPos, initialPos)
 import Lens.Micro.Platform
 
 import qualified Data.IntMap.Strict as IM
-import qualified Data.IntSet        as IS
 
 -- Raw syntax
 --------------------------------------------------------------------------------
@@ -47,15 +46,11 @@ deriving instance Show Raw
 -- Types
 --------------------------------------------------------------------------------
 
--- | Elaboration problem identifier.
+-- | Meta identifier
 type MId = Int
 
--- | Blocked problems.
-type Blocking  = IS.IntSet
-type BlockedBy = IS.IntSet
-
 data MetaEntry
-  = Unsolved Blocking ~VTy
+  = Unsolved ~VTy U
   | Solved Val
 
 -- | A partial mapping from levels to levels. Undefined domain represents
@@ -83,18 +78,18 @@ skipStr (Str c d r occ) = Str c (d + 1) r occ
 data Vals  = VNil | VDef Vals ~Val | VSkip Vals
 
 -- | Type environment.
-data Types = TNil | TDef Types ~VTy ~VUniv | TBound Types ~VTy ~VUniv
+data Types = TNil | TDef Types ~VTy U | TBound Types ~VTy U
 
 type Ix    = Int
 type Lvl   = Int
 type Ty    = Tm
 type VTy   = Val
 type MCxt  = IM.IntMap MetaEntry
-type Univ  = Ty
-type VUniv = VTy
+type UCxt  = IM.IntMap (Maybe U)
+type UId   = Int
 
 -- | Extending `Types` with any type.
-pattern TSnoc :: Types -> VTy -> VUniv -> Types
+pattern TSnoc :: Types -> VTy -> U -> Types
 pattern TSnoc as a un <- ((\case TBound as a un -> Just (as, a, un)
                                  TDef as a un   -> Just (as, a, un)
                                  TNil           -> Nothing) -> Just (as, a, un))
@@ -118,22 +113,26 @@ data Cxt = Cxt {
   cxtNameOrigin :: [NameOrigin],
   cxtLen        :: Int}
 
-data Tm
-  = Var Ix                -- ^ x
-  | Let Name Ty Ty Tm Tm  -- ^ let x : A : B = t in u
-
-  | Pi Name Icit Ty Univ Ty  -- ^ (x : A : U) → B)  or  {x : A : U} → B
-  | Lam Name Icit Ty Univ Tm -- ^ λ(x : A : U).t  or  λ{x : A : U}.t
-  | App Tm Tm Univ Icit        -- ^ t u  or  t {u}, last Ty is u's universe
-
+data U
+  = Prop
   | Set
-  | Prop
+  | UMeta MId
+
+data Tm
+  = Var Ix               -- ^ x
+  | Let Name Ty U Tm Tm  -- ^ let x : A : B = t in u
+
+  | Pi Name Icit Ty U Ty  -- ^ (x : A : U) → B)  or  {x : A : U} → B
+  | Lam Name Icit Ty U Tm -- ^ λ(x : A : U).t  or  λ{x : A : U}.t
+  | App Tm Tm U Icit      -- ^ t u  or  t {u}, last Ty is u's universe
+
+  | U U
   | Meta MId          -- ^ α
   | Skip Tm           -- ^ explicit weakening (convenience feature in closing types)
 
 data Spine
   = SNil
-  | SApp Spine ~Val ~VTy Icit
+  | SApp Spine ~Val U Icit
 
 valsLen :: Vals -> Int
 valsLen = go 0 where
@@ -148,10 +147,15 @@ data Head
 
 data Val
   = VNe Head Spine
-  | VPi Name Icit ~VTy ~VUniv (VTy -> VTy)
-  | VLam Name Icit ~VTy ~VUniv (Val -> Val)
-  | VSet
-  | VProp
+  | VPi Name Icit ~VTy U (VTy -> VTy)
+  | VLam Name Icit ~VTy U (Val -> Val)
+  | VU U
+
+pattern VSet :: Val
+pattern VSet = VU Set
+
+pattern VProp :: Val
+pattern VProp = VU Prop
 
 pattern VVar :: Lvl -> Val
 pattern VVar x = VNe (HVar x) SNil

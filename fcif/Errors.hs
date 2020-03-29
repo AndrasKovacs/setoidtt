@@ -28,6 +28,7 @@ data UnifyError
 
 data ElabError
   = UnifyErrorWhile Tm Tm UnifyError
+  | SubsumptionErrorWhile Tm Tm UnifyError
   | NameNotInScope Name
   | ExpectedFunction Tm
   | ExpectedType Tm Tm
@@ -52,44 +53,52 @@ addSrcPos p act = act `catch` \case
   Err ns e Nothing -> throwIO (Err ns e (Just p))
   e                -> throwIO e
 
+showUnifyError :: [Name] -> UnifyError -> String
+showUnifyError ns e = case e of
+  UnifyError ns lhs rhs -> printf
+    ("Cannot unify\n\n" ++
+     "  %s\n\n" ++
+     "with\n\n" ++
+     "  %s\n\n")
+    (showTm ns lhs) (showTm ns rhs)
+  StrengtheningError ns lhs rhs e -> case e of
+    ScopeError x -> printf (
+      "Variable %s is out of scope in equation\n\n" ++
+      "  %s =? %s\n\n")
+      (lvlName ns x) (showTm ns lhs) (showTm ns rhs)
+    OccursCheck -> printf (
+      "Meta occurs cyclically in its solution candidate in equation:\n\n" ++
+      "  %s =? %s\n\n")
+      (showTm ns lhs) (showTm ns rhs)
+  SpineError ns lhs rhs e -> case e of
+    SpineNonVar -> printf (
+      "Non-bound-variable value in meta spine in equation:\n\n" ++
+      "  %s =? %s\n\n")
+      (showTm ns lhs) (showTm ns rhs)
+    SpineProjection ->
+      "Projection in meta spine\n\n"
+    NonLinearSpine x -> printf
+      ("Nonlinear variable %s in meta spine in equation\n\n" ++
+       "  %s =? %s\n\n")
+      (lvlName ns x)
+      (showTm ns lhs) (showTm ns rhs)
 
 showError :: [Name] -> ElabError -> String
 showError ns = \case
   UnifyErrorWhile lhs rhs e ->
-    let err1 = case e of
-          UnifyError ns lhs rhs -> printf
-            ("Cannot unify\n\n" ++
-             "  %s\n\n" ++
-             "with\n\n" ++
-             "  %s\n\n")
-            (showTm ns lhs) (showTm ns rhs)
-          StrengtheningError ns lhs rhs e -> case e of
-            ScopeError x -> printf (
-              "Variable %s is out of scope in equation\n\n" ++
-              "  %s =? %s\n\n")
-              (lvlName ns x) (showTm ns lhs) (showTm ns rhs)
-            OccursCheck -> printf (
-              "Meta occurs cyclically in its solution candidate in equation:\n\n" ++
-              "  %s =? %s\n\n")
-              (showTm ns lhs) (showTm ns rhs)
-          SpineError ns lhs rhs e -> case e of
-            SpineNonVar -> printf (
-              "Non-bound-variable value in meta spine in equation:\n\n" ++
-              "  %s =? %s\n\n")
-              (showTm ns lhs) (showTm ns rhs)
-            SpineProjection ->
-              "Projection in meta spine\n\n"
-            NonLinearSpine x -> printf
-              ("Nonlinear variable %s in meta spine in equation\n\n" ++
-               "  %s =? %s\n\n")
-              (lvlName ns x)
-              (showTm ns lhs) (showTm ns rhs)
+    let err1 = showUnifyError ns e
     in err1 ++ printf
          ("while trying to unify\n\n" ++
          "  %s\n\n" ++
          "with\n\n" ++
          "  %s") (showTm ns lhs) (showTm ns rhs)
-
+  SubsumptionErrorWhile lhs rhs e ->
+    let err1 = showUnifyError ns e
+    in err1 ++ printf
+         ("while trying to subsume\n\n" ++
+         "  %s\n\n" ++
+         "with\n\n" ++
+         "  %s") (showTm ns lhs) (showTm ns rhs)
   NameNotInScope x ->
     "Name not in scope: " ++ x
   ExpectedFunction ty ->

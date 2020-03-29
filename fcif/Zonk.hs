@@ -15,9 +15,9 @@ zonk vs t = go t where
     Meta m        -> case runLookupMeta m of
                        Solved v -> Left v
                        _        -> Right (Meta m)
-    App t u un ni -> case goSp t of
-                       Left t  -> Left (vApp t (eval vs u) (eval vs un) ni)
-                       Right t -> Right $ App t (go u) (go un) ni
+    App t u uu ni -> case goSp t of
+                       Left t  -> Left (vApp t (eval vs u) (forceU uu) ni)
+                       Right t -> Right $ App t (go u) (forceU uu) ni
     t             -> Right (zonk vs t)
 
   goBind = zonk (VSkip vs)
@@ -27,12 +27,11 @@ zonk vs t = go t where
     Meta m         -> case runLookupMeta m of
                         Solved v   -> quote (valsLen vs) v
                         Unsolved{} -> Meta m
-    Set            -> Set
-    Prop           -> Prop
-    Pi x i a un b  -> Pi x i (go a) (go un) (goBind b)
-    App t u un ni  -> case goSp t of
-                        Left t  -> quote (valsLen vs) (vApp t (eval vs u) (eval vs un) ni)
-                        Right t -> App t (go u) (go un) ni
-    Lam x i a un t -> Lam x i (go a) (go un) (goBind t)
-    Let x a un t u -> Let x (go a) (go un) (go t) (goBind u)
+    U u            -> U (forceU u)
+    Pi x i a au b  -> Pi x i (go a) (forceU au) (goBind b)
+    App t u uu ni  -> case goSp t of
+                        Left t  -> quote (valsLen vs) (vApp t (eval vs u) (forceU uu) ni)
+                        Right t -> App t (go u) (forceU uu) ni
+    Lam x i a au t -> Lam x i (go a) (forceU au) (goBind t)
+    Let x a au t u -> Let x (go a) (forceU au) (go t) (goBind u)
     Skip t         -> Skip (goBind t)

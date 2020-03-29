@@ -22,6 +22,11 @@ fresh _ "_" = "_"
 fresh ns n | elem n ns = fresh ns (n++"'")
            | otherwise = n
 
+goU :: U -> ShowS
+goU Prop      = ("Prop"++)
+goU Set       = ("Set"++)
+goU (UMeta x) = (("U?"++show x)++)
+
 goVar :: [Name] -> Ix -> ShowS
 goVar ns x = case ns !! x of
   '*':n -> (n++)
@@ -83,8 +88,7 @@ go p ns = \case
 
   Lam (fresh ns -> x) i a _ t -> showParen p (("λ "++) . goLamBind x i . goLam (x:ns) t)
   t@Pi{}         -> showParen p (goPi ns False t)
-  Set            -> ("Set"++)
-  Prop           -> ("Prop"++)
+  U u            -> goU u
   Skip t         -> go p ("_":ns) t
 
 showTm :: [Name] -> Tm -> String
