@@ -9,9 +9,11 @@ import Data.Char
 import Data.Void
 import System.Exit
 import Text.Megaparsec
+import Text.Printf
 
 import qualified Text.Megaparsec.Char       as C
 import qualified Text.Megaparsec.Char.Lexer as L
+import qualified Data.Set as S
 
 import Types
 
@@ -33,26 +35,36 @@ braces p = char '{' *> p <* char '}'
 pArrow   = symbol "→" <|> symbol "->"
 pBind    = pIdent <|> symbol "_"
 
-keyword :: String -> Bool
-keyword x =
-  x == "let" || x == "in" || x == "λ" || x == "Set" || x == "Prop" ||
-       x == "⊤" || x == "tt"
+keywords :: S.Set String
+keywords = S.fromList [
+  "let", "in", "λ", "Set", "Prop",
+  "⊤",   "tt", "⊥", "exfalso", "Eq", "refl", "coe", "sym", "ap"]
 
+keyword :: String -> Bool
+keyword = (`S.member` keywords)
 
 pIdent :: Parser Name
 pIdent = try $ do
   x <- takeWhile1P Nothing isAlphaNum
-  guard (not (keyword x))
+  when (keyword x) $ do
+    fail (printf "Expected an identifier, but \"%s\" is a keyword." x)
   x <$ ws
 
 pAtom :: Parser Raw
 pAtom  =
-      withPos (    (RVar  <$> pIdent)
-               <|> (RSet  <$ symbol "Set")
-               <|> (RProp <$ symbol "Prop")
-               <|> (RTop  <$ symbol "⊤")
-               <|> (RTt   <$ symbol "tt")
-               <|> (RHole <$ char '_'))
+      withPos (    (RVar     <$> pIdent          )
+               <|> (RSet     <$  symbol "Set"    )
+               <|> (RProp    <$  symbol "Prop"   )
+               <|> (RTop     <$  symbol "⊤"      )
+               <|> (RTop     <$  symbol "⊥"      )
+               <|> (RTt      <$  symbol "tt"     )
+               <|> (RExfalso <$  symbol "exfalso")
+               <|> (REq      <$  symbol "Eq"     )
+               <|> (RRfl     <$  symbol "refl"   )
+               <|> (RCoe     <$  symbol "coe"    )
+               <|> (RSym     <$  symbol "sym"    )
+               <|> (RAp      <$  symbol "ap"     )
+               <|> (RHole    <$  char   '_'     ))
   <|> parens pTm
 
 pArg :: Parser (Icit, Raw)

@@ -42,6 +42,13 @@ data Raw
 
   | RTop
   | RTt
+  | RBot                             -- ^ ⊥ : Prop
+  | RExfalso                         -- ^ exfalso : {A : Set} → ⊥ → A
+  | REq
+  | RRfl
+  | RCoe
+  | RSym
+  | RAp
 deriving instance Show Raw
 
 
@@ -135,6 +142,14 @@ data Tm
 
   | Top
   | Tt
+  | Bot
+  | Exfalso U
+
+  | Eq             -- ^ {A : Set} → A → A → Prop
+  | Rfl            -- ^ {A : Set}{x : A} → Eq x x
+  | Coe            -- ^ {A B : Set} → Eq {Set} A B → A → B
+  | Sym            -- ^ {A : Set}{x y : A} → Eq x y → Eq y x
+  | Ap             -- ^ {A B : Set}(f : A → B){x y : A} → Eq x y → Eq (f x) (f y)
 
 data Spine
   = SNil
@@ -159,18 +174,35 @@ data Val
 
   | VTop
   | VTt
+  | VBot
+  | VExfalso U ~Val ~Val
+  | VEq Val Val Val
+  | VRfl Val Val
+  | VCoe Val Val ~Val Val
+  | VSym Val Val Val ~Val
+  | VAp Val Val Val Val Val ~Val
 
-pattern VSet :: Val
-pattern VSet = VU Set
+vFunES :: Val -> Val -> Val
+vFunES a b = VPi "_" Expl a Set (\_ -> b)
 
-pattern VProp :: Val
-pattern VProp = VU Prop
+pattern VSet           = VU Set
+pattern VProp          = VU Prop
+pattern VVar x         = VNe (HVar x) SNil
+pattern VMeta m        = VNe (HMeta m) SNil
+pattern AppSI t u      = App t u Set Impl
+pattern AppSE t u      = App t u Set Expl
+pattern VLamIS x a b   = VLam x Impl a Set b
+pattern VLamES x a b   = VLam x Expl a Set b
+pattern VPiIS x a b    = VPi x Impl a Set b
+pattern VPiES x a b    = VPi x Expl a Set b
 
-pattern VVar :: Lvl -> Val
-pattern VVar x = VNe (HVar x) SNil
-
-pattern VMeta :: MId -> Val
-pattern VMeta m = VNe (HMeta m) SNil
+pattern Exfalso' u a t   = Exfalso u `AppSI` a `AppSE` t
+pattern Eq'  a t u       = Eq  `AppSI`  a `AppSE`  t `AppSE`  u
+pattern Rfl' a t         = Rfl `AppSI`  a `AppSI`  t
+pattern Coe' a b p t     = Coe `AppSI`  a `AppSI`  b `AppSE`  p `AppSE`  t
+pattern Sym' a x y p     = Sym `AppSI`  a `AppSI`  x `AppSI`  y `AppSE`  p
+pattern Ap'  a b f x y p = Ap  `AppSI`  a `AppSI`  b `AppSE`  f `AppSI`  x `AppSI`  y
+                               `AppSE`  p
 
 -- Lenses
 --------------------------------------------------------------------------------

@@ -9,6 +9,14 @@ module Elaboration where
 - Unification only appeals to irrelevance when the sides are rigidly disjoint.
   We can't just skip over irrelevant equations because we want to solve metas.
 
+- ADD explicit El : Prop -> Set, so I don't get so confused...
+      then, unification becomes mutual definition of unification
+      t u : El P : Set
+      t u : A    : Set     A ≠ El _       eh?
+
+   full type directed unif would make irrelevance simple here
+   we can bailout when type is El _
+
 - PLANZ:
     - in surface lang, generic record types, polymorphic over Set/Prop
       - empty record type always in Prop
@@ -24,6 +32,10 @@ module Elaboration where
     - work out faster pruning with glued eval
     - work out postponing in general
     - work out utilizing computing coercion for postponing
+      - this requires types in spines (which we have even without
+        full typed unif! Since we are already passing type env in unification,
+        so we can grab the types of neutral heads)
+      - The only remaining advantage of full typed unif seems to be Top eta in Set!
 
 -}
 
@@ -181,6 +193,13 @@ strengthen str = go where
     VU u             -> pure (U u)
     VTop             -> pure Top
     VTt              -> pure Tt
+    VBot             -> pure Bot
+    VExfalso u a t   -> Exfalso' u <$> go a <*> go t
+    VEq a x y        -> Eq' <$> go a <*> go x <*> go y
+    VRfl a x         -> Rfl' <$> go a <*> go x
+    VCoe a b p t     -> Coe' <$> go a <*> go b <*> go p <*> go t
+    VSym a x y p     -> Sym' <$> go a <*> go x <*> go y <*> go p
+    VAp a b f x y p  -> Ap' <$> go a <*> go b <*> go f <*> go x <*> go y <*> go p
 
   goBind t = strengthen (liftStr str) (t (VVar (str^.cod)))
 
@@ -283,10 +302,20 @@ unify cxt un l r = go un l r where
     (t, VLam x' i' a' au' t')                -> goBind x' a' au' un (\ ~v -> vApp t v au' i') t'
     (VPi x i a au b,
        VPi x' i' a' au' b') | i == i'        -> unifyU au au' >>
-                                                go au a a' >> goBind x a au Set b b'
+                                                go Set a a' >> goBind x a au Set b b'
     (VU u, VU u')                            -> unifyU u u'
     (VTop, VTop)                             -> pure ()
     (VTt, VTt)                               -> pure ()
+    (VBot, VBot)                             -> pure ()
+    (VExfalso _ a t, VExfalso _ a' t')       -> go Set a a' >> go Prop t t'
+    (VEq a x y, VEq a' x' y')                -> go Set a a' >> go Set x x' >> go Set y y'
+    (VRfl a x, VRfl a' x')                   -> go Set a a' >> go Set x x'
+    (VSym a x y p, VSym a' x' y' p')         -> go Set a a' >> go Set x x' >> go Set y y'
+                                                >> go Prop p p'
+    (VCoe a b p t, VCoe a' b' p' t')         -> go Set a a' >> go Set b b' >> go Prop p p'
+                                                >> go un t t'
+    (VAp a b f x y p, VAp a' b' f' x' y' p') -> go Set a a' >> go Set b b' >> go Set f f'
+                                                >> go Set x x' >> go Set y y' >> go Prop p p'
     (VNe h sp, VNe h' sp') | h == h'         -> goSp sp sp'
     (VNe (HMeta m) sp, VNe (HMeta m') sp')   -> flexFlex m sp m' sp'
     (VNe (HMeta m) sp, t')                   -> solveMeta cxt m sp t'
@@ -395,7 +424,7 @@ inferTopLams cxt = \case
   RSrcPos p t ->
     addSrcPos p $ inferTopLams cxt t
 
-  t -> insert cxt $ infer cxt t
+  t -> infer cxt t
 
 infer :: Cxt -> Raw -> IO (Tm, VTy, U)
 infer cxt = \case
@@ -463,8 +492,36 @@ infer cxt = \case
     (u, b, bu) <- infer (define x va au vt cxt) u
     pure (Let x a au t u, b, bu)
 
-  RTop ->
-    pure (Top, VProp, Set)
+  RTop -> pure (Top, VProp, Set)
+  RTt  -> pure (Tt, VTop, Prop)
+  RBot -> pure (Bot, VSet, Prop)
 
-  RTt ->
-    pure (Tt, VTop, Prop)
+  RExfalso -> do
+    u <- UMeta <$> newU
+    let ty = VPiIS "A" (VU u) \ ~a -> VPi "p" Expl VBot Prop \ ~p -> a
+    pure (Exfalso u, ty, u)
+
+  REq -> do
+    let ty = VPiIS "A" VSet \ ~a -> VPiES "x" a \ ~x -> VPiES "y" a \ ~y -> VProp
+    pure (Eq, ty, Set)
+
+  RRfl -> do
+    let ty = VPiIS "A" VSet \ ~a -> VPiIS "x" a \ ~x -> VEq a x x
+    pure (Rfl, ty, Prop)
+
+  RCoe -> do
+    let ty = VPiIS "A" VSet \ ~a -> VPiIS "B" VSet \ ~b ->
+             VPiES "p" (VEq VSet a b) \ ~p -> vFunES a b
+    pure (Coe, ty, Set)
+
+  RSym -> do
+    let ty = VPiIS "A" VSet \ ~a -> VPiIS "x" a \ ~x ->
+             VPiIS "y" a \ ~y -> VPiES "p" (VEq a x y) \ ~p -> VEq a y x
+    pure (Sym, ty, Prop)
+
+  RAp -> do
+    let ty = VPiIS "A" VSet \ ~a -> VPiIS "B" VSet \ ~b ->
+             VPiES "f" (vFunES a b) \ ~f -> VPiIS "x" a \ ~x ->
+             VPiIS "y" a \ ~y -> VPiES "p" (VEq a x y) \ ~p ->
+             VEq b (vApp f x Set Expl) (vApp f y Set Expl)
+    pure (Ap, ty, Prop)

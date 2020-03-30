@@ -37,3 +37,10 @@ zonk vs t = go t where
     Skip t         -> Skip (goBind t)
     Top            -> Top
     Tt             -> Tt
+    Bot            -> Bot
+    Exfalso u      -> Exfalso u
+    Eq             -> Eq
+    Rfl            -> Rfl
+    Coe            -> Coe
+    Sym            -> Sym
+    Ap             -> Ap

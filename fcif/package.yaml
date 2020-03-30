@@ -7,6 +7,7 @@ description: "Implementation of \"Elaboration with First-Class Implicit Function
 
 default-extensions:
 - BangPatterns
+- BlockArguments
 - ConstraintKinds
 - DeriveAnyClass
 - EmptyCase
@@ -39,6 +40,7 @@ ghc-options:
 - -Wno-unused-matches
 - -Wno-partial-type-signatures
 - -Wno-type-defaults
+- -Wno-missing-pattern-synonym-signatures
 
 dependencies:
 - base >= 4.7 && < 5

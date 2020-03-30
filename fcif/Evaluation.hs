@@ -27,19 +27,27 @@ force = \case
 forceU :: U -> U
 forceU = \case
   u@(UMeta m) -> case runLookupU m of
-    Just u  -> u
     Nothing -> u
+    Just u  -> forceU u
   u           -> u
 
 vApp :: Val -> Val -> U -> Icit -> Val
 vApp (VLam _ _ _ _ t) ~u un i = t u
 vApp (VNe h sp)       ~u un i = VNe h (SApp sp u un i)
-vApp _                _  un _  = error "impossible"
+vApp _                _  un _ = error "impossible"
 
 vAppSp :: Val -> Spine -> Val
 vAppSp h = go where
   go SNil             = h
   go (SApp sp u uu i) = vApp (go sp) u uu i
+
+
+vEq :: Val -> Val -> Val -> Val
+vEq a t u = case a of
+  VSet -> case (t, u) of
+
+
+
 
 eval :: Vals -> Tm -> Val
 eval vs = go where
@@ -54,7 +62,22 @@ eval vs = go where
     U u            -> VU u
     Top            -> VTop
     Tt             -> VTt
-
+    Bot            -> VBot
+    Exfalso u      -> VLamIS "A" (VU u) \ ~a -> VLam "p" Expl VBot Prop \ ~t ->
+                      VExfalso u a t
+    Eq             -> VLamIS "A" VSet \ ~a -> VLamES "x" a \ ~x -> VLamES "y" a \ ~y ->
+                      VEq a x y
+    Rfl            -> VLamIS "A" VSet \ ~a -> VLamIS "x" a \ ~x -> VRfl a x
+    Coe            -> VLamIS "A" VSet \ ~a -> VLamIS "B" VSet \ ~b ->
+                      VLamES "p" (VEq VSet a b) \ ~p -> VLamES "t" a \ ~t ->
+                      VCoe a b p t
+    Sym            -> VLamIS "A" VSet \ ~a -> VLamIS "x" a \ ~x ->
+                      VLamIS "y" a \ ~y -> VLamES "p" (VEq a x y) \ ~p ->
+                      VSym a x y p
+    Ap             -> VLamIS "A" VSet \ ~a -> VLamIS "B" VSet \ ~b ->
+                      VLamES "f" (vFunES a b) \ ~f -> VLamIS "x" a \ ~x ->
+                      VLamIS "y" a \ ~y -> VLamES "p" (VEq a x y) \ ~p ->
+                      VAp a b f x y p
   goBind t v = eval (VDef vs v) t
 
 quote :: Lvl -> Val -> Tm
@@ -73,5 +96,12 @@ quote d = go where
     VU u            -> U (forceU u)
     VTop            -> Top
     VTt             -> Tt
+    VBot            -> Bot
+    VExfalso u a t  -> Exfalso' u (go a) (go t)
+    VEq a t u       -> Eq' (go a) (go t) (go u)
+    VRfl a t        -> Rfl' (go a) (go t)
+    VCoe a b p t    -> Coe' (go a) (go b) (go p) (go t)
+    VSym a x y p    -> Sym' (go a) (go x) (go y) (go p)
+    VAp a b f x y p -> Ap' (go a) (go b) (go f) (go x) (go y) (go p)
 
   goBind t = quote (d + 1) (t (VVar d))

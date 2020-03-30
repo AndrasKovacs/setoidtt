@@ -95,6 +95,13 @@ go p ns = \case
   Skip t         -> go p ("_":ns) t
   Top            -> ("⊤"++)
   Tt             -> ("tt"++)
+  Bot            -> ("⊥"++)
+  Exfalso u      -> ("exfalso"++)
+  Eq             -> ("Eq"++)
+  Rfl            -> ("refl"++)
+  Coe            -> ("coe"++)
+  Sym            -> ("sym"++)
+  Ap             -> ("ap"++)
 
 showTm :: [Name] -> Tm -> String
 showTm ns t = go False ns t []
