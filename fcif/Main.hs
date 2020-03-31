@@ -90,7 +90,8 @@ test2 = main' "elab" $ unlines [
   "    = λ {A} B {x}{y} p bx. coe (ap B p) bx in",
   "let trP : {A : Set}(B : A → Prop){x y} → Eq x y → B x → B y",
   "    = λ {A} B {x}{y} p bx. coe (ap B p) bx in",
-
+  "let exfalsoS : {A : Set}  → ⊥ → A = exfalso in",
+  "let exfalsoP : {A : Prop} → ⊥ → A = exfalso in",
 
   "coeS"
 

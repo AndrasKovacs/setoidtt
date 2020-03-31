@@ -56,7 +56,7 @@ pAtom  =
                <|> (RSet     <$  symbol "Set"    )
                <|> (RProp    <$  symbol "Prop"   )
                <|> (RTop     <$  symbol "⊤"      )
-               <|> (RTop     <$  symbol "⊥"      )
+               <|> (RBot     <$  symbol "⊥"      )
                <|> (RTt      <$  symbol "tt"     )
                <|> (RExfalso <$  symbol "exfalso")
                <|> (REq      <$  symbol "Eq"     )
