@@ -28,7 +28,7 @@ data UnifyError
 
 data ElabError
   = UnifyErrorWhile Tm Tm UnifyError
-  | SubsumptionErrorWhile Tm Tm UnifyError
+  -- | SubsumptionErrorWhile Tm Tm UnifyError
   | NameNotInScope Name
   | ExpectedFunction Tm
   | ExpectedType Tm Tm
@@ -92,13 +92,13 @@ showError ns = \case
          "  %s\n\n" ++
          "with\n\n" ++
          "  %s") (showTm ns lhs) (showTm ns rhs)
-  SubsumptionErrorWhile lhs rhs e ->
-    let err1 = showUnifyError ns e
-    in err1 ++ printf
-         ("while trying to subsume\n\n" ++
-         "  %s\n\n" ++
-         "with\n\n" ++
-         "  %s") (showTm ns lhs) (showTm ns rhs)
+  -- SubsumptionErrorWhile lhs rhs e ->
+  --   let err1 = showUnifyError ns e
+  --   in err1 ++ printf
+  --        ("while trying to subsume\n\n" ++
+  --        "  %s\n\n" ++
+  --        "with\n\n" ++
+  --        "  %s") (showTm ns lhs) (showTm ns rhs)
   NameNotInScope x ->
     "Name not in scope: " ++ x
   ExpectedFunction ty ->

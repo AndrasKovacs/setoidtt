@@ -37,7 +37,7 @@ displayError file (Err _ _ Nothing) =
 
 mainWith :: IO [String] -> IO (Raw, String) -> IO ()
 mainWith getOpt getTm = do
-  let elab :: IO (Tm, Tm, Tm)
+  let elab :: IO (Tm, Tm, Tm, U)
       elab = do
         reset
         (t, src) <- getTm
@@ -45,18 +45,21 @@ mainWith getOpt getTm = do
         t <- pure $ zonk VNil t
         let ~nt = quote 0 $ eval VNil t
         let ~na = quote 0 a
-        pure (t, nt, na)
+        pure (t, nt, na, forceU au)
 
   getOpt >>= \case
     ["--help"] -> putStrLn helpMsg
     ["nf"] -> do
-      (t, nt, na) <- elab
+      (t, nt, na, u) <- elab
       putStrLn $ show nt
     ["type"] -> do
-      (t, nt, na) <- elab
+      (t, nt, na, u) <- elab
       putStrLn $ show na
+    ["univ"] -> do
+      (t, nt, na, u) <- elab
+      putStrLn $ show u
     ["elab"] -> do
-      (t, nt, na) <- elab
+      (t, nt, na, u) <- elab
       putStrLn $ show t
     _ -> putStrLn helpMsg
 
@@ -80,6 +83,15 @@ test1 = main' "elab" $ unlines [
   ]
 
 test2 = main' "elab" $ unlines [
-  "let foo = ap in",
-  "foo"
+  "let refl2 : {A x} → Eq {A} x x = refl in",
+  "let coeS : {A B : Set}  → Eq A B → A → B = coe in",
+  "let coeP : {A B : Prop} → Eq A B → A → B = coe in",
+  "let trS : {A : Set}(B : A → Set){x y} → Eq x y → B x → B y",
+  "    = λ {A} B {x}{y} p bx. coe (ap B p) bx in",
+  "let trP : {A : Set}(B : A → Prop){x y} → Eq x y → B x → B y",
+  "    = λ {A} B {x}{y} p bx. coe (ap B p) bx in",
+
+
+  "coeS"
+
   ]

@@ -41,13 +41,9 @@ vAppSp h = go where
   go SNil             = h
   go (SApp sp u uu i) = vApp (go sp) u uu i
 
-
-vEq :: Val -> Val -> Val -> Val
-vEq a t u = case a of
-  VSet -> case (t, u) of
-
-
-
+-- vEq :: Val -> Val -> Val -> Val
+-- vEq a t u = case a of
+--   VSet -> case (t, u) of
 
 eval :: Vals -> Tm -> Val
 eval vs = go where
@@ -63,20 +59,20 @@ eval vs = go where
     Top            -> VTop
     Tt             -> VTt
     Bot            -> VBot
-    Exfalso u      -> VLamIS "A" (VU u) \ ~a -> VLam "p" Expl VBot Prop \ ~t ->
+    Exfalso u      -> VLamIS "A" (VU u) \ ~a -> VLamEP "p" VBot \ ~t ->
                       VExfalso u a t
     Eq             -> VLamIS "A" VSet \ ~a -> VLamES "x" a \ ~x -> VLamES "y" a \ ~y ->
                       VEq a x y
     Rfl            -> VLamIS "A" VSet \ ~a -> VLamIS "x" a \ ~x -> VRfl a x
-    Coe            -> VLamIS "A" VSet \ ~a -> VLamIS "B" VSet \ ~b ->
-                      VLamES "p" (VEq VSet a b) \ ~p -> VLamES "t" a \ ~t ->
-                      VCoe a b p t
+    Coe u          -> VLamIS "A" (VU u) \ ~a -> VLamIS "B" (VU u) \ ~b ->
+                      VLamEP "p" (VEq (VU u) a b) \ ~p -> VLam "t" Expl a u \ ~t ->
+                      VCoe u a b p t
     Sym            -> VLamIS "A" VSet \ ~a -> VLamIS "x" a \ ~x ->
-                      VLamIS "y" a \ ~y -> VLamES "p" (VEq a x y) \ ~p ->
+                      VLamIS "y" a \ ~y -> VLamEP "p" (VEq a x y) \ ~p ->
                       VSym a x y p
     Ap             -> VLamIS "A" VSet \ ~a -> VLamIS "B" VSet \ ~b ->
                       VLamES "f" (vFunES a b) \ ~f -> VLamIS "x" a \ ~x ->
-                      VLamIS "y" a \ ~y -> VLamES "p" (VEq a x y) \ ~p ->
+                      VLamIS "y" a \ ~y -> VLamEP "p" (VEq a x y) \ ~p ->
                       VAp a b f x y p
   goBind t v = eval (VDef vs v) t
 
@@ -100,7 +96,7 @@ quote d = go where
     VExfalso u a t  -> Exfalso' u (go a) (go t)
     VEq a t u       -> Eq' (go a) (go t) (go u)
     VRfl a t        -> Rfl' (go a) (go t)
-    VCoe a b p t    -> Coe' (go a) (go b) (go p) (go t)
+    VCoe u a b p t  -> Coe' u (go a) (go b) (go p) (go t)
     VSym a x y p    -> Sym' (go a) (go x) (go y) (go p)
     VAp a b f x y p -> Ap' (go a) (go b) (go f) (go x) (go y) (go p)
 

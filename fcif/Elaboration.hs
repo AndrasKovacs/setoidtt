@@ -3,19 +3,22 @@
 
 module Elaboration where
 
-{-| TODO
+{-|
+
+Current design:
+- eval is purely syntax-directed
+- unif if universe-directed, but not type-directed
+- Prop is not a subtype of Set
+- ⊤ and ⊥ are in Prop, Π and Σ are universe-polymorphic
+- exfalso and coe are univ-polymorphic in target
+
+
+
+OLD notes
 
 - Eval is not relevance-directed, unification is
 - Unification only appeals to irrelevance when the sides are rigidly disjoint.
   We can't just skip over irrelevant equations because we want to solve metas.
-
-- ADD explicit El : Prop -> Set, so I don't get so confused...
-      then, unification becomes mutual definition of unification
-      t u : El P : Set
-      t u : A    : Set     A ≠ El _       eh?
-
-   full type directed unif would make irrelevance simple here
-   we can bailout when type is El _
 
 - PLANZ:
     - in surface lang, generic record types, polymorphic over Set/Prop
@@ -197,7 +200,7 @@ strengthen str = go where
     VExfalso u a t   -> Exfalso' u <$> go a <*> go t
     VEq a x y        -> Eq' <$> go a <*> go x <*> go y
     VRfl a x         -> Rfl' <$> go a <*> go x
-    VCoe a b p t     -> Coe' <$> go a <*> go b <*> go p <*> go t
+    VCoe u a b p t   -> Coe' u <$> go a <*> go b <*> go p <*> go t
     VSym a x y p     -> Sym' <$> go a <*> go x <*> go y <*> go p
     VAp a b f x y p  -> Ap' <$> go a <*> go b <*> go f <*> go x <*> go y <*> go p
 
@@ -250,10 +253,10 @@ unifyWhile cxt un l r =
   `catch`
   (report (cxt^.names) . UnifyErrorWhile (quote (cxt^.len) l) (quote (cxt^.len) r))
 
-subsumeWhile cxt un l r =
-  subsume cxt un l r
-  `catch`
-  (report (cxt^.names) . SubsumptionErrorWhile (quote (cxt^.len) l) (quote (cxt^.len) r))
+-- subsumeWhile cxt un l r =
+--   subsume cxt un l r
+--   `catch`
+--   (report (cxt^.names) . SubsumptionErrorWhile (quote (cxt^.len) l) (quote (cxt^.len) r))
 
 solveU :: UId -> U -> IO ()
 solveU x u = writeU x (Just u)
@@ -267,23 +270,22 @@ unifyU u u' = case (forceU u, forceU u') of
   (u,       UMeta x )           -> solveU x u
   (u,       u'      )           -> throwIO $ UnifyError [] (U u) (U u')
 
--- | subsume : (u : U) -> Ty u -> Ty u -> IO ()
-subsume :: Cxt -> U -> VTy -> VTy -> IO ()
-subsume cxt u l r = case forceU u of
-  Set -> case (force l, force r) of
-    (VU u, VU u') -> case (forceU u, forceU u') of
-      (Prop, Set) -> pure ()
-      (u   , u' ) -> unifyU u u'
-    (VPi x i a au b, VPi x' i' a' au' b') -> do
-      unifyU au au'
-      unify cxt au a a'
-      let v = VVar (cxt^.len)
-      subsume (bindSrc x a au cxt) Set (b v) (b' v)
-    (l, r) -> unify cxt Set l r
-  _ -> unify cxt u l r
+-- -- | subsume : (u : U) -> Ty u -> Ty u -> IO ()
+-- subsume :: Cxt -> U -> VTy -> VTy -> IO ()
+-- subsume cxt u l r = case forceU u of
+--   Set -> case (force l, force r) of
+--     (VU u, VU u') -> case (forceU u, forceU u') of
+--       (Prop, Set) -> pure ()
+--       (u   , u' ) -> unifyU u u'
+--     (VPi x i a au b, VPi x' i' a' au' b') -> do
+--       unifyU au au'
+--       unify cxt au a a'
+--       let v = VVar (cxt^.len)
+--       subsume (bindSrc x a au cxt) Set (b v) (b' v)
+--     (l, r) -> unify cxt Set l r
+--   _ -> unify cxt u l r
 
--- | (u : U) -> {A : U u} -> (t : A) -> (u : A) -> IO ()
---   May throw UnifyError.
+-- | May throw UnifyError.
 unify :: Cxt -> U -> Val -> Val -> IO ()
 unify cxt un l r = go un l r where
 
@@ -312,7 +314,7 @@ unify cxt un l r = go un l r where
     (VRfl a x, VRfl a' x')                   -> go Set a a' >> go Set x x'
     (VSym a x y p, VSym a' x' y' p')         -> go Set a a' >> go Set x x' >> go Set y y'
                                                 >> go Prop p p'
-    (VCoe a b p t, VCoe a' b' p' t')         -> go Set a a' >> go Set b b' >> go Prop p p'
+    (VCoe u a b p t, VCoe u' a' b' p' t')    -> unifyU u u' >> go Set a a' >> go Set b b' >> go Prop p p'
                                                 >> go un t t'
     (VAp a b f x y p, VAp a' b' f' x' y' p') -> go Set a a' >> go Set b b' >> go Set f f'
                                                 >> go Set x x' >> go Set y y' >> go Prop p p'
@@ -406,8 +408,8 @@ check cxt topT ~topA ~topU = case (topT, force topA) of
 
   (t, topA) -> do
     (t, va, au) <- insert cxt $ infer cxt t
-    subsumeWhile cxt Set (VU au) (VU topU)
-    subsumeWhile cxt au va topA
+    unifyWhile cxt Set (VU au) (VU topU)
+    unifyWhile cxt au va topA
     pure t
 
 -- | We specialcase top-level lambdas (serving as postulates) for better
@@ -475,7 +477,7 @@ infer cxt = \case
       Just ann -> inferTy cxt ann
       Nothing  -> newTy cxt
     let ~va = eval (cxt^.vals) a
-    (t, liftVal cxt -> b, bu) <- inferTopLams (bind x NOSource va au cxt) t
+    (t, liftVal cxt -> b, bu) <- infer (bind x NOSource va au cxt) t
     pure (Lam x i a au t, VPi x i va au b, bu)
 
   RHole -> do
@@ -493,12 +495,12 @@ infer cxt = \case
     pure (Let x a au t u, b, bu)
 
   RTop -> pure (Top, VProp, Set)
-  RTt  -> pure (Tt, VTop, Prop)
-  RBot -> pure (Bot, VSet, Prop)
+  RTt  -> pure (Tt,  VTop,  Prop)
+  RBot -> pure (Bot, VProp, Set)
 
   RExfalso -> do
     u <- UMeta <$> newU
-    let ty = VPiIS "A" (VU u) \ ~a -> VPi "p" Expl VBot Prop \ ~p -> a
+    let ty = VPiIS "A" (VU u) \ ~a -> VPiEP "p" VBot \ ~p -> a
     pure (Exfalso u, ty, u)
 
   REq -> do
@@ -510,18 +512,19 @@ infer cxt = \case
     pure (Rfl, ty, Prop)
 
   RCoe -> do
-    let ty = VPiIS "A" VSet \ ~a -> VPiIS "B" VSet \ ~b ->
-             VPiES "p" (VEq VSet a b) \ ~p -> vFunES a b
-    pure (Coe, ty, Set)
+    u <- UMeta <$> newU
+    let ty = VPiIS "A" (VU u) \ ~a -> VPiIS "B" (VU u) \ ~b ->
+             VPiEP "p" (VEq (VU u) a b) \ ~p -> VPi "t" Expl a u \ ~_ -> b
+    pure (Coe u, ty, u)
 
   RSym -> do
     let ty = VPiIS "A" VSet \ ~a -> VPiIS "x" a \ ~x ->
-             VPiIS "y" a \ ~y -> VPiES "p" (VEq a x y) \ ~p -> VEq a y x
+             VPiIS "y" a \ ~y -> VPiEP "p" (VEq a x y) \ ~p -> VEq a y x
     pure (Sym, ty, Prop)
 
   RAp -> do
     let ty = VPiIS "A" VSet \ ~a -> VPiIS "B" VSet \ ~b ->
              VPiES "f" (vFunES a b) \ ~f -> VPiIS "x" a \ ~x ->
-             VPiIS "y" a \ ~y -> VPiES "p" (VEq a x y) \ ~p ->
+             VPiIS "y" a \ ~y -> VPiEP "p" (VEq a x y) \ ~p ->
              VEq b (vApp f x Set Expl) (vApp f y Set Expl)
     pure (Ap, ty, Prop)

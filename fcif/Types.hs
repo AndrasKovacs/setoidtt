@@ -147,7 +147,7 @@ data Tm
 
   | Eq             -- ^ {A : Set} → A → A → Prop
   | Rfl            -- ^ {A : Set}{x : A} → Eq x x
-  | Coe            -- ^ {A B : Set} → Eq {Set} A B → A → B
+  | Coe U          -- ^ {A B : U i} → Eq {U i} A B → A → B
   | Sym            -- ^ {A : Set}{x y : A} → Eq x y → Eq y x
   | Ap             -- ^ {A B : Set}(f : A → B){x y : A} → Eq x y → Eq (f x) (f y)
 
@@ -178,7 +178,7 @@ data Val
   | VExfalso U ~Val ~Val
   | VEq Val Val Val
   | VRfl Val Val
-  | VCoe Val Val ~Val Val
+  | VCoe U Val Val ~Val Val
   | VSym Val Val Val ~Val
   | VAp Val Val Val Val Val ~Val
 
@@ -191,15 +191,21 @@ pattern VVar x         = VNe (HVar x) SNil
 pattern VMeta m        = VNe (HMeta m) SNil
 pattern AppSI t u      = App t u Set Impl
 pattern AppSE t u      = App t u Set Expl
+pattern AppPI t u      = App t u Prop Impl
+pattern AppPE t u      = App t u Prop Expl
 pattern VLamIS x a b   = VLam x Impl a Set b
 pattern VLamES x a b   = VLam x Expl a Set b
+pattern VLamIP x a b   = VLam x Impl a Prop b
+pattern VLamEP x a b   = VLam x Expl a Prop b
 pattern VPiIS x a b    = VPi x Impl a Set b
 pattern VPiES x a b    = VPi x Expl a Set b
+pattern VPiIP x a b    = VPi x Impl a Prop b
+pattern VPiEP x a b    = VPi x Expl a Prop b
 
 pattern Exfalso' u a t   = Exfalso u `AppSI` a `AppSE` t
 pattern Eq'  a t u       = Eq  `AppSI`  a `AppSE`  t `AppSE`  u
 pattern Rfl' a t         = Rfl `AppSI`  a `AppSI`  t
-pattern Coe' a b p t     = Coe `AppSI`  a `AppSI`  b `AppSE`  p `AppSE`  t
+pattern Coe' u a b p t   = Coe u `AppSI`  a `AppSI`  b `AppSE`  p `AppSE`  t
 pattern Sym' a x y p     = Sym `AppSI`  a `AppSI`  x `AppSI`  y `AppSE`  p
 pattern Ap'  a b f x y p = Ap  `AppSI`  a `AppSI`  b `AppSE`  f `AppSI`  x `AppSI`  y
                                `AppSE`  p

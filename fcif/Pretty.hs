@@ -99,7 +99,7 @@ go p ns = \case
   Exfalso u      -> ("exfalso"++)
   Eq             -> ("Eq"++)
   Rfl            -> ("refl"++)
-  Coe            -> ("coe"++)
+  Coe u          -> ("coe"++)
   Sym            -> ("sym"++)
   Ap             -> ("ap"++)
 

@@ -41,6 +41,6 @@ zonk vs t = go t where
     Exfalso u      -> Exfalso u
     Eq             -> Eq
     Rfl            -> Rfl
-    Coe            -> Coe
+    Coe u          -> Coe u
     Sym            -> Sym
     Ap             -> Ap
