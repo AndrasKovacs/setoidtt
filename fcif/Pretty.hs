@@ -1,8 +1,10 @@
 {-# options_ghc -Wno-orphans #-}
 
-module Pretty (showTm, showTopTm) where
+module Pretty (showTm, showTopTm, showTm', showVal) where
 
+import Lens.Micro.Platform
 import Types
+import Evaluation
 
 -- | We specialcase printing of top lambdas, since they are usually used
 --   to postulate stuff. We use '*' in a somewhat hacky way to mark
@@ -22,10 +24,11 @@ fresh _ "_" = "_"
 fresh ns n | elem n ns = fresh ns (n++"'")
            | otherwise = n
 
-goU :: U -> ShowS
-goU Prop      = ("Prop"++)
-goU Set       = ("Set"++)
-goU (UMeta x) = (("U?"++show x)++)
+goU :: Bool -> U -> ShowS
+goU p Prop       = ("Prop"++)
+goU p Set        = ("Set"++)
+-- goU p (UMin a b) = showParen p (("min "++).goU True a.(' ':).goU True b)
+goU p (UMeta x)  = (("U?"++show x)++)
 
 goVar :: [Name] -> Ix -> ShowS
 goVar ns x = case ns !! x of
@@ -79,6 +82,7 @@ goSp :: [Name] -> Tm -> ShowS
 goSp ns (App t u _ i) = goSp ns t . (' ':) . goArg ns u i
 goSp ns t = go True ns t
 
+
 go :: Bool -> [Name] -> Tm -> ShowS
 go p ns = \case
   Var x -> goVar ns x
@@ -91,7 +95,7 @@ go p ns = \case
 
   Lam (fresh ns -> x) i a _ t -> showParen p (("λ "++) . goLamBind x i . goLam (x:ns) t)
   t@Pi{}         -> showParen p (goPi ns False t)
-  U u            -> goU u
+  U u            -> goU p u
   Skip t         -> go p ("_":ns) t
   Top            -> ("⊤"++)
   Tt             -> ("tt"++)
@@ -111,3 +115,9 @@ instance Show Tm where show = showTopTm
 
 showTopTm :: Tm -> String
 showTopTm t = topLams False "λ" "" [] t []
+
+showTm' :: Cxt -> Tm -> String
+showTm' cxt t = showTm (cxt^.names) t
+
+showVal :: Cxt -> Val -> String
+showVal cxt v = showTm' cxt (quote (cxt^.len) v)

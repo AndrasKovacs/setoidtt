@@ -41,9 +41,16 @@ vAppSp h = go where
   go SNil             = h
   go (SApp sp u uu i) = vApp (go sp) u uu i
 
--- vEq :: Val -> Val -> Val -> Val
--- vEq a t u = case a of
---   VSet -> case (t, u) of
+vAppSI ~t ~u = vApp t u Set  Impl
+vAppSE ~t ~u = vApp t u Set  Expl
+vAppPI ~t ~u = vApp t u Prop Impl
+vAppPE ~t ~u = vApp t u Prop Expl
+
+vExfalso u a t   = vApp (VAxiom (AExfalso u) `vAppSI` a) t u Expl
+vRfl     a t     = VAxiom ARfl `vAppSI`  a `vAppSI`  t
+vSym a x y p     = VAxiom ASym `vAppSI`  a `vAppSI`  x `vAppSI`  y `vAppPE`  p
+vAp  a b f x y p = VAxiom AAp  `vAppSI`  a `vAppSI`  b `vAppSE`  f `vAppSI`  x `vAppSI`  y
+                               `vAppPE`  p
 
 eval :: Vals -> Tm -> Val
 eval vs = go where
@@ -59,21 +66,22 @@ eval vs = go where
     Top            -> VTop
     Tt             -> VTt
     Bot            -> VBot
-    Exfalso u      -> VLamIS "A" (VU u) \ ~a -> VLamEP "p" VBot \ ~t ->
-                      VExfalso u a t
     Eq             -> VLamIS "A" VSet \ ~a -> VLamES "x" a \ ~x -> VLamES "y" a \ ~y ->
                       VEq a x y
-    Rfl            -> VLamIS "A" VSet \ ~a -> VLamIS "x" a \ ~x -> VRfl a x
     Coe u          -> VLamIS "A" (VU u) \ ~a -> VLamIS "B" (VU u) \ ~b ->
                       VLamEP "p" (VEq (VU u) a b) \ ~p -> VLam "t" Expl a u \ ~t ->
-                      VCoe u a b p t
+                      VNe (HCoe u a b p t) SNil
+    Exfalso u      -> VLamIS "A" (VU u) \ ~a -> VLamEP "p" VBot \ ~t ->
+                      vExfalso u a t
+    Rfl            -> VLamIS "A" VSet \ ~a -> VLamIS "x" a \ ~x -> vRfl a x
     Sym            -> VLamIS "A" VSet \ ~a -> VLamIS "x" a \ ~x ->
                       VLamIS "y" a \ ~y -> VLamEP "p" (VEq a x y) \ ~p ->
-                      VSym a x y p
+                      vSym a x y p
     Ap             -> VLamIS "A" VSet \ ~a -> VLamIS "B" VSet \ ~b ->
-                      VLamES "f" (vFunES a b) \ ~f -> VLamIS "x" a \ ~x ->
+                      VLamES "f" (VPiES "_" a (const b)) \ ~f -> VLamIS "x" a \ ~x ->
                       VLamIS "y" a \ ~y -> VLamEP "p" (VEq a x y) \ ~p ->
-                      VAp a b f x y p
+                      vAp a b f x y p
+
   goBind t v = eval (VDef vs v) t
 
 quote :: Lvl -> Val -> Tm
@@ -82,8 +90,15 @@ quote d = go where
   go v = case force v of
     VNe h sp ->
       let goSp SNil = case h of
-            HMeta m -> Meta m
-            HVar x  -> Var (d - x - 1)
+            HMeta m        -> Meta m
+            HVar x         -> Var (d - x - 1)
+            HCoe u a b p t -> tCoe u (go a) (go b) (go p) (go t)
+            HAxiom ax      -> case ax of
+              ARfl       -> Rfl
+              ASym       -> Sym
+              AAp        -> Ap
+              AExfalso u -> Exfalso u
+
           goSp (SApp sp u uu i) = App (goSp sp) (go u) uu i
       in goSp sp
 
@@ -93,11 +108,6 @@ quote d = go where
     VTop            -> Top
     VTt             -> Tt
     VBot            -> Bot
-    VExfalso u a t  -> Exfalso' u (go a) (go t)
-    VEq a t u       -> Eq' (go a) (go t) (go u)
-    VRfl a t        -> Rfl' (go a) (go t)
-    VCoe u a b p t  -> Coe' u (go a) (go b) (go p) (go t)
-    VSym a x y p    -> Sym' (go a) (go x) (go y) (go p)
-    VAp a b f x y p -> Ap' (go a) (go b) (go f) (go x) (go y) (go p)
+    VEq a t u       -> tEq (go a) (go t) (go u)
 
   goBind t = quote (d + 1) (t (VVar d))

@@ -24,6 +24,7 @@ data UnifyError
   = UnifyError [Name] Tm Tm
   | SpineError [Name] Tm Tm SpineError
   | StrengtheningError [Name] Tm Tm StrengtheningError
+  | RelevantMetaInIrrelevantMode MId
   deriving (Show, Exception)
 
 data ElabError
@@ -82,6 +83,8 @@ showUnifyError ns e = case e of
        "  %s =? %s\n\n")
       (lvlName ns x)
       (showTm ns lhs) (showTm ns rhs)
+  RelevantMetaInIrrelevantMode m ->
+    error (printf "Relevant meta cannot be solved in irrelevant mode: %s" (show m))
 
 showError :: [Name] -> ElabError -> String
 showError ns = \case

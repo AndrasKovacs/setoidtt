@@ -136,6 +136,11 @@ data Tm
   | Lam Name Icit Ty U Tm -- ^ λ(x : A : U).t  or  λ{x : A : U}.t
   | App Tm Tm U Icit      -- ^ t u  or  t {u}, last Ty is u's universe
 
+  -- | Sg Name Ty U Ty
+  -- | Proj1 Tm U
+  -- | Proj2 Tm U
+  -- | Pair Tm U Tm U
+
   | U U
   | Meta MId          -- ^ α
   | Skip Tm           -- ^ explicit weakening (convenience feature in closing types)
@@ -143,17 +148,18 @@ data Tm
   | Top
   | Tt
   | Bot
-  | Exfalso U
-
   | Eq             -- ^ {A : Set} → A → A → Prop
-  | Rfl            -- ^ {A : Set}{x : A} → Eq x x
   | Coe U          -- ^ {A B : U i} → Eq {U i} A B → A → B
-  | Sym            -- ^ {A : Set}{x y : A} → Eq x y → Eq y x
-  | Ap             -- ^ {A B : Set}(f : A → B){x y : A} → Eq x y → Eq (f x) (f y)
+  | Rfl
+  | Sym
+  | Ap
+  | Exfalso U
 
 data Spine
   = SNil
   | SApp Spine ~Val U Icit
+  -- | SProj1 Spine U
+  -- | SProj2 Spine
 
 valsLen :: Vals -> Int
 valsLen = go 0 where
@@ -161,34 +167,41 @@ valsLen = go 0 where
   go acc (VDef vs _) = go (acc + 1) vs
   go acc (VSkip vs)  = go (acc + 1) vs
 
+data Axiom
+  = ARfl
+  | ASym
+  | AAp
+  | AExfalso U
+  deriving (Show)
+
+axiomToTm :: Axiom -> Tm
+axiomToTm = \case
+  ARfl       -> Rfl
+  ASym       -> Sym
+  AAp        -> Ap
+  AExfalso u -> Exfalso u
+
 data Head
   = HVar Lvl
   | HMeta MId
-  deriving (Eq, Show)
+  | HAxiom Axiom
+  | HCoe U Val Val ~Val Val
 
 data Val
   = VNe Head Spine
   | VPi Name Icit ~VTy U (VTy -> VTy)
   | VLam Name Icit ~VTy U (Val -> Val)
   | VU U
-
   | VTop
   | VTt
   | VBot
-  | VExfalso U ~Val ~Val
   | VEq Val Val Val
-  | VRfl Val Val
-  | VCoe U Val Val ~Val Val
-  | VSym Val Val Val ~Val
-  | VAp Val Val Val Val Val ~Val
-
-vFunES :: Val -> Val -> Val
-vFunES a b = VPi "_" Expl a Set (\_ -> b)
 
 pattern VSet           = VU Set
 pattern VProp          = VU Prop
 pattern VVar x         = VNe (HVar x) SNil
 pattern VMeta m        = VNe (HMeta m) SNil
+pattern VAxiom ax      = VNe (HAxiom ax) SNil
 pattern AppSI t u      = App t u Set Impl
 pattern AppSE t u      = App t u Set Expl
 pattern AppPI t u      = App t u Prop Impl
@@ -202,13 +215,13 @@ pattern VPiES x a b    = VPi x Expl a Set b
 pattern VPiIP x a b    = VPi x Impl a Prop b
 pattern VPiEP x a b    = VPi x Expl a Prop b
 
-pattern Exfalso' u a t   = Exfalso u `AppSI` a `AppSE` t
-pattern Eq'  a t u       = Eq  `AppSI`  a `AppSE`  t `AppSE`  u
-pattern Rfl' a t         = Rfl `AppSI`  a `AppSI`  t
-pattern Coe' u a b p t   = Coe u `AppSI`  a `AppSI`  b `AppSE`  p `AppSE`  t
-pattern Sym' a x y p     = Sym `AppSI`  a `AppSI`  x `AppSI`  y `AppSE`  p
-pattern Ap'  a b f x y p = Ap  `AppSI`  a `AppSI`  b `AppSE`  f `AppSI`  x `AppSI`  y
-                               `AppSE`  p
+tExfalso u a t   = App (Exfalso u `AppSI` a) t u Expl
+tEq      a t u   = Eq  `AppSI`  a `AppSE`  t `AppSE`  u
+tRfl     a t     = Rfl `AppSI`  a `AppSI`  t
+tCoe u a b p t   = App (Coe u `AppSI`  a `AppSI`  b `AppPE`  p) t u Expl
+tSym a x y p     = Sym `AppSI`  a `AppSI`  x `AppSI`  y `AppPE`  p
+tAp  a b f x y p = Ap  `AppSI`  a `AppSI`  b `AppSE`  f `AppSI`  x `AppSI`  y
+                       `AppPE`  p
 
 -- Lenses
 --------------------------------------------------------------------------------

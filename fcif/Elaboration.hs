@@ -124,11 +124,14 @@ closingTm = go 0 where
         go (d + 1) (b (VVar d), len-1, drop 1 xs) rhs
     _            -> error "impossible"
 
+data Relevance = Relevant | Irrelevant
+ deriving (Eq, Show)
+
 -- | Strengthens a value, returns a quoted normal result. This performs scope
 --   checking, meta occurs checking and (recursive) pruning at the same time.
 --   May throw StrengtheningError.
-strengthen :: Str -> Val -> IO Tm
-strengthen str = go where
+strengthen :: Relevance -> Str -> Val -> IO Tm
+strengthen rel str = go where
 
   -- we only prune all-variable spines with illegal var occurrences,
   -- we don't prune illegal cyclic meta occurrences.
@@ -145,17 +148,20 @@ strengthen str = go where
       Nothing                    -> pure () -- spine is not a var substitution
       Just pruning | and pruning -> pure () -- no pruneable vars
       Just pruning               -> do
-
         (metaTy, metaU) <- lookupMeta m >>= \case
           Unsolved a au -> pure (a, au)
           _             -> error "impossible"
 
+        case (rel, forceU metaU) of
+          (Irrelevant, Set) -> throw (RelevantMetaInIrrelevantMode m)
+          _                 -> pure ()
+
         -- note: this can cause recursive pruning of metas in types
         (prunedTy :: Ty) <- do
           let go :: [Bool] -> Str -> VTy -> IO Ty
-              go [] str a = strengthen str a
+              go [] str a = strengthen rel str a
               go (True:pr) str (force -> VPi x i a au b) =
-                Pi x i <$> strengthen str a <*> pure au <*>
+                Pi x i <$> strengthen rel str a <*> pure au <*>
                       go pr (liftStr str) (b (VVar (str^.cod)))
               go (False:pr) str (force -> VPi x i a un b) =
                 go pr (skipStr str) (b (VVar (str^.cod)))
@@ -180,56 +186,53 @@ strengthen str = go where
         writeMeta m $ Solved (eval VNil rhs)
 
   go t = case force t of
-    VNe (HVar x) sp  -> case IM.lookup x (str^.ren) of
-                          Nothing -> throwIO $ ScopeError x
-                          Just x' -> goSp (Var (str^.dom - x' - 1)) sp
-    VNe (HMeta m) sp -> if Just m == str^.occ then
-                          throwIO OccursCheck
-                        else do
-                          prune m sp
-                          case force (VNe (HMeta m) sp) of
-                            VNe (HMeta m) sp -> goSp (Meta m) sp
-                            _                -> error "impossible"
+    VNe (HVar x) sp         -> case IM.lookup x (str^.ren) of
+                                 Nothing -> throwIO $ ScopeError x
+                                 Just x' -> goSp (Var (str^.dom - x' - 1)) sp
+    VNe (HMeta m) sp        -> if Just m == str^.occ then
+                                 throwIO OccursCheck
+                               else do
+                                 prune m sp
+                                 case force (VNe (HMeta m) sp) of
+                                   VNe (HMeta m) sp -> goSp (Meta m) sp
+                                   _                -> error "impossible"
+    VNe (HCoe u a b p t) sp -> do h <- tCoe u <$> go a <*> go b <*> go p <*> go t
+                                  goSp h sp
+    VNe (HAxiom ax) sp      -> goSp (axiomToTm ax) sp
+    VPi x i a au b          -> Pi x i <$> go a <*> pure au <*> goBind b
+    VLam x i a au t         -> Lam x i <$> go a <*> pure au <*> goBind t
+    VU u                    -> pure (U u)
+    VTop                    -> pure Top
+    VTt                     -> pure Tt
+    VBot                    -> pure Bot
+    VEq a x y               -> tEq <$> go a <*> go x <*> go y
 
-    VPi x i a au b   -> Pi x i <$> go a <*> pure au <*> goBind b
-    VLam x i a au t  -> Lam x i <$> go a <*> pure au <*> goBind t
-    VU u             -> pure (U u)
-    VTop             -> pure Top
-    VTt              -> pure Tt
-    VBot             -> pure Bot
-    VExfalso u a t   -> Exfalso' u <$> go a <*> go t
-    VEq a x y        -> Eq' <$> go a <*> go x <*> go y
-    VRfl a x         -> Rfl' <$> go a <*> go x
-    VCoe u a b p t   -> Coe' u <$> go a <*> go b <*> go p <*> go t
-    VSym a x y p     -> Sym' <$> go a <*> go x <*> go y <*> go p
-    VAp a b f x y p  -> Ap' <$> go a <*> go b <*> go f <*> go x <*> go y <*> go p
-
-  goBind t = strengthen (liftStr str) (t (VVar (str^.cod)))
+  goBind t = strengthen rel (liftStr str) (t (VVar (str^.cod)))
 
   goSp h = \case
     SNil           -> pure h
     SApp sp u uu i -> App <$> goSp h sp <*> go u <*> pure uu <*> pure i
 
 -- | May throw UnifyError.
-solveMeta :: Cxt -> MId -> Spine -> Val -> IO ()
-solveMeta cxt m sp rhs = do
+solveMeta :: Cxt -> Relevance -> MId -> Spine -> Val -> IO ()
+solveMeta cxt rel m sp rhs = do
 
   -- these normal forms are only used in error reporting
   let ~topLhs = quote (cxt^.len) (VNe (HMeta m) sp)
       ~topRhs = quote (cxt^.len) rhs
 
-  -- ISSUE: we would need to backtrack the prunings and meta lookups here,
-  -- if we fail solution while having irrelevant rhs!
-  -- Currently we simply fail here, even though possibly some other equation
-  -- may solve irrelevant metas!
   (ren, spLen, spVars) <- checkSp sp
          `catch` (throwIO . SpineError (cxt^.names) topLhs topRhs)
-  rhs <- strengthen (Str spLen (cxt^.len) ren (Just m)) rhs
+  rhs <- strengthen rel (Str spLen (cxt^.len) ren (Just m)) rhs
          `catch` (throwIO . StrengtheningError (cxt^.names) topLhs topRhs)
 
   (metaTy, metaU) <- lookupMeta m >>= \case
     Unsolved a au -> pure (a, au)
     _             -> error "impossible"
+
+  case (rel, forceU metaU) of
+    (Irrelevant, Set) -> throw (RelevantMetaInIrrelevantMode m)
+    _                 -> pure ()
 
   let spVarNames = map (lvlName (cxt^.names)) spVars
   let closedRhs = closingTm (metaTy, spLen, spVarNames) rhs
@@ -248,93 +251,86 @@ freshMeta cxt (quote (cxt^.len) -> a) au = do
   let sp = fst $ vars (cxt^.types)
   pure (quote (cxt^.len) (VNe (HMeta m) sp))
 
+unifyWhile :: Cxt -> U -> Val -> Val -> IO ()
 unifyWhile cxt un l r =
-  unify cxt un l r
+  unify Relevant cxt un l r
   `catch`
   (report (cxt^.names) . UnifyErrorWhile (quote (cxt^.len) l) (quote (cxt^.len) r))
 
--- subsumeWhile cxt un l r =
---   subsume cxt un l r
---   `catch`
---   (report (cxt^.names) . SubsumptionErrorWhile (quote (cxt^.len) l) (quote (cxt^.len) r))
-
-solveU :: UId -> U -> IO ()
-solveU x u = writeU x (Just u)
-
-unifyU :: U -> U -> IO ()
-unifyU u u' = case (forceU u, forceU u') of
-  (Prop,    Prop    )           -> pure ()
-  (Set,     Set     )           -> pure ()
-  (UMeta x, UMeta x') | x == x' -> pure ()
-  (UMeta x, u       )           -> solveU x u
-  (u,       UMeta x )           -> solveU x u
-  (u,       u'      )           -> throwIO $ UnifyError [] (U u) (U u')
-
--- -- | subsume : (u : U) -> Ty u -> Ty u -> IO ()
--- subsume :: Cxt -> U -> VTy -> VTy -> IO ()
--- subsume cxt u l r = case forceU u of
---   Set -> case (force l, force r) of
---     (VU u, VU u') -> case (forceU u, forceU u') of
---       (Prop, Set) -> pure ()
---       (u   , u' ) -> unifyU u u'
---     (VPi x i a au b, VPi x' i' a' au' b') -> do
---       unifyU au au'
---       unify cxt au a a'
---       let v = VVar (cxt^.len)
---       subsume (bindSrc x a au cxt) Set (b v) (b' v)
---     (l, r) -> unify cxt Set l r
---   _ -> unify cxt u l r
-
 -- | May throw UnifyError.
-unify :: Cxt -> U -> Val -> Val -> IO ()
-unify cxt un l r = go un l r where
+unify :: Relevance -> Cxt -> U -> Val -> Val -> IO ()
+unify rel cxt un l r = go un l r where
 
-  unifyError =
+  solveU :: UId -> U -> IO ()
+  solveU x u = case rel of
+    Irrelevant -> throw (RelevantMetaInIrrelevantMode x)
+    _          -> writeU x (Just u)
+
+  goU :: U -> U -> IO ()
+  goU u u' = case (forceU u, forceU u') of
+    (Prop,     Prop      )           -> pure ()
+    (Set,      Set       )           -> pure ()
+    (UMeta x,  UMeta x'  ) | x == x' -> pure ()
+    (UMeta x,  u         )           -> solveU x u
+    (u,        UMeta x   )           -> solveU x u
+    (u,        u'        )           -> err (VU u) (VU u')
+
+  err :: Val -> Val -> IO ()
+  err l r =
     throwIO $ UnifyError (cxt^.names) (quote (cxt^.len) l) (quote (cxt^.len) r)
 
-  flexFlex m sp m' sp' = do
-    try @SpineError (checkSp sp) >>= \case
-      Left{}  -> solveMeta cxt m' sp' (VNe (HMeta m) sp)
-      Right{} -> solveMeta cxt m sp (VNe (HMeta m') sp')
-
   go :: U -> Val -> Val -> IO ()
-  go un t t' = case (force t, force t') of
-    (VLam x _ a au t, VLam _ _ _ _ t')       -> goBind x a au un t t'
-    (VLam x i a au t, t')                    -> goBind x a au un t (\ ~v -> vApp t' v au i)
-    (t, VLam x' i' a' au' t')                -> goBind x' a' au' un (\ ~v -> vApp t v au' i') t'
-    (VPi x i a au b,
-       VPi x' i' a' au' b') | i == i'        -> unifyU au au' >>
-                                                go Set a a' >> goBind x a au Set b b'
-    (VU u, VU u')                            -> unifyU u u'
-    (VTop, VTop)                             -> pure ()
-    (VTt, VTt)                               -> pure ()
-    (VBot, VBot)                             -> pure ()
-    (VExfalso _ a t, VExfalso _ a' t')       -> go Set a a' >> go Prop t t'
-    (VEq a x y, VEq a' x' y')                -> go Set a a' >> go Set x x' >> go Set y y'
-    (VRfl a x, VRfl a' x')                   -> go Set a a' >> go Set x x'
-    (VSym a x y p, VSym a' x' y' p')         -> go Set a a' >> go Set x x' >> go Set y y'
-                                                >> go Prop p p'
-    (VCoe u a b p t, VCoe u' a' b' p' t')    -> unifyU u u' >> go Set a a' >> go Set b b' >> go Prop p p'
-                                                >> go un t t'
-    (VAp a b f x y p, VAp a' b' f' x' y' p') -> go Set a a' >> go Set b b' >> go Set f f'
-                                                >> go Set x x' >> go Set y y' >> go Prop p p'
-    (VNe h sp, VNe h' sp') | h == h'         -> goSp sp sp'
-    (VNe (HMeta m) sp, VNe (HMeta m') sp')   -> flexFlex m sp m' sp'
-    (VNe (HMeta m) sp, t')                   -> solveMeta cxt m sp t'
-    (t, VNe (HMeta m') sp')                  -> solveMeta cxt m' sp' t
-    _                                        -> case forceU un of
-                                                  Prop -> pure ()
-                                                  _    -> unifyError
+  go un t t' = case (rel, forceU un) of
+    (Relevant, Prop) -> do
+      unify Irrelevant cxt un t t' `catch` \(e :: UnifyError) -> pure ()
+
+    _ -> case (force t, force t') of
+      (VLam x _ a au t, VLam _ _ _ _ t')  -> goBind x a au un t t'
+      (VLam x i a au t, t')               -> goBind x a au un t (\ ~v -> vApp t' v au i)
+      (t, VLam x' i' a' au' t')           -> goBind x' a' au' un (\ ~v -> vApp t v au' i') t'
+      (VPi x i a au b,
+         VPi x' i' a' au' b') | i == i'   -> goU au au' >>
+                                             go Set a a' >> goBind x a au un b b'
+      (VU u, VU u')                       -> goU u u'
+      (VTop, VTop)                        -> pure ()
+      (VTt, VTt)                          -> pure ()
+      (VBot, VBot)                        -> pure ()
+
+      -- TODO: rigidity check
+      (VEq a x y, VEq a' x' y')           -> go Set a a' >> go Set x x' >> go Set y y'
+
+      (VNe h sp, VNe h' sp') -> case (h, h') of
+
+        (HVar x, HVar x') | x == x' -> goSp  sp sp'
+        (HAxiom ax, HAxiom ax') -> case (ax, ax') of
+          (ARfl, ARfl)              -> goSp sp sp'
+          (ASym, ASym)              -> goSp sp sp'
+          (AAp , AAp )              -> goSp sp sp'
+          (AExfalso u, AExfalso u') -> goU u u' >> goSp sp sp'
+          _                         -> err t t'
+        (HCoe u a b p t, HCoe u' a' b' p' t') -> do
+          goU u u' >> go Set a a' >> go Set b b' >> go Prop p p' >> go u t t'
+        (HMeta m, HMeta m') | m == m'   -> goSp sp sp'
+                            | otherwise -> try @SpineError (checkSp sp) >>= \case
+                                  Left{}  -> solveMeta cxt rel m' sp' (VNe (HMeta m) sp)
+                                  Right{} -> solveMeta cxt rel m sp (VNe (HMeta m') sp')
+        (HMeta m, h') -> solveMeta cxt rel m sp (VNe h' sp')
+        (h, HMeta m') -> solveMeta cxt rel m' sp' (VNe h sp)
+        _             -> err (VNe h sp) (VNe h' sp')
+
+      (VNe (HMeta m) sp, t')  -> solveMeta cxt rel m sp t'
+      (t, VNe (HMeta m') sp') -> solveMeta cxt rel m' sp' t
+      (t, t')                 -> err t t'
 
   goBind :: Name -> VTy -> U -> U -> (Val -> Val) -> (Val -> Val) -> IO ()
   goBind x a au un t t' =
-    let v = VVar (cxt^.len) in unify (bindSrc x a au cxt) un (t v) (t' v)
+    let v = VVar (cxt^.len) in unify rel (bindSrc x a au cxt) un (t v) (t' v)
 
   goSp :: Spine -> Spine -> IO ()
   goSp sp sp' = case (sp, sp') of
     (SNil, SNil)                                   -> pure ()
     (SApp sp u uu i, SApp sp' u' uu' i') | i == i' -> goSp sp sp' >>
-                                                      unifyU uu uu' >> go uu u u'
+                                                      goU uu uu' >> go uu u u'
     _                                              -> error "impossible"
 
 
@@ -375,6 +371,12 @@ inferTy cxt a = do
     au -> report (cxt^.names) $ ExpectedType a (quote (cxt^.len) au)
   pure (a, au)
 
+-- | Choose the more informative name.
+pickName :: Name -> Name -> Name
+pickName "_" x  = x
+pickName x  "_" = x
+pickName x  y   = x
+
 check :: Cxt -> Raw -> VTy -> U -> IO Tm
 check cxt topT ~topA ~topU = case (topT, force topA) of
   (RSrcPos p t, a) ->
@@ -384,12 +386,13 @@ check cxt topT ~topA ~topU = case (topT, force topA) of
     ann <- case ann of
       Just ann -> do
         ann <- check cxt ann (VU au) Set
-        unifyWhile cxt au (eval (cxt^.vals) ann) a
+        unifyWhile cxt Set (eval (cxt^.vals) ann) a
         pure ann
       Nothing ->
         pure $ quote (cxt^.len) a
-    t <- check (bind x NOSource a au cxt) t (b (VVar (cxt^.len))) topU
-    pure $ Lam x i ann au t
+    let x'' = pickName x x'
+    t <- check (bind x'' NOSource a au cxt) t (b (VVar (cxt^.len))) topU
+    pure $ Lam x'' i ann au t
 
   (t, VPi x Impl a au b) -> do
     t <- check (bind x NOInserted a au cxt) t (b (VVar (cxt^.len))) topU
@@ -408,8 +411,10 @@ check cxt topT ~topA ~topU = case (topT, force topA) of
 
   (t, topA) -> do
     (t, va, au) <- insert cxt $ infer cxt t
+    -- traceShowM ("inferred", showTm' cxt t, showVal cxt va, forceU au)
     unifyWhile cxt Set (VU au) (VU topU)
-    unifyWhile cxt au va topA
+    -- traceShowM ("unifyWhile", forceU au, showVal cxt va, showVal cxt topA)
+    unifyWhile cxt Set va topA
     pure t
 
 -- | We specialcase top-level lambdas (serving as postulates) for better
@@ -466,7 +471,7 @@ infer cxt = \case
         let ~av = eval (cxt^.vals) a
         (b, bu) <- newTy (bind "x" NOInserted av au cxt)
         let bv ~x = eval (VDef (cxt^.vals) x) b
-        unifyWhile cxt bu (VNe (HMeta m) sp) (VPi "x" i av au bv)
+        unifyWhile cxt Set (VNe (HMeta m) sp) (VPi "x" i av au bv)
         u <- check cxt u av au
         pure (App t u au i, bv (eval (cxt^.vals) u), bu)
       _ ->
@@ -524,7 +529,7 @@ infer cxt = \case
 
   RAp -> do
     let ty = VPiIS "A" VSet \ ~a -> VPiIS "B" VSet \ ~b ->
-             VPiES "f" (vFunES a b) \ ~f -> VPiIS "x" a \ ~x ->
+             VPiES "f" (VPiES "_" a (const b)) \ ~f -> VPiIS "x" a \ ~x ->
              VPiIS "y" a \ ~y -> VPiEP "p" (VEq a x y) \ ~p ->
              VEq b (vApp f x Set Expl) (vApp f y Set Expl)
     pure (Ap, ty, Prop)
