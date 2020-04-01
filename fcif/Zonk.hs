@@ -44,3 +44,7 @@ zonk vs t = go t where
     Coe u          -> Coe u
     Sym            -> Sym
     Ap             -> Ap
+    Sg x a au b bu -> Sg x (go a) (forceU au) (goBind b) (forceU bu)
+    Proj1 t tu     -> Proj1 (go t) (forceU tu)
+    Proj2 t tu     -> Proj2 (go t) (forceU tu)
+    Pair t tu u uu -> Pair (go t) (forceU tu) (go u) (forceU uu)

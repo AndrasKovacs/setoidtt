@@ -46,7 +46,8 @@ import Control.Exception
 import Control.Monad
 import Data.Maybe
 import Lens.Micro.Platform
-import qualified Data.IntMap as IM
+import qualified Data.IntMap.Strict as IM
+import qualified Data.IntSet as IS
 
 import Types
 import Evaluation
@@ -99,6 +100,8 @@ checkSp = (over _3 reverse <$>) . go where
         VVar x | IM.member x r -> throwIO $ NonLinearSpine x
                | otherwise     -> pure (IM.insert x d r, d + 1, x:xs)
         _      -> throwIO SpineNonVar
+    SProj1{} -> throwIO SpineProjection
+    SProj2{} -> throwIO SpineProjection
 
 -- | Close a type in a cxt by wrapping it in Pi types and explicit weakenings.
 closingTy :: Cxt -> Ty -> Ty
@@ -206,12 +209,16 @@ strengthen rel str = go where
     VTt                     -> pure Tt
     VBot                    -> pure Bot
     VEq a x y               -> tEq <$> go a <*> go x <*> go y
+    VSg x a au b bu         -> Sg x <$> go a <*> pure au <*> goBind b <*> pure bu
+    VPair t tu u uu         -> Pair <$> go t <*> pure tu <*> go u <*> pure uu
 
   goBind t = strengthen rel (liftStr str) (t (VVar (str^.cod)))
 
   goSp h = \case
     SNil           -> pure h
     SApp sp u uu i -> App <$> goSp h sp <*> go u <*> pure uu <*> pure i
+    SProj1 sp spu  -> Proj1 <$> goSp h sp <*> pure spu
+    SProj2 sp spu  -> Proj2 <$> goSp h sp <*> pure spu
 
 -- | May throw UnifyError.
 solveMeta :: Cxt -> Relevance -> MId -> Spine -> Val -> IO ()
@@ -251,9 +258,9 @@ freshMeta cxt (quote (cxt^.len) -> a) au = do
   let sp = fst $ vars (cxt^.types)
   pure (quote (cxt^.len) (VNe (HMeta m) sp))
 
-unifyWhile :: Cxt -> U -> Val -> Val -> IO ()
-unifyWhile cxt un l r =
-  unify Relevant cxt un l r
+unifyTypes :: Cxt -> Val -> Val -> IO ()
+unifyTypes cxt l r =
+  unify Relevant cxt Set l r
   `catch`
   (report (cxt^.names) . UnifyErrorWhile (quote (cxt^.len) l) (quote (cxt^.len) r))
 
@@ -268,12 +275,13 @@ unify rel cxt un l r = go un l r where
 
   goU :: U -> U -> IO ()
   goU u u' = case (forceU u, forceU u') of
-    (Prop,     Prop      )           -> pure ()
-    (Set,      Set       )           -> pure ()
-    (UMeta x,  UMeta x'  ) | x == x' -> pure ()
-    (UMeta x,  u         )           -> solveU x u
-    (u,        UMeta x   )           -> solveU x u
-    (u,        u'        )           -> err (VU u) (VU u')
+    (Set, Set)                      -> pure ()
+    (UMax xs, UMax xs') | xs == xs' -> pure ()
+    (UMax xs, Prop) -> forM_ (IS.toList xs) \x -> solveU x Prop
+    (Prop, UMax xs) -> forM_ (IS.toList xs) \x -> solveU x Prop
+    (UMeta x, u)    -> solveU x u
+    (u, UMeta x)    -> solveU x u
+    (u, u')         -> err (VU u) (VU u')
 
   err :: Val -> Val -> IO ()
   err l r =
@@ -285,35 +293,59 @@ unify rel cxt un l r = go un l r where
       unify Irrelevant cxt un t t' `catch` \(e :: UnifyError) -> pure ()
 
     _ -> case (force t, force t') of
-      (VLam x _ a au t, VLam _ _ _ _ t')  -> goBind x a au un t t'
+      (VLam x _ a au t, VLam x' _ _ _ t') -> goBind (pickName x x') a au un t t'
       (VLam x i a au t, t')               -> goBind x a au un t (\ ~v -> vApp t' v au i)
       (t, VLam x' i' a' au' t')           -> goBind x' a' au' un (\ ~v -> vApp t v au' i') t'
-      (VPi x i a au b,
-         VPi x' i' a' au' b') | i == i'   -> goU au au' >>
-                                             go Set a a' >> goBind x a au un b b'
-      (VU u, VU u')                       -> goU u u'
-      (VTop, VTop)                        -> pure ()
-      (VTt, VTt)                          -> pure ()
-      (VBot, VBot)                        -> pure ()
+
+      (VPi x i a au b, VPi x' i' a' au' b') | i == i' -> do
+        goU au au'
+        go Set a a'
+        goBind (pickName x x') a au Set b b'
+
+      (VSg x a au b bu, VSg x' a' au' b' bu') -> do
+        goU au au'  >> goU bu bu'
+        go Set a a' >> goBind (pickName x x') a au Set b b'
+
+      (VPair t tu u uu, VPair t' tu' u' uu') -> do
+        goU tu tu' >> goU uu uu'
+        go tu t t' >> go uu u u'
+
+      (VPair t tu u uu, t') -> do
+        let sgu = tu <> uu
+        go tu t (vProj1 t' sgu) >> go uu u (vProj2 t' sgu)
+
+      (t', VPair t tu u uu) -> do
+        let sgu = tu <> uu
+        go tu (vProj1 t' sgu) t >> go uu (vProj2 t' sgu) u
+
+      (VU u, VU u') -> goU u u'
+      (VTop, VTop)  -> pure ()
+      (VTt, VTt)    -> pure ()
+      (VBot, VBot)  -> pure ()
+
 
       -- TODO: rigidity check
-      (VEq a x y, VEq a' x' y')           -> go Set a a' >> go Set x x' >> go Set y y'
+      (VEq a x y, VEq a' x' y') -> go Set a a' >> go Set x x' >> go Set y y'
 
       (VNe h sp, VNe h' sp') -> case (h, h') of
 
         (HVar x, HVar x') | x == x' -> goSp  sp sp'
         (HAxiom ax, HAxiom ax') -> case (ax, ax') of
+
           (ARfl, ARfl)              -> goSp sp sp'
           (ASym, ASym)              -> goSp sp sp'
           (AAp , AAp )              -> goSp sp sp'
           (AExfalso u, AExfalso u') -> goU u u' >> goSp sp sp'
           _                         -> err t t'
+
         (HCoe u a b p t, HCoe u' a' b' p' t') -> do
           goU u u' >> go Set a a' >> go Set b b' >> go Prop p p' >> go u t t'
+
         (HMeta m, HMeta m') | m == m'   -> goSp sp sp'
                             | otherwise -> try @SpineError (checkSp sp) >>= \case
                                   Left{}  -> solveMeta cxt rel m' sp' (VNe (HMeta m) sp)
                                   Right{} -> solveMeta cxt rel m sp (VNe (HMeta m') sp')
+
         (HMeta m, h') -> solveMeta cxt rel m sp (VNe h' sp')
         (h, HMeta m') -> solveMeta cxt rel m' sp' (VNe h sp)
         _             -> err (VNe h sp) (VNe h' sp')
@@ -366,7 +398,7 @@ inferTy cxt a = do
     VU (UMeta x)         -> pure (UMeta x)
     au@(VNe (HMeta{}) _) -> do
       u <- UMeta <$> newU
-      unifyWhile cxt Set au (VU u)
+      unifyTypes cxt au (VU u)
       pure u
     au -> report (cxt^.names) $ ExpectedType a (quote (cxt^.len) au)
   pure (a, au)
@@ -386,7 +418,7 @@ check cxt topT ~topA ~topU = case (topT, force topA) of
     ann <- case ann of
       Just ann -> do
         ann <- check cxt ann (VU au) Set
-        unifyWhile cxt Set (eval (cxt^.vals) ann) a
+        unifyTypes cxt (eval (cxt^.vals) ann) a
         pure ann
       Nothing ->
         pure $ quote (cxt^.len) a
@@ -397,6 +429,11 @@ check cxt topT ~topA ~topU = case (topT, force topA) of
   (t, VPi x Impl a au b) -> do
     t <- check (bind x NOInserted a au cxt) t (b (VVar (cxt^.len))) topU
     pure $ Lam x Impl (quote (cxt^.len) a) au t
+
+  (RPair t u, VSg x a au b bu) -> do
+    t <- check cxt t a au
+    u <- check cxt u (b (eval (cxt^.vals) t)) bu
+    pure (Pair t au u bu)
 
   (RLet x a t u, topA) -> do
     (a, au) <- inferTy cxt a
@@ -412,9 +449,9 @@ check cxt topT ~topA ~topU = case (topT, force topA) of
   (t, topA) -> do
     (t, va, au) <- insert cxt $ infer cxt t
     -- traceShowM ("inferred", showTm' cxt t, showVal cxt va, forceU au)
-    unifyWhile cxt Set (VU au) (VU topU)
+    unifyTypes cxt (VU au) (VU topU)
     -- traceShowM ("unifyWhile", forceU au, showVal cxt va, showVal cxt topA)
-    unifyWhile cxt Set va topA
+    unifyTypes cxt va topA
     pure t
 
 -- | We specialcase top-level lambdas (serving as postulates) for better
@@ -471,7 +508,7 @@ infer cxt = \case
         let ~av = eval (cxt^.vals) a
         (b, bu) <- newTy (bind "x" NOInserted av au cxt)
         let bv ~x = eval (VDef (cxt^.vals) x) b
-        unifyWhile cxt Set (VNe (HMeta m) sp) (VPi "x" i av au bv)
+        unifyTypes cxt (VNe (HMeta m) sp) (VPi "x" i av au bv)
         u <- check cxt u av au
         pure (App t u au i, bv (eval (cxt^.vals) u), bu)
       _ ->
@@ -533,3 +570,28 @@ infer cxt = \case
              VPiIS "y" a \ ~y -> VPiEP "p" (VEq a x y) \ ~p ->
              VEq b (vApp f x Set Expl) (vApp f y Set Expl)
     pure (Ap, ty, Prop)
+
+  RSg x a b -> do
+    (a, au) <- inferTy cxt a
+    let ~va = eval (cxt^.vals) a
+    (b, bu) <- inferTy (bind x NOSource va au cxt) b
+    pure (Sg x a au b bu, VU (au <> bu), Set)
+
+  -- we only try to infer non-dependent Sg
+  RPair t u -> do
+    (t, a, au) <- infer cxt t
+    (u, b, bu) <- infer cxt u
+    pure (Pair t au u bu, VSg "_" a au (const b) bu, au <> bu)
+
+  RProj1 t -> do
+    (t, sg, sgu) <- infer cxt t
+    case force sg of
+      VSg x a au b bu -> pure (Proj1 t sgu, a, au)
+      sg              -> report (cxt^.names) $ ExpectedSg (quote (cxt^.len) sg)
+
+  RProj2 t -> do
+    (t, sg, sgu) <- infer cxt t
+    let ~vt = eval (cxt^.vals) t
+    case force sg of
+      VSg x a au b bu -> pure (Proj2 t sgu, b (vProj1 vt sgu), bu)
+      sg              -> report (cxt^.names) $ ExpectedSg (quote (cxt^.len) sg)

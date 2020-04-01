@@ -1,6 +1,8 @@
 
 module Evaluation where
 
+import qualified Data.IntSet as IS
+
 import Types
 import ElabState
 
@@ -26,20 +28,32 @@ force = \case
 
 forceU :: U -> U
 forceU = \case
-  u@(UMeta m) -> case runLookupU m of
-    Nothing -> u
-    Just u  -> forceU u
-  u           -> u
+  UMax as -> IS.foldl' (\u x -> u <> maybe (UMeta x) forceU (runLookupU x)) Prop as
+  u       -> u
 
 vApp :: Val -> Val -> U -> Icit -> Val
 vApp (VLam _ _ _ _ t) ~u un i = t u
 vApp (VNe h sp)       ~u un i = VNe h (SApp sp u un i)
 vApp _                _  un _ = error "impossible"
 
+vProj1 :: Val -> U -> Val
+vProj1 v vu = case v of
+  VPair t _ u _ -> t
+  VNe h sp      -> VNe h (SProj1 sp vu)
+  _             -> error "impossible"
+
+vProj2 :: Val -> U -> Val
+vProj2 v vu = case v of
+  VPair t _ u _ -> u
+  VNe h sp      -> VNe h (SProj2 sp vu)
+  _             -> error "impossible"
+
 vAppSp :: Val -> Spine -> Val
 vAppSp h = go where
   go SNil             = h
   go (SApp sp u uu i) = vApp (go sp) u uu i
+  go (SProj1 sp spu)  = vProj1 (go sp) spu
+  go (SProj2 sp spu)  = vProj2 (go sp) spu
 
 vAppSI ~t ~u = vApp t u Set  Impl
 vAppSE ~t ~u = vApp t u Set  Expl
@@ -82,6 +96,11 @@ eval vs = go where
                       VLamIS "y" a \ ~y -> VLamEP "p" (VEq a x y) \ ~p ->
                       vAp a b f x y p
 
+    Sg x a au b bu -> VSg x (go a) au (goBind b) bu
+    Pair t tu u uu -> VPair (go t) tu (go u) uu
+    Proj1 t tu     -> vProj1 (go t) tu
+    Proj2 t tu     -> vProj2 (go t) tu
+
   goBind t v = eval (VDef vs v) t
 
 quote :: Lvl -> Val -> Tm
@@ -100,6 +119,9 @@ quote d = go where
               AExfalso u -> Exfalso u
 
           goSp (SApp sp u uu i) = App (goSp sp) (go u) uu i
+          goSp (SProj1 sp spu)  = Proj1 (goSp sp) spu
+          goSp (SProj2 sp spu)  = Proj2 (goSp sp) spu
+
       in goSp sp
 
     VLam x i a au t -> Lam x i (go a) au (goBind t)
@@ -109,5 +131,8 @@ quote d = go where
     VTt             -> Tt
     VBot            -> Bot
     VEq a t u       -> tEq (go a) (go t) (go u)
+
+    VSg x a au b bu -> Sg x (go a) au (goBind b) bu
+    VPair t tu u uu -> Pair (go t) tu (go u) uu
 
   goBind t = quote (d + 1) (t (VVar d))

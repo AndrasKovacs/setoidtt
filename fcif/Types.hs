@@ -8,6 +8,7 @@ import Text.Megaparsec (SourcePos(..), unPos, initialPos)
 import Lens.Micro.Platform
 
 import qualified Data.IntMap.Strict as IM
+import qualified Data.IntSet as IS
 
 -- Raw syntax
 --------------------------------------------------------------------------------
@@ -39,6 +40,11 @@ data Raw
   | RLet Name Raw Raw Raw            -- ^ let x : A = t in u
   | RHole                            -- ^ _
   | RSrcPos SPos Raw                 -- ^ source position annotation, added by parsing
+
+  | RSg Name Raw Raw
+  | RPair Raw Raw
+  | RProj1 Raw
+  | RProj2 Raw
 
   | RTop
   | RTt
@@ -123,10 +129,24 @@ data Cxt = Cxt {
   cxtLen        :: Int}
 
 data U
-  = Prop
-  | Set
-  | UMeta MId
+  = Set
+  | UMax IS.IntSet   -- ^ Maximum of a set of universe metas. Empty set = Prop.
   deriving Show
+
+pattern Prop :: U
+pattern Prop <- ((\case UMax xs -> IS.null xs; _ -> False) -> True) where
+  Prop = UMax mempty
+
+pattern UMeta :: UId -> U
+pattern UMeta x <- ((\case UMax xs -> IS.toList xs;_ -> []) -> [x]) where
+  UMeta x = UMax (IS.singleton x)
+
+instance Semigroup U where
+  UMax as <> UMax bs = UMax (as <> bs)
+  _       <> _       = Set
+
+instance Monoid U where
+  mempty = Prop
 
 data Tm
   = Var Ix               -- ^ x
@@ -136,10 +156,10 @@ data Tm
   | Lam Name Icit Ty U Tm -- ^ λ(x : A : U).t  or  λ{x : A : U}.t
   | App Tm Tm U Icit      -- ^ t u  or  t {u}, last Ty is u's universe
 
-  -- | Sg Name Ty U Ty
-  -- | Proj1 Tm U
-  -- | Proj2 Tm U
-  -- | Pair Tm U Tm U
+  | Sg Name Ty U Ty U
+  | Proj1 Tm U
+  | Proj2 Tm U
+  | Pair Tm U Tm U
 
   | U U
   | Meta MId          -- ^ α
@@ -158,8 +178,8 @@ data Tm
 data Spine
   = SNil
   | SApp Spine ~Val U Icit
-  -- | SProj1 Spine U
-  -- | SProj2 Spine
+  | SProj1 Spine U
+  | SProj2 Spine U
 
 valsLen :: Vals -> Int
 valsLen = go 0 where
@@ -196,6 +216,8 @@ data Val
   | VTt
   | VBot
   | VEq Val Val Val
+  | VSg Name ~Val U (VTy -> VTy) U
+  | VPair ~Val U ~Val U
 
 pattern VSet           = VU Set
 pattern VProp          = VU Prop

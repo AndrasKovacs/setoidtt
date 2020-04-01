@@ -3,6 +3,7 @@
 module Pretty (showTm, showTopTm, showTm', showVal) where
 
 import Lens.Micro.Platform
+import qualified Data.IntSet as IS
 import Types
 import Evaluation
 
@@ -27,8 +28,8 @@ fresh ns n | elem n ns = fresh ns (n++"'")
 goU :: Bool -> U -> ShowS
 goU p Prop       = ("Prop"++)
 goU p Set        = ("Set"++)
--- goU p (UMin a b) = showParen p (("min "++).goU True a.(' ':).goU True b)
 goU p (UMeta x)  = (("U?"++show x)++)
+goU p (UMax xs)  = (("UMax "++ show (IS.toList xs))++)
 
 goVar :: [Name] -> Ix -> ShowS
 goVar ns x = case ns !! x of
@@ -106,6 +107,20 @@ go p ns = \case
   Coe u          -> ("coe"++)
   Sym            -> ("sym"++)
   Ap             -> ("ap"++)
+
+  Sg (fresh ns -> x) a au b bu
+    | x == "_"  ->
+       showParen p (
+       go (case a of Sg{} -> True;_ -> False) ns a .(" × "++).
+       go (case b of Pi{} -> True; _ -> False) ns b)
+    | otherwise ->
+      showParen p
+        (parens ((x++).(" : "++).go False ns a)
+         .(" × "++). go (case b of Pi{} -> True; _ -> False) (x:ns) b)
+
+  Proj1 t tu     -> ("π₁ "++).go True ns t
+  Proj2 t tu     -> ("π₂ "++).go True ns t
+  Pair t tu u uu -> parens (go False ns t . (", "++) . go False ns u)
 
 showTm :: [Name] -> Tm -> String
 showTm ns t = go False ns t []

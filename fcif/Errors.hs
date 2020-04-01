@@ -34,6 +34,7 @@ data ElabError
   | ExpectedFunction Tm
   | ExpectedType Tm Tm
   | IcitMismatch Icit Icit
+  | ExpectedSg Tm
 
 data Err = Err {
   errNames :: [Name],
@@ -95,13 +96,6 @@ showError ns = \case
          "  %s\n\n" ++
          "with\n\n" ++
          "  %s") (showTm ns lhs) (showTm ns rhs)
-  -- SubsumptionErrorWhile lhs rhs e ->
-  --   let err1 = showUnifyError ns e
-  --   in err1 ++ printf
-  --        ("while trying to subsume\n\n" ++
-  --        "  %s\n\n" ++
-  --        "with\n\n" ++
-  --        "  %s") (showTm ns lhs) (showTm ns rhs)
   NameNotInScope x ->
     "Name not in scope: " ++ x
   ExpectedFunction ty ->
@@ -114,3 +108,5 @@ showError ns = \case
   IcitMismatch i i' -> printf (
     "Function icitness mismatch: expected %s, got %s.")
     (show i) (show i')
+  ExpectedSg ty ->
+    "Expected a pair type, instead inferred:\n\n  " ++ showTm ns ty

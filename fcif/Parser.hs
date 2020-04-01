@@ -37,16 +37,13 @@ pBind    = pIdent <|> symbol "_"
 
 keywords :: S.Set String
 keywords = S.fromList [
-  "let", "in", "λ", "Set", "Prop",
+  "let", "in", "λ", "Set", "Prop", "π₁", "π₂",
   "⊤",   "tt", "⊥", "exfalso", "Eq", "refl", "coe", "sym", "ap"]
-
-keyword :: String -> Bool
-keyword = (`S.member` keywords)
 
 pIdent :: Parser Name
 pIdent = try $ do
   x <- takeWhile1P Nothing isAlphaNum
-  when (keyword x) $ do
+  when (S.member x keywords) $
     fail (printf "Expected an identifier, but \"%s\" is a keyword." x)
   x <$ ws
 
@@ -64,8 +61,15 @@ pAtom  =
                <|> (RCoe     <$  symbol "coe"    )
                <|> (RSym     <$  symbol "sym"    )
                <|> (RAp      <$  symbol "ap"     )
-               <|> (RHole    <$  char   '_'     ))
-  <|> parens pTm
+               <|> (RHole    <$  char   '_'      ))
+
+  <|> do {
+        char '(';
+        t1 <- pTm;
+        optional (char ',') >>= \case
+            Nothing -> char ')' >> pure t1
+            Just{}  -> do {t2 <- pTm; char ')'; pure (RPair t1 t2)}
+        }
 
 pArg :: Parser (Icit, Raw)
 pArg =
@@ -77,6 +81,10 @@ pSpine = do
   h <- pAtom
   args <- many pArg
   pure $ foldl (\t (i, u) -> RApp t u i) h args
+
+pProj :: Parser Raw
+pProj = (RProj1 <$> (symbol "π₁" *> pTm))
+    <|> (RProj2 <$> (symbol "π₂" *> pTm))
 
 pLamBinder :: Parser (Name, Maybe Raw, Icit)
 pLamBinder =
@@ -105,12 +113,28 @@ pPi = do
   cod <- pTm
   pure $ foldr (\(xs, a, i) t -> foldr (\x -> RPi x i a) t xs) cod dom
 
-pFunOrSpine :: Parser Raw
-pFunOrSpine = do
+pSg :: Parser Raw
+pSg = do
+  (x, a) <- parens ((,) <$> pBind <*> (char ':' *> pTm))
+  char '×'
+  b <- pTm
+  pure (RSg x a b)
+
+pFunOrSpineOrPair :: Parser Raw
+pFunOrSpineOrPair = do
   sp <- pSpine
   optional pArrow >>= \case
-    Nothing -> pure sp
     Just _  -> RPi "_" Expl sp <$> pTm
+    Nothing -> optional (symbol "×") >>= \case
+      Just _  -> RSg "_" sp <$> pTm
+      Nothing -> pure sp
+
+-- pFunOrSpineOrPair :: Parser Raw
+-- pFunOrSpineOrPair = do
+--   sp <- pSpine
+--   optional pArrow >>= \case
+--     Nothing -> pure sp
+--     Just _  -> RPi "_" Expl sp <$> pTm
 
 pLet :: Parser Raw
 pLet = do
@@ -124,7 +148,7 @@ pLet = do
   pure $ RLet x (maybe RHole id ann) t u
 
 pTm :: Parser Raw
-pTm = withPos (pLam <|> pLet <|> try pPi <|> pFunOrSpine)
+pTm = withPos (pLam <|> pLet <|> pProj <|> try pPi <|> try pSg <|> pFunOrSpineOrPair)
 
 pSrc :: Parser Raw
 pSrc = ws *> pTm <* eof
