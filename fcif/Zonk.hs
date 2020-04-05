@@ -7,8 +7,8 @@ import ElabState
 
 -- | Unfold all metas and evaluate meta-headed spines, but don't evaluate
 --   anything else.
-zonk :: Vals -> Tm -> Tm
-zonk vs t = go t where
+zonk :: Vals -> Lvl -> Tm -> Tm
+zonk vs l t = go t where
 
   goSp :: Tm -> Either Val Tm
   goSp = \case
@@ -16,11 +16,11 @@ zonk vs t = go t where
                        Solved v -> Left v
                        _        -> Right (Meta m)
     App t u uu ni -> case goSp t of
-                       Left t  -> Left (vApp t (eval vs u) (forceU uu) ni)
+                       Left t  -> Left (vApp t (eval vs l u) (forceU uu) ni)
                        Right t -> Right $ App t (go u) (forceU uu) ni
-    t             -> Right (zonk vs t)
+    t             -> Right (zonk vs l t)
 
-  goBind = zonk (VSkip vs)
+  goBind = zonk (VSkip vs) (l + 1)
 
   go = \case
     Var x          -> Var x
@@ -30,7 +30,7 @@ zonk vs t = go t where
     U u            -> U (forceU u)
     Pi x i a au b  -> Pi x i (go a) (forceU au) (goBind b)
     App t u uu ni  -> case goSp t of
-                        Left t  -> quote (valsLen vs) (vApp t (eval vs u) (forceU uu) ni)
+                        Left t  -> quote (valsLen vs) (vApp t (eval vs l u) (forceU uu) ni)
                         Right t -> App t (go u) (forceU uu) ni
     Lam x i a au t -> Lam x i (go a) (forceU au) (goBind t)
     Let x a au t u -> Let x (go a) (forceU au) (go t) (goBind u)

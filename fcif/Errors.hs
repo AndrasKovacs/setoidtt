@@ -4,6 +4,7 @@ module Errors where
 import Control.Exception
 import Text.Printf
 
+import Lens.Micro.Platform
 import Types
 import Pretty
 
@@ -46,8 +47,8 @@ instance Show Err where
 
 instance Exception Err
 
-report :: [Name] -> ElabError -> a
-report ns e = throw (Err ns e Nothing)
+report :: Cxt -> ElabError -> a
+report cxt e = throw (Err (cxt^.names) e Nothing)
 
 -- | Rethrow an `Err` with source position attached.
 addSrcPos :: SPos -> IO a -> IO a

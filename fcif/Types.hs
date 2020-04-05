@@ -18,6 +18,13 @@ newtype SPos = SPos SourcePos deriving (Eq, Ord, Read)
 instance Show SPos where show _ = ""
 
 type Name = String
+
+-- | Choose the more informative name.
+pickName :: Name -> Name -> Name
+pickName "_" x  = x
+pickName x  "_" = x
+pickName x  y   = x
+
 data Icit = Impl | Expl deriving (Eq)
 
 instance Show Icit where

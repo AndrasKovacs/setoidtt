@@ -1,6 +1,7 @@
 
 module Evaluation where
 
+import Control.Monad
 import qualified Data.IntSet as IS
 
 import Types
@@ -19,11 +20,12 @@ vMeta m = case runLookupMeta m of
   Solved v   -> v
 
 -- | Force the outermost constructor in a value.
-force :: Val -> Val
-force = \case
+force :: Lvl -> Val -> Val
+force l = \case
   v@(VNe (HMeta m) sp) -> case runLookupMeta m of
     Unsolved{} -> v
-    Solved v   -> force (vAppSp v sp)
+    Solved v   -> force l (vAppSp v sp)
+  VEq a x y    -> vEq l (force l a) (force l x) (force l y)
   v            -> v
 
 forceU :: U -> U
@@ -65,9 +67,102 @@ vRfl     a t     = VAxiom ARfl `vAppSI`  a `vAppSI`  t
 vSym a x y p     = VAxiom ASym `vAppSI`  a `vAppSI`  x `vAppSI`  y `vAppPE`  p
 vAp  a b f x y p = VAxiom AAp  `vAppSI`  a `vAppSI`  b `vAppSE`  f `vAppSI`  x `vAppSI`  y
                                `vAppPE`  p
+vAnd :: Val -> Val -> Val
+vAnd a b = VSg "_" a Prop (const b) Prop
 
-eval :: Vals -> Tm -> Val
-eval vs = go where
+vImpl :: Val -> Val -> Val
+vImpl a b = VPi "_" Expl a Prop (const b)
+
+vAll :: Name -> Val -> (Val -> Val) -> Val
+vAll x a b = VPi x Expl a Prop b
+
+vEx :: Name -> Val -> (Val -> Val) -> Val
+vEx x a b = VSg x a Prop b Prop
+
+(∙) :: Val -> Val -> Val
+(∙) t u = vApp t u Set Expl
+infixl 8 ∙
+
+(∘) :: Val -> Val -> Val
+(∘) t u = vApp t u Prop Expl
+infixl 8 ∘
+
+(■) :: Val -> Val -> Val
+(■) t u = vApp t u Set Impl
+infixl 8 ■
+
+(□) :: Val -> Val -> Val
+(□) t u = vApp t u Prop Impl
+infixl 8 □
+
+univEq :: U -> U -> Maybe Bool
+univEq Set       Set        = Just True
+univEq Set       Prop       = Just False
+univEq Prop      Set        = Just False
+univEq (UMax xs) (UMax xs') = True <$ guard (xs == xs')
+univEq _         _          = Nothing
+
+vEq :: Lvl -> Val -> Val -> Val -> Val
+vEq l topA ~topX ~topY = case topA of
+
+  VU Prop ->
+    vAnd (vImpl topX topY) (vImpl topY topX)
+
+  VU Set -> case (topX, topY) of
+
+    (VU Set,  VU Set)  -> VTop
+    (VU Prop, VU Prop) -> VTop
+
+    (VPi x i a au b, VPi x' i' a' au' b') | i == i' ->
+      case univEq au au' of
+        Nothing    -> VEq topA topX topY
+        Just False -> VBot
+        Just True  ->
+          vEx "p" (vEq l (VU au) a a') \p →
+          vAll (pickName x x') a \x → vEq l (VU Set) (b x) (b' (vCoe l au a a' p x))
+
+    (VSg x a au b bu, VSg x' a' au' b' bu') ->
+      case (univEq au au', univEq bu bu') of
+        (Just b1, Just b2)
+          | b1 && b2  ->
+            vEx "p" (vEq l (VU au) a a') \p →
+            vAll (pickName x x') a \x → vEq l (VU Set) (b x) (b' (vCoe l au a a' p x))
+          | otherwise -> VBot
+        _ -> VEq topA topX topY
+
+    (VNe{}, _) -> VEq topA topX topY
+    (_, VNe{}) -> VEq topA topX topY
+    _          -> VBot
+
+  VU _ -> VEq topA topX topY
+
+  VPi x i a au b ->
+    vAll x a \x -> vEq l (b x) (vApp topX x au i) (vApp topY x au i)
+
+  VSg x a au b bu ->
+    let sgu = au <> bu
+        p1x = vProj1 topX sgu
+        p1y = vProj1 topY sgu
+        p2x = vProj2 topX sgu
+        p2y = vProj2 topY sgu
+    in vEx "p" (vEq l a p1x p1y) \p -> vEq l (b p1y) (vCoe l bu (b p1x) (b p1y) p p2x) p2y
+
+  VNe{} -> VEq topA topX topY
+  _     -> error "impossible"
+
+
+vCoe :: Lvl -> U -> Val -> Val -> Val -> Val -> Val
+vCoe l u a b p t = case u of
+  -- Prop -> vProj1 p Prop □ t
+  -- -- Set -> undefined
+  --   -- (VPi x i a au b, VPi x' i' a' au' b') -> _
+  --   -- (VSg x a au b bu, VSg x' a' au' b' bu') -> _
+
+  _ -> VNe (HCoe u a b p t) SNil
+
+
+eval :: Vals -> Lvl -> Tm -> Val
+eval vs l = go where
   go = \case
     Var x          -> vVar x vs
     Let x a au t u -> goBind u (go t)
@@ -75,13 +170,13 @@ eval vs = go where
     Pi x i a au b  -> VPi x i (go a) au (goBind b)
     Lam x i a au t -> VLam x i (go a) au (goBind t)
     App t u uu i   -> vApp (go t) (go u) uu i
-    Skip t         -> eval (VSkip vs) t
+    Skip t         -> eval (VSkip vs) (l + 1) t
     U u            -> VU u
     Top            -> VTop
     Tt             -> VTt
     Bot            -> VBot
     Eq             -> VLamIS "A" VSet \ ~a -> VLamES "x" a \ ~x -> VLamES "y" a \ ~y ->
-                      VEq a x y
+                      vEq l a x y
     Coe u          -> VLamIS "A" (VU u) \ ~a -> VLamIS "B" (VU u) \ ~b ->
                       VLamEP "p" (VEq (VU u) a b) \ ~p -> VLam "t" Expl a u \ ~t ->
                       VNe (HCoe u a b p t) SNil
@@ -101,12 +196,12 @@ eval vs = go where
     Proj1 t tu     -> vProj1 (go t) tu
     Proj2 t tu     -> vProj2 (go t) tu
 
-  goBind t v = eval (VDef vs v) t
+  goBind t v = eval (VDef vs v) (l + 1) t
 
 quote :: Lvl -> Val -> Tm
 quote d = go where
 
-  go v = case force v of
+  go v = case force d v of
     VNe h sp ->
       let goSp SNil = case h of
             HMeta m        -> Meta m

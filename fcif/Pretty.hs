@@ -61,7 +61,7 @@ goPi ns p (Pi (fresh ns -> x) i a au b)
   | x /= "_" = goPiBind ns x i a au . goPi (x:ns) True b
   | otherwise =
      (if p then (" → "++) else id) .
-     go (case a of App{} -> False; _ -> True) ns a .
+     go (case a of App{} -> False; Sg{} -> False; _ -> True) ns a .
      (" → "++) . go False (x:ns) b
 
 goPi ns p t = (if p then (" → "++) else id) . go False ns t
@@ -111,8 +111,8 @@ go p ns = \case
   Sg (fresh ns -> x) a au b bu
     | x == "_"  ->
        showParen p (
-       go (case a of Sg{} -> True;_ -> False) ns a .(" × "++).
-       go (case b of Pi{} -> True; _ -> False) ns b)
+       go (case a of Sg{} -> True;Pi{} -> True;_ -> False) ns a .(" × "++).
+       go (case b of Pi{} -> True; _ -> False) (x:ns) b)
     | otherwise ->
       showParen p
         (parens ((x++).(" : "++).go False ns a)

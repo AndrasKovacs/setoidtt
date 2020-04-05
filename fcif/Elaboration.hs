@@ -50,7 +50,8 @@ import qualified Data.IntMap.Strict as IM
 import qualified Data.IntSet as IS
 
 import Types
-import Evaluation
+import qualified Evaluation as Eval
+import EvalCxt
 import ElabState
 import Errors
 import Pretty
@@ -80,7 +81,8 @@ define x ~a ~un ~t (Cxt vs tys ns no d) =
 -- | Lift ("skolemize") a value in an extended context to a function in a
 --   non-extended context.
 liftVal :: Cxt -> Val -> (Val -> Val)
-liftVal cxt t ~x = eval (VDef (cxt^.vals) x) $ quote (cxt^.len+1) t
+liftVal cxt t ~x =
+  Eval.eval (VDef (cxt^.vals) x) (cxt^.len + 1) $ Eval.quote (cxt^.len+1) t
 
 -- Unification
 --------------------------------------------------------------------------------
@@ -89,14 +91,14 @@ liftVal cxt t ~x = eval (VDef (cxt^.vals) x) $ quote (cxt^.len+1) t
 --   Returns a partial variable renaming on success, alongside the size
 --   of the spine, and the list of variables in the spine.
 --   May throw SpineError.
-checkSp :: Spine -> IO (Renaming, Lvl, [Lvl])
-checkSp = (over _3 reverse <$>) . go where
+checkSp :: Cxt -> Spine -> IO (Renaming, Lvl, [Lvl])
+checkSp cxt = (over _3 reverse <$>) . go where
   go :: Spine -> IO (Renaming, Lvl, [Lvl])
   go = \case
     SNil           -> pure (mempty, 0, [])
     SApp sp u un i -> do
       (!r, !d, !xs) <- go sp
-      case force u of
+      case force cxt u of
         VVar x | IM.member x r -> throwIO $ NonLinearSpine x
                | otherwise     -> pure (IM.insert x d r, d + 1, x:xs)
         _      -> throwIO SpineNonVar
@@ -109,7 +111,7 @@ closingTy cxt = go (cxt^.types) (cxt^.names) (cxt^.len) where
   go TNil                  []     d b = b
   go (TDef tys a au)       (x:ns) d b = go tys ns (d-1) (Skip b)
   go (TBound tys a au)     (x:ns) d b =
-    go tys ns (d-1) (Pi x Expl (quote (d-1) a) au b)
+    go tys ns (d-1) (Pi x Expl (Eval.quote (d-1) a) au b)
   go _                     _      _ _ = error "impossible"
 
 -- | Close a term by wrapping it in `Int` number of lambdas, while taking the domain
@@ -121,9 +123,9 @@ closingTm = go 0 where
   getName (x:xs) _ = x
 
   go d (a, 0, _)   rhs = rhs
-  go d (a, len, xs) rhs = case force a of
+  go d (a, len, xs) rhs = case Eval.force d a of
     VPi (getName xs -> x) i a au b  ->
-      Lam x i (quote d a) au $
+      Lam x i (Eval.quote d a) au $
         go (d + 1) (b (VVar d), len-1, drop 1 xs) rhs
     _            -> error "impossible"
 
@@ -163,32 +165,32 @@ strengthen rel str = go where
         (prunedTy :: Ty) <- do
           let go :: [Bool] -> Str -> VTy -> IO Ty
               go [] str a = strengthen rel str a
-              go (True:pr) str (force -> VPi x i a au b) =
+              go (True:pr) str (Eval.force (str^.cod) -> VPi x i a au b) =
                 Pi x i <$> strengthen rel str a <*> pure au <*>
                       go pr (liftStr str) (b (VVar (str^.cod)))
-              go (False:pr) str (force -> VPi x i a un b) =
+              go (False:pr) str (Eval.force (str^.cod) -> VPi x i a un b) =
                 go pr (skipStr str) (b (VVar (str^.cod)))
               go _ _ _ = error "impossible"
 
           go pruning (Str 0 0 mempty Nothing) metaTy
 
-        m' <- newMeta (eval VNil prunedTy) metaU
+        m' <- newMeta (eval emptyCxt prunedTy) metaU
 
         let argNum = length pruning
             body = go pruning metaTy (Meta m') 0 where
               go :: [Bool] -> VTy -> _ -> _
               go [] a acc d = acc
-              go (True:pr) (force -> VPi x i a au b) acc d =
+              go (True:pr) (Eval.force argNum -> VPi x i a au b) acc d =
                 go pr (b (VVar d))
                       (App acc (Var (argNum - d - 1)) au i) (d + 1)
-              go (False:pr) (force -> VPi x i a au b) acc d =
+              go (False:pr) (Eval.force argNum -> VPi x i a au b) acc d =
                 go pr (b (VVar d)) acc (d + 1)
               go _ _ _ _ = error "impossible"
 
         let rhs = closingTm (metaTy, argNum, []) body
-        writeMeta m $ Solved (eval VNil rhs)
+        writeMeta m $ Solved (eval emptyCxt rhs)
 
-  go t = case force t of
+  go t = case Eval.force (str^.cod) t of
     VNe (HVar x) sp         -> case IM.lookup x (str^.ren) of
                                  Nothing -> throwIO $ ScopeError x
                                  Just x' -> goSp (Var (str^.dom - x' - 1)) sp
@@ -196,7 +198,7 @@ strengthen rel str = go where
                                  throwIO OccursCheck
                                else do
                                  prune m sp
-                                 case force (VNe (HMeta m) sp) of
+                                 case Eval.force (str^.cod) (VNe (HMeta m) sp) of
                                    VNe (HMeta m) sp -> goSp (Meta m) sp
                                    _                -> error "impossible"
     VNe (HCoe u a b p t) sp -> do h <- tCoe u <$> go a <*> go b <*> go p <*> go t
@@ -225,10 +227,10 @@ solveMeta :: Cxt -> Relevance -> MId -> Spine -> Val -> IO ()
 solveMeta cxt rel m sp rhs = do
 
   -- these normal forms are only used in error reporting
-  let ~topLhs = quote (cxt^.len) (VNe (HMeta m) sp)
-      ~topRhs = quote (cxt^.len) rhs
+  let ~topLhs = quote cxt (VNe (HMeta m) sp)
+      ~topRhs = quote cxt rhs
 
-  (ren, spLen, spVars) <- checkSp sp
+  (ren, spLen, spVars) <- checkSp cxt sp
          `catch` (throwIO . SpineError (cxt^.names) topLhs topRhs)
   rhs <- strengthen rel (Str spLen (cxt^.len) ren (Just m)) rhs
          `catch` (throwIO . StrengtheningError (cxt^.names) topLhs topRhs)
@@ -243,12 +245,12 @@ solveMeta cxt rel m sp rhs = do
 
   let spVarNames = map (lvlName (cxt^.names)) spVars
   let closedRhs = closingTm (metaTy, spLen, spVarNames) rhs
-  writeMeta m (Solved (eval VNil closedRhs))
+  writeMeta m (Solved (eval emptyCxt closedRhs))
 
 freshMeta :: Cxt -> VTy -> U -> IO Tm
-freshMeta cxt (quote (cxt^.len) -> a) au = do
+freshMeta cxt (quote cxt -> a) au = do
   let metaTy = closingTy cxt a
-  m <- newMeta (eval VNil metaTy) au
+  m <- newMeta (eval emptyCxt metaTy) au
 
   let vars :: Types -> (Spine, Lvl)
       vars TNil                              = (SNil, 0)
@@ -256,13 +258,13 @@ freshMeta cxt (quote (cxt^.len) -> a) au = do
       vars (TBound (vars -> (sp, !d)) _ un)  = (SApp sp (VVar d) un Expl, d + 1)
 
   let sp = fst $ vars (cxt^.types)
-  pure (quote (cxt^.len) (VNe (HMeta m) sp))
+  pure (quote cxt (VNe (HMeta m) sp))
 
 unifyTypes :: Cxt -> Val -> Val -> IO ()
 unifyTypes cxt l r =
   unify Relevant cxt Set l r
   `catch`
-  (report (cxt^.names) . UnifyErrorWhile (quote (cxt^.len) l) (quote (cxt^.len) r))
+  (report cxt . UnifyErrorWhile (quote cxt l) (quote cxt r))
 
 -- | May throw UnifyError.
 unify :: Relevance -> Cxt -> U -> Val -> Val -> IO ()
@@ -285,14 +287,14 @@ unify rel cxt un l r = go un l r where
 
   err :: Val -> Val -> IO ()
   err l r =
-    throwIO $ UnifyError (cxt^.names) (quote (cxt^.len) l) (quote (cxt^.len) r)
+    throwIO $ UnifyError (cxt^.names) (quote cxt l) (quote cxt r)
 
   go :: U -> Val -> Val -> IO ()
   go un t t' = case (rel, forceU un) of
     (Relevant, Prop) -> do
       unify Irrelevant cxt un t t' `catch` \(e :: UnifyError) -> pure ()
 
-    _ -> case (force t, force t') of
+    _ -> case (force cxt t, force cxt t') of
       (VLam x _ a au t, VLam x' _ _ _ t') -> goBind (pickName x x') a au un t t'
       (VLam x i a au t, t')               -> goBind x a au un t (\ ~v -> vApp t' v au i)
       (t, VLam x' i' a' au' t')           -> goBind x' a' au' un (\ ~v -> vApp t v au' i') t'
@@ -342,7 +344,7 @@ unify rel cxt un l r = go un l r where
           goU u u' >> go Set a a' >> go Set b b' >> go Prop p p' >> go u t t'
 
         (HMeta m, HMeta m') | m == m'   -> goSp sp sp'
-                            | otherwise -> try @SpineError (checkSp sp) >>= \case
+                            | otherwise -> try @SpineError (checkSp cxt sp) >>= \case
                                   Left{}  -> solveMeta cxt rel m' sp' (VNe (HMeta m) sp)
                                   Right{} -> solveMeta cxt rel m sp (VNe (HMeta m') sp')
 
@@ -380,10 +382,10 @@ insert :: Cxt -> IO (Tm, VTy, U) -> IO (Tm, VTy, U)
 insert cxt act = do
   (t, va, un) <- act
   let go :: Tm -> VTy -> IO (Tm, VTy)
-      go t va = case force va of
+      go t va = case force cxt va of
         VPi x Impl a au b -> do
           m <- freshMeta cxt a au
-          let mv = eval (cxt^.vals) m
+          let mv = eval cxt m
           go (App t m au Impl) (b mv)
         va -> pure (t, va)
   (a, va) <- go t va
@@ -392,7 +394,7 @@ insert cxt act = do
 inferTy :: Cxt -> Raw -> IO (Tm, U)
 inferTy cxt a = do
   (a, au, _) <- infer cxt a
-  au <- case force au of
+  au <- case force cxt au of
     VSet                 -> pure Set
     VProp                -> pure Prop
     VU (UMeta x)         -> pure (UMeta x)
@@ -400,17 +402,11 @@ inferTy cxt a = do
       u <- UMeta <$> newU
       unifyTypes cxt au (VU u)
       pure u
-    au -> report (cxt^.names) $ ExpectedType a (quote (cxt^.len) au)
+    au -> report cxt $ ExpectedType a (quote cxt au)
   pure (a, au)
 
--- | Choose the more informative name.
-pickName :: Name -> Name -> Name
-pickName "_" x  = x
-pickName x  "_" = x
-pickName x  y   = x
-
 check :: Cxt -> Raw -> VTy -> U -> IO Tm
-check cxt topT ~topA ~topU = case (topT, force topA) of
+check cxt topT ~topA ~topU = case (topT, force cxt topA) of
   (RSrcPos p t, a) ->
     addSrcPos p (check cxt t a topU)
 
@@ -418,28 +414,28 @@ check cxt topT ~topA ~topU = case (topT, force topA) of
     ann <- case ann of
       Just ann -> do
         ann <- check cxt ann (VU au) Set
-        unifyTypes cxt (eval (cxt^.vals) ann) a
+        unifyTypes cxt (eval cxt ann) a
         pure ann
       Nothing ->
-        pure $ quote (cxt^.len) a
+        pure $ quote cxt a
     let x'' = pickName x x'
     t <- check (bind x'' NOSource a au cxt) t (b (VVar (cxt^.len))) topU
     pure $ Lam x'' i ann au t
 
   (t, VPi x Impl a au b) -> do
     t <- check (bind x NOInserted a au cxt) t (b (VVar (cxt^.len))) topU
-    pure $ Lam x Impl (quote (cxt^.len) a) au t
+    pure $ Lam x Impl (quote cxt a) au t
 
   (RPair t u, VSg x a au b bu) -> do
     t <- check cxt t a au
-    u <- check cxt u (b (eval (cxt^.vals) t)) bu
+    u <- check cxt u (b (eval cxt t)) bu
     pure (Pair t au u bu)
 
   (RLet x a t u, topA) -> do
     (a, au) <- inferTy cxt a
-    let ~va = eval (cxt^.vals) a
+    let ~va = eval cxt a
     t <- check cxt t va au
-    let ~vt = eval (cxt^.vals) t
+    let ~vt = eval cxt t
     u <- check (define x va au vt cxt) u topA topU
     pure $ Let x a au t u
 
@@ -462,7 +458,7 @@ inferTopLams cxt = \case
     (a, au) <- case ann of
       Just ann -> inferTy cxt ann
       Nothing  -> newTy cxt
-    let ~va = eval (cxt^.vals) a
+    let ~va = eval cxt a
     (t, liftVal cxt -> b, bu) <- inferTopLams (bind ('*':x) NOSource va au cxt) t
     pure (Lam x i a au t, VPi x i va au b, bu)
   RSrcPos p t ->
@@ -484,55 +480,55 @@ infer cxt = \case
         go (_:xs) (_       :os) (TSnoc as _ _)  i =
           go xs os as (i + 1)
         go []     []            TNil            _ =
-          report (cxt^.names) (NameNotInScope x)
+          report cxt (NameNotInScope x)
         go _ _ _ _ = error "impossible"
     go (cxt^.names) (cxt^.nameOrigin) (cxt^.types) 0
 
   RPi x i a b -> do
     (a, au) <- inferTy cxt a
-    let ~va = eval (cxt^.vals) a
+    let ~va = eval cxt a
     (b, bu) <- inferTy (bind x NOSource va au cxt) b
     pure (Pi x i a au b, VU bu, Set)
 
   RApp t u i -> do
     (t, topA, topU) <- case i of Expl -> insert cxt $ infer cxt t
                                  _    -> infer cxt t
-    case force topA of
+    case force cxt topA of
       VPi x i' a au b -> do
         unless (i == i') $
-          report (cxt^.names) $ IcitMismatch i i'
+          report cxt $ IcitMismatch i i'
         u <- check cxt u a au
-        pure (App t u au i, b (eval (cxt^.vals) u), topU)
+        pure (App t u au i, b (eval cxt u), topU)
       VNe (HMeta m) sp -> do
         (a, au) <- newTy cxt
-        let ~av = eval (cxt^.vals) a
+        let ~av = eval cxt a
         (b, bu) <- newTy (bind "x" NOInserted av au cxt)
-        let bv ~x = eval (VDef (cxt^.vals) x) b
+        let bv ~x = Eval.eval (VDef (cxt^.vals) x) (cxt^.len + 1) b
         unifyTypes cxt (VNe (HMeta m) sp) (VPi "x" i av au bv)
         u <- check cxt u av au
-        pure (App t u au i, bv (eval (cxt^.vals) u), bu)
+        pure (App t u au i, bv (eval cxt u), bu)
       _ ->
-        report (cxt^.names) $ ExpectedFunction (quote (cxt^.len) topA)
+        report cxt $ ExpectedFunction (quote cxt topA)
 
   RLam x ann i t -> do
     (a, au) <- case ann of
       Just ann -> inferTy cxt ann
       Nothing  -> newTy cxt
-    let ~va = eval (cxt^.vals) a
+    let ~va = eval cxt a
     (t, liftVal cxt -> b, bu) <- infer (bind x NOSource va au cxt) t
     pure (Lam x i a au t, VPi x i va au b, bu)
 
   RHole -> do
     (a, au) <- newTy cxt
-    let ~av = eval (cxt^.vals) a
+    let ~av = eval cxt a
     t <- freshMeta cxt av au
     pure (t, av, au)
 
   RLet x a t u -> do
     (a, au) <- inferTy cxt a
-    let ~va = eval (cxt^.vals) a
+    let ~va = eval cxt a
     t <- check cxt t va au
-    let ~vt = eval (cxt^.vals) t
+    let ~vt = eval cxt t
     (u, b, bu) <- infer (define x va au vt cxt) u
     pure (Let x a au t u, b, bu)
 
@@ -573,7 +569,7 @@ infer cxt = \case
 
   RSg x a b -> do
     (a, au) <- inferTy cxt a
-    let ~va = eval (cxt^.vals) a
+    let ~va = eval cxt a
     (b, bu) <- inferTy (bind x NOSource va au cxt) b
     pure (Sg x a au b bu, VU (au <> bu), Set)
 
@@ -585,13 +581,13 @@ infer cxt = \case
 
   RProj1 t -> do
     (t, sg, sgu) <- infer cxt t
-    case force sg of
+    case force cxt sg of
       VSg x a au b bu -> pure (Proj1 t sgu, a, au)
-      sg              -> report (cxt^.names) $ ExpectedSg (quote (cxt^.len) sg)
+      sg              -> report cxt $ ExpectedSg (quote cxt sg)
 
   RProj2 t -> do
     (t, sg, sgu) <- infer cxt t
-    let ~vt = eval (cxt^.vals) t
-    case force sg of
+    let ~vt = eval cxt t
+    case force cxt sg of
       VSg x a au b bu -> pure (Proj2 t sgu, b (vProj1 vt sgu), bu)
-      sg              -> report (cxt^.names) $ ExpectedSg (quote (cxt^.len) sg)
+      sg              -> report cxt $ ExpectedSg (quote cxt sg)

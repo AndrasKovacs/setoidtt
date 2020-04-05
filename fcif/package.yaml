@@ -30,6 +30,7 @@ default-extensions:
 - TupleSections
 - TypeApplications
 - TypeInType
+- UnicodeSyntax
 - ViewPatterns
 
 ghc-options:
