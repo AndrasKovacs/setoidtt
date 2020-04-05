@@ -4,6 +4,7 @@ module Types (
   module Text.Megaparsec
   ) where
 
+import Control.Exception
 import Text.Megaparsec (SourcePos(..), unPos, initialPos)
 import Lens.Micro.Platform
 
@@ -24,10 +25,11 @@ unSrc (RSrcPos _ r) = unSrc r
 unSrc r             = r
 
 -- | Choose the more informative name.
-pickName :: Name -> Name -> Name
-pickName "_" x  = x
-pickName x  "_" = x
-pickName x  y   = x
+pick :: Name -> Name -> Name
+pick "_" "_" = "x"
+pick "_" x   = x
+pick x   "_" = x
+pick x   y   = x
 
 data Icit = Impl | Expl deriving (Eq)
 
@@ -65,6 +67,7 @@ data Raw
   | RRefl
   | RCoe
   | RSym
+  | RTrans
   | RAp
 deriving instance Show Raw
 
@@ -186,6 +189,7 @@ data Tm
   | Coe U          -- ^ {A B : U i} → Eq {U i} A B → A → B
   | Refl
   | Sym
+  | Trans
   | Ap
   | Exfalso U
 
@@ -204,6 +208,7 @@ valsLen = go 0 where
 data Axiom
   = ARfl
   | ASym
+  | ATrans
   | AAp
   | AExfalso U
   deriving (Show)
@@ -213,6 +218,7 @@ axiomToTm = \case
   ARfl       -> Refl
   ASym       -> Sym
   AAp        -> Ap
+  ATrans     -> Trans
   AExfalso u -> Exfalso u
 
 data Head
@@ -251,13 +257,18 @@ pattern VPiES x a b    = VPi x Expl a Set b
 pattern VPiIP x a b    = VPi x Impl a Prop b
 pattern VPiEP x a b    = VPi x Expl a Prop b
 
-tExfalso u a t   = App (Exfalso u `AppSI` a) t u Expl
-tEq      a t u   = Eq  `AppSI`  a `AppSE`  t `AppSE`  u
-tRefl    a t     = Refl `AppSI`  a `AppSI`  t
-tCoe u a b p t   = App (Coe u `AppSI`  a `AppSI`  b `AppPE`  p) t u Expl
-tSym a x y p     = Sym `AppSI`  a `AppSI`  x `AppSI`  y `AppPE`  p
-tAp  a b f x y p = Ap  `AppSI`  a `AppSI`  b `AppSE`  f `AppSI`  x `AppSI`  y
-                       `AppPE`  p
+data Perhaps = Yes | No | Dunno
+  deriving (Eq, Show, Exception)
+
+tExfalso u a t     = App (Exfalso u `AppSI` a) t u Expl
+tEq      a t u     = Eq  `AppSI`  a `AppSE`  t `AppSE`  u
+tRefl    a t       = Refl `AppSI`  a `AppSI`  t
+tCoe u a b p t     = App (Coe u `AppSI`  a `AppSI`  b `AppPE`  p) t u Expl
+tSym a x y p       = Sym `AppSI`  a `AppSI`  x `AppSI`  y `AppPE`  p
+tTrans a x y z p q = Trans `AppSI`  a `AppSI`  x `AppSI`  y
+                           `AppSI` z  `AppPE` p `AppPE` q
+tAp  a b f x y p   = Ap  `AppSI`  a `AppSI`  b `AppSE`  f `AppSI`  x `AppSI`  y
+                         `AppPE`  p
 
 -- Lenses
 --------------------------------------------------------------------------------

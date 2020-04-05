@@ -37,7 +37,7 @@ pBind    = pIdent <|> symbol "_"
 
 keywords :: S.Set String
 keywords = S.fromList [
-  "let", "in", "λ", "Set", "Prop", "π₁", "π₂",
+  "let", "in", "λ", "Set", "Prop", "π₁", "π₂", "trans",
   "⊤",   "tt", "⊥", "exfalso", "Eq", "refl", "coe", "sym", "ap"]
 
 pIdent :: Parser Name
@@ -60,6 +60,7 @@ pAtom  =
                <|> (RRefl    <$  symbol "refl"   )
                <|> (RCoe     <$  symbol "coe"    )
                <|> (RSym     <$  symbol "sym"    )
+               <|> (RTrans   <$  symbol "trans"  )
                <|> (RAp      <$  symbol "ap"     )
                <|> (RHole    <$  char   '_'      ))
 

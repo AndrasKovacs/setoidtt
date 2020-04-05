@@ -1,5 +1,7 @@
 module Main where
 
+-- TODO: remove Prop coercion (unnecessary in the presence of propext)
+
 import Control.Exception
 import System.Environment
 import System.Exit
@@ -82,14 +84,32 @@ test1 = main' "elab" $ unlines [
   "Set"
   ]
 
-test2 = main' "elab" $ unlines [
+test2 = main' "nf" $ unlines [
   "let foo : (p : Eq {Set} Set Prop)(A : Set) → Prop",
   "    = λ p A. coe p A in",
   "let tr : {A : Set}(B : A → Set){x y} → Eq {A} x y → B x → B y",
   "    = λ B p bx. coe (ap B p) bx in",
-  "let tr : {A : Set}(B : A → Set){x y} → Eq {A} x y → B x → B y",
-  "    = λ B p bx . tr B p bx in",
-  "Set"
+
+  "let regular : Eq (λ (A : Set)(p : Eq A A)(x : A). coe p x) (λ A p x. x) = λ _ _ _. refl in",
+  "let comp : Eq (λ A B C (p : Eq {Set} A B)(q : Eq B C) x. coe q (coe p x))",
+  "              (λ A B C p q x. coe (trans p q) x) = λ _ _ _ _ _ _. refl in",
+
+  "let picoe : (A B C D : Set)(p : Eq (A → B) (C → D))(f : A → B) → C → D",
+  "    = λ A B C D p f. coe p f in",
+  "picoe"
+
+  ]
+
+test4 = main' "elab" $ unlines [
+  "λ(A : Set)",
+  " (B : Set)",
+  " (C : Set)",
+  " (D : Set)",
+  " (p : (p : Eq {Set} A C) × ((x : A) → Eq {Set} B D))",
+  " (f : A → B)",
+  " (x : C).",
+  " coe {B} {D} ((π₂ p) (coe {C} {A} (sym {Set} {A} {C} (π₁ p)) x)) (f (coe {C} {A}",
+  " (sym {Set} {A} {C} (π₁ p)) x))  "
   ]
 
 test3 = main' "elab" $ unlines [
@@ -108,8 +128,10 @@ test3 = main' "elab" $ unlines [
 
   "let exfalsoS : {A : Set}  → ⊥ → A = exfalso in",
   "let exfalsoP : {A : Prop} → ⊥ → A = exfalso in",
-  "let trans : {A : Set}{x y z : A} → Eq x y → Eq y z → Eq x z",
+  "let trans2 : {A : Set}{x y z : A} → Eq x y → Eq y z → Eq x z",
   "    = λ {_}{x} p q. trP (λ z. Eq x z) q p in",
+  "let trans2 : {A : Set}{x y z : A} → Eq x y → Eq y z → Eq x z",
+  "    = trans in",
 
   "let irrel1 : Eq (λ (f : Set → ⊤ → Set) (x : ⊤) (y : ⊤). f Set x)",
   "                (λ f x y. f Set y) =",

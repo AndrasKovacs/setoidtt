@@ -43,6 +43,7 @@ zonk vs l t = go t where
     Refl           -> Refl
     Coe u          -> Coe u
     Sym            -> Sym
+    Trans          -> Trans
     Ap             -> Ap
     Sg x a au b bu -> Sg x (go a) (forceU au) (goBind b) (forceU bu)
     Proj1 t tu     -> Proj1 (go t) (forceU tu)

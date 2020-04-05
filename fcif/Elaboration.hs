@@ -295,18 +295,18 @@ unify rel cxt un l r = go un l r where
       unify Irrelevant cxt un t t' `catch` \(e :: UnifyError) -> pure ()
 
     _ -> case (force cxt t, force cxt t') of
-      (VLam x _ a au t, VLam x' _ _ _ t') -> goBind (pickName x x') a au un t t'
+      (VLam x _ a au t, VLam x' _ _ _ t') -> goBind (pick x x') a au un t t'
       (VLam x i a au t, t')               -> goBind x a au un t (\ ~v -> vApp t' v au i)
       (t, VLam x' i' a' au' t')           -> goBind x' a' au' un (\ ~v -> vApp t v au' i') t'
 
       (VPi x i a au b, VPi x' i' a' au' b') | i == i' -> do
         goU au au'
         go Set a a'
-        goBind (pickName x x') a au Set b b'
+        goBind (pick x x') a au Set b b'
 
       (VSg x a au b bu, VSg x' a' au' b' bu') -> do
         goU au au'  >> goU bu bu'
-        go Set a a' >> goBind (pickName x x') a au Set b b'
+        go Set a a' >> goBind (pick x x') a au Set b b'
 
       (VPair t tu u uu, VPair t' tu' u' uu') -> do
         goU tu tu' >> goU uu uu'
@@ -417,6 +417,12 @@ checkEq cxt t a l r = case t of
   RAppE (unSrc -> RSym) t -> do
     t <- checkEq cxt t a r l
     pure (tSym (quote cxt a) (quote cxt r) (quote cxt l) t)
+  RAppE (unSrc -> RAppE (unSrc -> RTrans) p) q -> do
+    mid <- freshMeta cxt VSet Set
+    let ~vmid = eval cxt mid
+    p <- checkEq cxt p a l vmid
+    q <- checkEq cxt q a vmid r
+    pure (tTrans (quote cxt a) (quote cxt l) mid (quote cxt r) p q)
   RAppE (unSrc -> RAppE (unSrc -> RAp) f) p -> do
     b <- freshMeta cxt VSet Set
     let ~vb = eval cxt b
@@ -446,7 +452,7 @@ check cxt topT ~topA ~topU = case (topT, force cxt topA) of
         pure ann
       Nothing ->
         pure $ quote cxt a
-    let x'' = pickName x x'
+    let x'' = pick x x'
     t <- check (bind x'' NOSource a au cxt) t (b (VVar (cxt^.len))) topU
     pure $ Lam x'' i ann au t
 
@@ -595,6 +601,13 @@ infer cxt = \case
     let ty = VPiIS "A" VSet \ ~a -> VPiIS "x" a \ ~x ->
              VPiIS "y" a \ ~y -> VPiEP "p" (VEq a x y) \ ~p -> VEq a y x
     pure (Sym, ty, Prop)
+
+  RTrans -> do
+    let ty = VPiIS "A" VSet \ ~a -> VPiIS "x" a \ ~x ->
+             VPiIS "y" a \ ~y -> VPiIS "z" a \ ~z ->
+             VPiEP "p" (VEq a x y) \ ~p -> VPiEP "q" (VEq a y z) \ ~q ->
+             VEq a x z
+    pure (Trans, ty, Prop)
 
   RAp -> do
     let ty = VPiIS "A" VSet \ ~a -> VPiIS "B" VSet \ ~b ->
