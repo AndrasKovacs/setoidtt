@@ -22,10 +22,16 @@ vMeta m = case runLookupMeta m of
 -- | Force the outermost constructor in a value.
 force :: Lvl -> Val -> Val
 force l = \case
-  v@(VNe (HMeta m) sp) -> case runLookupMeta m of
-    Unsolved{} -> v
-    Solved v   -> force l (vAppSp v sp)
+  VNe h sp -> case h of
+    HMeta m -> case runLookupMeta m of
+      Unsolved{} -> VNe h sp
+      Solved v   -> force l (vAppSp v sp)
+    HCoe u a b p t ->
+      vAppSp (vCoe l (forceU u) (force l a) (force l b) (force l p) (force l t)) sp
+    _ -> VNe h sp
+
   VEq a x y    -> vEq l (force l a) (force l x) (force l y)
+  VU u         -> VU (forceU u)
   v            -> v
 
 forceU :: U -> U
@@ -152,13 +158,29 @@ vEq l topA ~topX ~topY = case topA of
 
 
 vCoe :: Lvl -> U -> Val -> Val -> Val -> Val -> Val
-vCoe l u a b p t = case u of
-  -- Prop -> vProj1 p Prop □ t
-  -- -- Set -> undefined
-  --   -- (VPi x i a au b, VPi x' i' a' au' b') -> _
-  --   -- (VSg x a au b bu, VSg x' a' au' b' bu') -> _
+vCoe l topU topA topB topP t = case topU of
+  Prop -> vProj1 topP Prop □ t
+  Set -> case (topA, topB) of
 
-  _ -> VNe (HCoe u a b p t) SNil
+    -- (VPi x i a au b, VPi x' i' a' au' b')   -> _
+
+    (VSg x a au b bu, VSg x' a' au' b' bu') ->
+      case (univEq au au', univEq bu bu') of
+        (Just b1, Just b2)
+          | b1 && b2 ->
+             let sgu = au <> bu
+                 p1  = vProj1 t sgu
+                 p2  = vProj2 t sgu
+                 p1' = vCoe l au a a' (vProj1 topP Prop) p1
+                 p2' = vCoe l bu (b p1) (b' p1') (vProj2 topP Prop) p2
+             in VPair p1' au p2' bu
+          | otherwise -> vExfalso topU topB topP
+        _ -> VNe (HCoe topU topA topB topP t) SNil
+
+    _ -> VNe (HCoe topU topA topB topP t) SNil
+
+
+  _ -> VNe (HCoe topU topA topB topP t) SNil
 
 
 eval :: Vals -> Lvl -> Tm -> Val
@@ -179,10 +201,10 @@ eval vs l = go where
                       vEq l a x y
     Coe u          -> VLamIS "A" (VU u) \ ~a -> VLamIS "B" (VU u) \ ~b ->
                       VLamEP "p" (VEq (VU u) a b) \ ~p -> VLam "t" Expl a u \ ~t ->
-                      VNe (HCoe u a b p t) SNil
+                      vCoe l u a b p t -- VNe (HCoe u a b p t) SNil
     Exfalso u      -> VLamIS "A" (VU u) \ ~a -> VLamEP "p" VBot \ ~t ->
                       vExfalso u a t
-    Rfl            -> VLamIS "A" VSet \ ~a -> VLamIS "x" a \ ~x -> vRfl a x
+    Refl           -> VLamIS "A" VSet \ ~a -> VLamIS "x" a \ ~x -> vRfl a x
     Sym            -> VLamIS "A" VSet \ ~a -> VLamIS "x" a \ ~x ->
                       VLamIS "y" a \ ~y -> VLamEP "p" (VEq a x y) \ ~p ->
                       vSym a x y p
@@ -208,7 +230,7 @@ quote d = go where
             HVar x         -> Var (d - x - 1)
             HCoe u a b p t -> tCoe u (go a) (go b) (go p) (go t)
             HAxiom ax      -> case ax of
-              ARfl       -> Rfl
+              ARfl       -> Refl
               ASym       -> Sym
               AAp        -> Ap
               AExfalso u -> Exfalso u

@@ -103,7 +103,7 @@ go p ns = \case
   Bot            -> ("⊥"++)
   Exfalso u      -> ("exfalso"++)
   Eq             -> ("Eq"++)
-  Rfl            -> ("refl"++)
+  Refl           -> ("refl"++)
   Coe u          -> ("coe"++)
   Sym            -> ("sym"++)
   Ap             -> ("ap"++)

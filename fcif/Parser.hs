@@ -57,7 +57,7 @@ pAtom  =
                <|> (RTt      <$  symbol "tt"     )
                <|> (RExfalso <$  symbol "exfalso")
                <|> (REq      <$  symbol "Eq"     )
-               <|> (RRfl     <$  symbol "refl"   )
+               <|> (RRefl    <$  symbol "refl"   )
                <|> (RCoe     <$  symbol "coe"    )
                <|> (RSym     <$  symbol "sym"    )
                <|> (RAp      <$  symbol "ap"     )

@@ -83,9 +83,12 @@ test1 = main' "elab" $ unlines [
   ]
 
 test2 = main' "elab" $ unlines [
-  "let EqP    : {A : Prop} → A → A → Set = λ {A} x y. (P : A → Set) → P x → P y in",
-  "let reflP  : {A x} → EqP {A} x x = λ P px. px in",
-  "let coeP   : {A B : Prop} → Eq {Prop} A B → A → B = coe in ",
+  "let foo : (p : Eq {Set} Set Prop)(A : Set) → Prop",
+  "    = λ p A. coe p A in",
+  "let tr : {A : Set}(B : A → Set){x y} → Eq {A} x y → B x → B y",
+  "    = λ B p bx. coe (ap B p) bx in",
+  "let tr : {A : Set}(B : A → Set){x y} → Eq {A} x y → B x → B y",
+  "    = λ B p bx . tr B p bx in",
   "Set"
   ]
 
@@ -101,7 +104,7 @@ test3 = main' "elab" $ unlines [
   "let trS : {A : Set}(B : A → Set){x y} → Eq x y → B x → B y",
   "    = λ {A} B {x}{y} p bx. coe (ap B p) bx in",
   "let trP : {A : Set}(B : A → Prop){x y} → Eq x y → B x → B y",
-  "    = λ {A} B {x}{y} p. π₁ (ap B p) in",
+  "    = λ {A} B {x}{y} p bx. coe (sym (sym (ap B p))) bx in",
 
   "let exfalsoS : {A : Set}  → ⊥ → A = exfalso in",
   "let exfalsoP : {A : Prop} → ⊥ → A = exfalso in",
@@ -111,6 +114,16 @@ test3 = main' "elab" $ unlines [
   "let irrel1 : Eq (λ (f : Set → ⊤ → Set) (x : ⊤) (y : ⊤). f Set x)",
   "                (λ f x y. f Set y) =",
   "     (λ _ _ _. refl) in",
+
+  "let trans2 : {A}{a b c d : A} → Eq a b → Eq b c → Eq c d → Eq a d",
+  "    = λ p q r. trans (trans p q) r in",
+
+  -- don't yet work!
+  -- "let symex : {a b c d : Set} → Eq (a × b) (c × d) → Eq (c × d) (a × b)",
+  -- "    = λ p. sym p in",
+
+  -- "let trans3 : {a b c d e f : Set} → Eq (a × b) (c × d) → Eq (c × d) (e × f) → Eq (a × b) (e × f)",
+  -- "    = λ p q r. trans (trans p q) r in",
 
   "let irrel2 : EqP (λ (x : ⊤)(y : ⊤). x) (λ x y. y) = reflP in",
 
@@ -125,6 +138,8 @@ test3 = main' "elab" $ unlines [
   "let bar  : Eq (Set → Set) (Set → Set) = refl {Set}{Set → Set} in",
   "let bar2 : Eq (Set → Set) (Set → Set) = (tt, λ_.tt) in",
   "let bar3 : EqP bar bar2 = reflP in",
+
+  "let foo : Eq (Eq Set Prop) ⊥ = refl {Prop}{⊥} in",
 
 
   "Set"

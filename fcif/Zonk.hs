@@ -40,7 +40,7 @@ zonk vs l t = go t where
     Bot            -> Bot
     Exfalso u      -> Exfalso u
     Eq             -> Eq
-    Rfl            -> Rfl
+    Refl           -> Refl
     Coe u          -> Coe u
     Sym            -> Sym
     Ap             -> Ap

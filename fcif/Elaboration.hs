@@ -325,8 +325,9 @@ unify rel cxt un l r = go un l r where
       (VTt, VTt)    -> pure ()
       (VBot, VBot)  -> pure ()
 
-
-      -- TODO: rigidity check
+      -- TODO: rigidity check. Also requires keeping track of rigid coercion,
+      -- i.e. we have to know which coe is blocked on a meta and which one is blocked
+      -- on a neutral.
       (VEq a x y, VEq a' x' y') -> go Set a a' >> go Set x x' >> go Set y y'
 
       (VNe h sp, VNe h' sp') -> case (h, h') of
@@ -405,6 +406,33 @@ inferTy cxt a = do
     au -> report cxt $ ExpectedType a (quote cxt au)
   pure (a, au)
 
+-- | Check an equality proof.
+checkEq :: Cxt -> Raw -> VTy -> Val -> Val -> IO Tm
+checkEq cxt t a l r = case t of
+  RSrcPos p t ->
+    addSrcPos p (checkEq cxt t a l r)
+  RRefl -> do
+    unify Relevant cxt Set l r
+    pure (tRefl (quote cxt a) (quote cxt l))
+  RAppE (unSrc -> RSym) t -> do
+    t <- checkEq cxt t a r l
+    pure (tSym (quote cxt a) (quote cxt r) (quote cxt l) t)
+  RAppE (unSrc -> RAppE (unSrc -> RAp) f) p -> do
+    b <- freshMeta cxt VSet Set
+    let ~vb = eval cxt b
+    x <- freshMeta cxt vb Set
+    let ~vx = eval cxt x
+    y <- freshMeta cxt vb Set
+    let ~vy = eval cxt y
+    f <- check cxt f (VPi "_" Expl vb Set (const a)) Set
+    let ~vf = eval cxt f
+    unify Relevant cxt Set l (vApp vf (eval cxt x) Set Expl)
+    unify Relevant cxt Set r (vApp vf (eval cxt y) Set Expl)
+    p <- checkEq cxt p vb vx vy
+    pure (tAp b (quote cxt a) x y f p)
+  t ->
+    check cxt t (vEq cxt a l r) Prop
+
 check :: Cxt -> Raw -> VTy -> U -> IO Tm
 check cxt topT ~topA ~topU = case (topT, force cxt topA) of
   (RSrcPos p t, a) ->
@@ -441,6 +469,14 @@ check cxt topT ~topA ~topU = case (topT, force cxt topA) of
 
   (RHole, topA) -> do
     freshMeta cxt topA topU
+
+  -- special case for saturated coe
+  (RAppE (unSrc -> RAppE (unSrc -> RCoe) p) t, topA) -> do
+    (t, va, au) <- insert cxt $ infer cxt t
+    unifyTypes cxt (VU au) (VU topU)
+    p <- checkEq cxt p (VU au) va topA
+    -- p <- check cxt p (vEq cxt (VU au) va topA) Prop
+    pure (tCoe au (quote cxt va) (quote cxt topA) p t)
 
   (t, topA) -> do
     (t, va, au) <- insert cxt $ infer cxt t
@@ -545,9 +581,9 @@ infer cxt = \case
     let ty = VPiIS "A" VSet \ ~a -> VPiES "x" a \ ~x -> VPiES "y" a \ ~y -> VProp
     pure (Eq, ty, Set)
 
-  RRfl -> do
+  RRefl -> do
     let ty = VPiIS "A" VSet \ ~a -> VPiIS "x" a \ ~x -> VEq a x x
-    pure (Rfl, ty, Prop)
+    pure (Refl, ty, Prop)
 
   RCoe -> do
     u <- UMeta <$> newU

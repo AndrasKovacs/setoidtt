@@ -19,6 +19,10 @@ instance Show SPos where show _ = ""
 
 type Name = String
 
+unSrc :: Raw -> Raw
+unSrc (RSrcPos _ r) = unSrc r
+unSrc r             = r
+
 -- | Choose the more informative name.
 pickName :: Name -> Name -> Name
 pickName "_" x  = x
@@ -58,11 +62,14 @@ data Raw
   | RBot                             -- ^ ⊥ : Prop
   | RExfalso                         -- ^ exfalso : {A : Set} → ⊥ → A
   | REq
-  | RRfl
+  | RRefl
   | RCoe
   | RSym
   | RAp
 deriving instance Show Raw
+
+pattern RAppI t u = RApp t u Impl
+pattern RAppE t u = RApp t u Expl
 
 
 -- Types
@@ -177,7 +184,7 @@ data Tm
   | Bot
   | Eq             -- ^ {A : Set} → A → A → Prop
   | Coe U          -- ^ {A B : U i} → Eq {U i} A B → A → B
-  | Rfl
+  | Refl
   | Sym
   | Ap
   | Exfalso U
@@ -203,7 +210,7 @@ data Axiom
 
 axiomToTm :: Axiom -> Tm
 axiomToTm = \case
-  ARfl       -> Rfl
+  ARfl       -> Refl
   ASym       -> Sym
   AAp        -> Ap
   AExfalso u -> Exfalso u
@@ -246,7 +253,7 @@ pattern VPiEP x a b    = VPi x Expl a Prop b
 
 tExfalso u a t   = App (Exfalso u `AppSI` a) t u Expl
 tEq      a t u   = Eq  `AppSI`  a `AppSE`  t `AppSE`  u
-tRfl     a t     = Rfl `AppSI`  a `AppSI`  t
+tRefl    a t     = Refl `AppSI`  a `AppSI`  t
 tCoe u a b p t   = App (Coe u `AppSI`  a `AppSI`  b `AppPE`  p) t u Expl
 tSym a x y p     = Sym `AppSI`  a `AppSI`  x `AppSI`  y `AppPE`  p
 tAp  a b f x y p = Ap  `AppSI`  a `AppSI`  b `AppSE`  f `AppSI`  x `AppSI`  y
