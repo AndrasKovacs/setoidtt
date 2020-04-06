@@ -210,6 +210,7 @@ strengthen rel str = go where
     VTop                    -> pure Top
     VTt                     -> pure Tt
     VBot                    -> pure Bot
+    VEqGlue _ _ _ b         -> go b
     VEq a x y               -> tEq <$> go a <*> go x <*> go y
     VSg x a au b bu         -> Sg x <$> go a <*> pure au <*> goBind b <*> pure bu
     VPair t tu u uu         -> Pair <$> go t <*> pure tu <*> go u <*> pure uu
@@ -295,6 +296,16 @@ unify rel cxt un l r = go un l r where
       unify Irrelevant cxt un t t' `catch` \(e :: UnifyError) -> pure ()
 
     _ -> case (force cxt t, force cxt t') of
+
+      -- TODO: rigidity check. Also requires keeping track of rigid coercion,
+      -- i.e. we have to know which coe is blocked on a meta and which one is blocked
+      -- on a neutral.
+      (VEq a t u,       VEq a' t' u'       ) -> go Set a a' >>  go Set t t' >> go Set u u'
+      (VEq a t u,       VEqGlue a' t' u' b') -> go Set a a' >> go Set t t' >> go Set u u'
+      (VEqGlue a t u b, VEq a' t' u'       ) -> go Set a a' >> go Set t t' >> go Set u u'
+      (VEqGlue _ _ _ b, t'                 ) -> go Set b t'
+      (t              , VEqGlue _ _ _ b'   ) -> go Set t b'
+
       (VLam x _ a au t, VLam x' _ _ _ t') -> goBind (pick x x') a au un t t'
       (VLam x i a au t, t')               -> goBind x a au un t (\ ~v -> vApp t' v au i)
       (t, VLam x' i' a' au' t')           -> goBind x' a' au' un (\ ~v -> vApp t v au' i') t'
@@ -324,11 +335,6 @@ unify rel cxt un l r = go un l r where
       (VTop, VTop)  -> pure ()
       (VTt, VTt)    -> pure ()
       (VBot, VBot)  -> pure ()
-
-      -- TODO: rigidity check. Also requires keeping track of rigid coercion,
-      -- i.e. we have to know which coe is blocked on a meta and which one is blocked
-      -- on a neutral.
-      (VEq a x y, VEq a' x' y') -> go Set a a' >> go Set x x' >> go Set y y'
 
       (VNe h sp, VNe h' sp') -> case (h, h') of
 
@@ -439,10 +445,14 @@ checkEq cxt t a l r = case t of
   t ->
     check cxt t (vEq cxt a l r) Prop
 
+unglue :: Val -> Val
+unglue (VEqGlue _ _ _ t) = t
+unglue t                 = t
+
 check :: Cxt -> Raw -> VTy -> U -> IO Tm
-check cxt topT ~topA ~topU = case (topT, force cxt topA) of
-  (RSrcPos p t, a) ->
-    addSrcPos p (check cxt t a topU)
+check cxt topT (force cxt -> topA) ~topU = case (topT, unglue topA) of
+  (RSrcPos p t, _) ->
+    addSrcPos p (check cxt t topA topU)
 
   (RLam x ann i t, VPi x' i' a au b) | i == i' -> do
     ann <- case ann of
@@ -465,7 +475,7 @@ check cxt topT ~topA ~topU = case (topT, force cxt topA) of
     u <- check cxt u (b (eval cxt t)) bu
     pure (Pair t au u bu)
 
-  (RLet x a t u, topA) -> do
+  (RLet x a t u, _) -> do
     (a, au) <- inferTy cxt a
     let ~va = eval cxt a
     t <- check cxt t va au
@@ -473,18 +483,18 @@ check cxt topT ~topA ~topU = case (topT, force cxt topA) of
     u <- check (define x va au vt cxt) u topA topU
     pure $ Let x a au t u
 
-  (RHole, topA) -> do
+  (RHole, _) -> do
     freshMeta cxt topA topU
 
   -- special case for saturated coe
-  (RAppE (unSrc -> RAppE (unSrc -> RCoe) p) t, topA) -> do
+  (RAppE (unSrc -> RAppE (unSrc -> RCoe) p) t, _) -> do
     (t, va, au) <- insert cxt $ infer cxt t
     unifyTypes cxt (VU au) (VU topU)
     p <- checkEq cxt p (VU au) va topA
     -- p <- check cxt p (vEq cxt (VU au) va topA) Prop
     pure (tCoe au (quote cxt va) (quote cxt topA) p t)
 
-  (t, topA) -> do
+  (t, _) -> do
     (t, va, au) <- insert cxt $ infer cxt t
     -- traceShowM ("inferred", showTm' cxt t, showVal cxt va, forceU au)
     unifyTypes cxt (VU au) (VU topU)
@@ -535,7 +545,7 @@ infer cxt = \case
   RApp t u i -> do
     (t, topA, topU) <- case i of Expl -> insert cxt $ infer cxt t
                                  _    -> infer cxt t
-    case force cxt topA of
+    case unglue (force cxt topA) of
       VPi x i' a au b -> do
         unless (i == i') $
           report cxt $ IcitMismatch i i'
@@ -588,32 +598,32 @@ infer cxt = \case
     pure (Eq, ty, Set)
 
   RRefl -> do
-    let ty = VPiIS "A" VSet \ ~a -> VPiIS "x" a \ ~x -> VEq a x x
+    let ty = VPiIS "A" VSet \ ~a -> VPiIS "x" a \ ~x -> vEq cxt a x x
     pure (Refl, ty, Prop)
 
   RCoe -> do
     u <- UMeta <$> newU
     let ty = VPiIS "A" (VU u) \ ~a -> VPiIS "B" (VU u) \ ~b ->
-             VPiEP "p" (VEq (VU u) a b) \ ~p -> VPi "t" Expl a u \ ~_ -> b
+             VPiEP "p" (vEq cxt (VU u) a b) \ ~p -> VPi "t" Expl a u \ ~_ -> b
     pure (Coe u, ty, u)
 
   RSym -> do
     let ty = VPiIS "A" VSet \ ~a -> VPiIS "x" a \ ~x ->
-             VPiIS "y" a \ ~y -> VPiEP "p" (VEq a x y) \ ~p -> VEq a y x
+             VPiIS "y" a \ ~y -> VPiEP "p" (vEq cxt a x y) \ ~p -> vEq cxt a y x
     pure (Sym, ty, Prop)
 
   RTrans -> do
     let ty = VPiIS "A" VSet \ ~a -> VPiIS "x" a \ ~x ->
              VPiIS "y" a \ ~y -> VPiIS "z" a \ ~z ->
-             VPiEP "p" (VEq a x y) \ ~p -> VPiEP "q" (VEq a y z) \ ~q ->
-             VEq a x z
+             VPiEP "p" (vEq cxt a x y) \ ~p -> VPiEP "q" (vEq cxt a y z) \ ~q ->
+             vEq cxt a x z
     pure (Trans, ty, Prop)
 
   RAp -> do
     let ty = VPiIS "A" VSet \ ~a -> VPiIS "B" VSet \ ~b ->
              VPiES "f" (VPiES "_" a (const b)) \ ~f -> VPiIS "x" a \ ~x ->
-             VPiIS "y" a \ ~y -> VPiEP "p" (VEq a x y) \ ~p ->
-             VEq b (vApp f x Set Expl) (vApp f y Set Expl)
+             VPiIS "y" a \ ~y -> VPiEP "p" (vEq cxt a x y) \ ~p ->
+             vEq cxt b (vApp f x Set Expl) (vApp f y Set Expl)
     pure (Ap, ty, Prop)
 
   RSg x a b -> do
@@ -630,13 +640,13 @@ infer cxt = \case
 
   RProj1 t -> do
     (t, sg, sgu) <- infer cxt t
-    case force cxt sg of
+    case unglue (force cxt sg) of
       VSg x a au b bu -> pure (Proj1 t sgu, a, au)
       sg              -> report cxt $ ExpectedSg (quote cxt sg)
 
   RProj2 t -> do
     (t, sg, sgu) <- infer cxt t
     let ~vt = eval cxt t
-    case force cxt sg of
+    case unglue (force cxt sg) of
       VSg x a au b bu -> pure (Proj2 t sgu, b (vProj1 vt sgu), bu)
       sg              -> report cxt $ ExpectedSg (quote cxt sg)

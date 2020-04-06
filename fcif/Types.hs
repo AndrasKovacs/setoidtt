@@ -235,6 +235,9 @@ data Val
   | VTop
   | VTt
   | VBot
+  | VEqGlue Val Val Val Val -- ^ (VGlue a t u b) means that b is a type which is definitionally
+                            --   Equal to (Eq a t u).
+                            --   Invariant: b is a canonical type *different* from Eq!
   | VEq Val Val Val
   | VSg Name ~Val U (VTy -> VTy) U
   | VPair ~Val U ~Val U

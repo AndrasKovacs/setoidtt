@@ -84,7 +84,7 @@ test1 = main' "elab" $ unlines [
   "Set"
   ]
 
-test2 = main' "nf" $ unlines [
+test2 = main' "elab" $ unlines [
   "let foo : (p : Eq {Set} Set Prop)(A : Set) → Prop",
   "    = λ p A. coe p A in",
   "let tr : {A : Set}(B : A → Set){x y} → Eq {A} x y → B x → B y",
@@ -96,7 +96,11 @@ test2 = main' "nf" $ unlines [
 
   "let picoe : (A B C D : Set)(p : Eq (A → B) (C → D))(f : A → B) → C → D",
   "    = λ A B C D p f. coe p f in",
-  "picoe"
+
+  "let foo : Eq {Set} Set Set = refl in",
+  "let brek : Set × Set = coe (refl, λ _. refl) (Set, Set) in",
+  "let brek2 : Set × Set = coe (ap (λ x. x) (sym (ap (λ x. x)(refl, λ _. refl)))) (Set, Set) in",
+  "Set"
 
   ]
 

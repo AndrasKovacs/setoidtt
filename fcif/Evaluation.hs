@@ -34,9 +34,9 @@ force l = \case
       vAppSp (vCoe l (forceU u) (force l a) (force l b) (force l p) (force l t)) sp
     _ -> VNe h sp
 
-  VEq a x y    -> vEq l (force l a) (force l x) (force l y)
-  VU u         -> VU (forceU u)
-  v            -> v
+  VEq a t u -> vEq l (force l a) (force l t) (force l u)
+  VU u      -> VU (forceU u)
+  v         -> v
 
 forceU :: U -> U
 forceU = \case
@@ -108,52 +108,55 @@ infixl 8 ■
 infixl 8 □
 
 vEq :: Lvl -> Val -> Val -> Val -> Val
-vEq l topA ~topX ~topY = case topA of
+vEq l topA ~topX ~topY =
+  let stuck = VEq topA topX topY
+      glue  = VEqGlue topA topX topY in
+  case topA of
+    VU Prop ->
+      glue (vAnd (vImpl topX topY) (vImpl topY topX))
 
-  VU Prop ->
-    vAnd (vImpl topX topY) (vImpl topY topX)
+    VU Set -> case (topX, topY) of
 
-  VU Set -> case (topX, topY) of
+      (VU Set,  VU Set)  -> glue VTop
+      (VU Prop, VU Prop) -> glue VTop
 
-    (VU Set,  VU Set)  -> VTop
-    (VU Prop, VU Prop) -> VTop
-
-    (VPi x i a au b, VPi x' i' a' au' b') | i == i' ->
-      case univConv au au' of
-        Nothing    -> VEq topA topX topY
-        Just False -> VBot
-        Just True  ->
-          vEx "p" (vEq l (VU au) a a') \p →
-          vAll (pick x x') a \x → vEq l (VU Set) (b x) (b' (vCoe l au a a' p x))
-
-    (VSg x a au b bu, VSg x' a' au' b' bu') ->
-      case (univConv au au', univConv bu bu') of
-        (Just b1, Just b2)
-          | b1 && b2  ->
+      (VPi x i a au b, VPi x' i' a' au' b') | i == i' ->
+        case univConv au au' of
+          Nothing    -> stuck
+          Just False -> glue VBot
+          Just True  -> glue (
             vEx "p" (vEq l (VU au) a a') \p →
-            vAll (pick x x') a \x → vEq l (VU Set) (b x) (b' (vCoe l au a a' p x))
-          | otherwise -> VBot
-        _ -> VEq topA topX topY
+            vAll (pick x x') a \x → vEq l (VU Set) (b x) (b' (vCoe l au a a' p x)))
 
-    (VNe{}, _) -> VEq topA topX topY
-    (_, VNe{}) -> VEq topA topX topY
-    _          -> VBot
+      (VSg x a au b bu, VSg x' a' au' b' bu') ->
+        case (univConv au au', univConv bu bu') of
+          (Just b1, Just b2)
+            | b1 && b2  ->
+              glue (
+                vEx "p" (vEq l (VU au) a a') \p →
+                vAll (pick x x') a \x → vEq l (VU Set) (b x) (b' (vCoe l au a a' p x)))
+            | otherwise -> glue  VBot
+          _ -> stuck
 
-  VU _ -> VEq topA topX topY
+      (VNe{}, _) -> stuck
+      (_, VNe{}) -> stuck
+      _          -> glue VBot
 
-  VPi x i a au b ->
-    vAll x a \x -> vEq l (b x) (vApp topX x au i) (vApp topY x au i)
+    VU _ -> stuck
 
-  VSg x a au b bu ->
-    let sgu = au <> bu
-        p1x = vProj1 topX sgu
-        p1y = vProj1 topY sgu
-        p2x = vProj2 topX sgu
-        p2y = vProj2 topY sgu
-    in vEx "p" (vEq l a p1x p1y) \p -> vEq l (b p1y) (vCoe l bu (b p1x) (b p1y) p p2x) p2y
+    VPi x i a au b -> glue (
+      vAll x a \x -> vEq l (b x) (vApp topX x au i) (vApp topY x au i))
 
-  VNe{} -> VEq topA topX topY
-  _     -> error "impossible"
+    VSg x a au b bu -> glue (
+      let sgu = au <> bu
+          p1x = vProj1 topX sgu
+          p1y = vProj1 topY sgu
+          p2x = vProj2 topX sgu
+          p2y = vProj2 topY sgu
+      in vEx "p" (vEq l a p1x p1y) \p -> vEq l (b p1y) (vCoe l bu (b p1x) (b p1y) p p2x) p2y)
+
+    VNe{} -> stuck
+    _     -> error "impossible"
 
 tryRegularity :: Lvl -> U -> Val -> Val -> Val -> Val -> Val
 tryRegularity l ~u a b ~p ~t =
@@ -223,21 +226,21 @@ eval vs l = go where
     Eq             -> VLamIS "A" VSet \ ~a -> VLamES "x" a \ ~x -> VLamES "y" a \ ~y ->
                       vEq l a x y
     Coe u          -> VLamIS "A" (VU u) \ ~a -> VLamIS "B" (VU u) \ ~b ->
-                      VLamEP "p" (VEq (VU u) a b) \ ~p -> VLam "t" Expl a u \ ~t ->
+                      VLamEP "p" (vEq l (VU u) a b) \ ~p -> VLam "t" Expl a u \ ~t ->
                       vCoe l u a b p t
     Exfalso u      -> VLamIS "A" (VU u) \ ~a -> VLamEP "p" VBot \ ~t ->
                       vExfalso u a t
     Refl           -> VLamIS "A" VSet \ ~a -> VLamIS "x" a \ ~x -> vRfl a x
     Sym            -> VLamIS "A" VSet \ ~a -> VLamIS "x" a \ ~x ->
-                      VLamIS "y" a \ ~y -> VLamEP "p" (VEq a x y) \ ~p ->
+                      VLamIS "y" a \ ~y -> VLamEP "p" (vEq l a x y) \ ~p ->
                       vSym a x y p
     Trans          -> VLamIS "A" VSet \ ~a -> VLamIS "x" a \ ~x ->
                       VLamIS "y" a \ ~y -> VLamIS "z" a \ ~z ->
-                      VLamEP "p" (VEq a x y) \ ~p -> VLamEP "q" (VEq a y z) \ ~q ->
+                      VLamEP "p" (vEq l a x y) \ ~p -> VLamEP "q" (vEq l a y z) \ ~q ->
                       vTrans a x y z p q
     Ap             -> VLamIS "A" VSet \ ~a -> VLamIS "B" VSet \ ~b ->
                       VLamES "f" (VPiES "_" a (const b)) \ ~f -> VLamIS "x" a \ ~x ->
-                      VLamIS "y" a \ ~y -> VLamEP "p" (VEq a x y) \ ~p ->
+                      VLamIS "y" a \ ~y -> VLamEP "p" (vEq l a x y) \ ~p ->
                       vAp a b f x y p
     Sg x a au b bu -> VSg x (go a) au (goBind b) bu
     Pair t tu u uu -> VPair (go t) tu (go u) uu
@@ -269,6 +272,7 @@ quote d = go where
     VTop            -> Top
     VTt             -> Tt
     VBot            -> Bot
+    VEqGlue a t u b -> go b
     VEq a t u       -> tEq (go a) (go t) (go u)
 
     VSg x a au b bu -> Sg x (go a) au (goBind b) bu
@@ -303,6 +307,11 @@ conversion lvl un l r = (Yes <$ goTop lvl un l r) `catch` pure where
     go un t t' = case forceU un of
       Prop -> pure ()
       _    -> case (force lvl t, force lvl t') of
+        (VEqGlue _ _ _ b, t') -> go Set b t'
+        (t, VEqGlue _ _ _ b') -> go Set t b'
+
+        (VEq a x y, VEq a' x' y') -> go Set a a' >> go Set x x' >> go Set y y'
+
         (VLam x _ a au t, VLam x' _ _ _ t') -> goBind (pick x x') a au un t t'
         (VLam x i a au t, t')               -> goBind x a au un t (\ ~v -> vApp t' v au i)
         (t, VLam x' i' a' au' t')           -> goBind x' a' au' un (\ ~v -> vApp t v au' i') t'
@@ -333,7 +342,6 @@ conversion lvl un l r = (Yes <$ goTop lvl un l r) `catch` pure where
         (VTt, VTt)    -> pure ()
         (VBot, VBot)  -> pure ()
 
-        (VEq a x y, VEq a' x' y') -> go Set a a' >> go Set x x' >> go Set y y'
         (VNe h sp, VNe h' sp') -> case (h, h') of
 
           (HVar x, HVar x') | x == x' -> goSp  sp sp'
