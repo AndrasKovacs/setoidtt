@@ -1,7 +1,5 @@
 module Main where
 
--- TODO: remove Prop coercion (unnecessary in the presence of propext)
-
 import Control.Exception
 import System.Environment
 import System.Exit
@@ -84,6 +82,32 @@ test1 = main' "elab" $ unlines [
   "Set"
   ]
 
+test = main' "nf" $ unlines [
+  -- "let ₁₂ : {A : Set}{B : A → Set}{C : (a : A) → B a → Set}",
+  -- " → (inp : (a : A) × (b : B a) × C a b)",
+  -- " → B (₁ inp)",
+  -- " = λ inp . ₁ (₂ inp) in",
+
+  -- "let foo : ((A : Set) × A) → Set = λ Γ. ₁ Γ → ₁ Γ in",
+  -- "Set"
+
+  -- "let ₁₂ : {A : Set}{B : A → Set}{C : (a : A) → B a → Set}",
+  -- "         → (inp : (a : A) × (b : B a) × C a b)",
+  -- "      → B (₁ inp)",
+  -- "  = λ inp. ₁ (₂ inp) in",
+  -- "let ₂₂ : {A : Set}{B : A → Set}{C : (a : A) → B a → Set}",
+  -- "         → (inp : (a : A) × (b : B a) × C a b)",
+  -- "      → C (₁ inp) (₁₂ inp)",
+  -- "  = λ inp. ₂ (₂ inp) in",
+  -- "let Conᴺ : Set",
+  -- "  = (N : Set) × N × (N → N) in",
+  -- "let Subᴺ : Conᴺ → Conᴺ → Set",
+  -- "  = λ Γ Δ. (Nᴹ : ₁ Γ → ₁ Δ) × Set in",
+  -- "Set  "
+
+  "(n m : _) → Eq {(A : Set) × Eq A A} n m"
+  ]
+
 test2 = main' "elab" $ unlines [
   "let foo : (p : Eq {Set} Set Prop)(A : Set) → Prop",
   "    = λ p A. coe p A in",
@@ -112,8 +136,8 @@ test4 = main' "elab" $ unlines [
   " (p : (p : Eq {Set} A C) × ((x : A) → Eq {Set} B D))",
   " (f : A → B)",
   " (x : C).",
-  " coe {B} {D} ((π₂ p) (coe {C} {A} (sym {Set} {A} {C} (π₁ p)) x)) (f (coe {C} {A}",
-  " (sym {Set} {A} {C} (π₁ p)) x))  "
+  " coe {B} {D} ((π₂ p) (coe {C} {A} (sym {Set} {A} {C} (₁ p)) x)) (f (coe {C} {A}",
+  " (sym {Set} {A} {C} (₁ p)) x))  "
   ]
 
 test3 = main' "elab" $ unlines [
@@ -124,7 +148,7 @@ test3 = main' "elab" $ unlines [
   "let theP : (A : Prop) → A → A = λ A x. x in",
 
   "let coeS : {A B : Set}  → Eq A B → A → B = coe in",
-  "let coeP : {A B : Prop} → Eq {Prop} A B → A → B = λ p. π₁ p in ",
+  "let coeP : {A B : Prop} → Eq {Prop} A B → A → B = λ p. ₁ p in ",
   "let trS : {A : Set}(B : A → Set){x y} → Eq x y → B x → B y",
   "    = λ {A} B {x}{y} p bx. coe (ap B p) bx in",
   "let trP : {A : Set}(B : A → Prop){x y} → Eq x y → B x → B y",

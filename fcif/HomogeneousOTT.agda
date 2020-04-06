@@ -73,7 +73,8 @@ postulate
   Prf≡    : (Prf P ≡ Prf Q) ↦ (P ≡ Q)
 
   λ≡      : {f g : (x : A₀) → B₀ x} → (f ≡ g) ↦ (∀ x → f x ≡ g x)
-  ,≡      : {t u : Σ A₀ B₀} → (t ≡ u) ↦ ΣPP (₁ t ≡ ₁ u) λ e → coe (ap B₀ e) (₂ t) ≡ ₂ u
+  ,≡      : {t u : Σ A₀ B₀} → (t ≡ u) ↦ ΣPP (₁ t ≡ ₁ u) λ p →
+                 coe {B₀ (₁ t)}{B₀ (₁ u)}(ap B₀ {₁ t}{₁ u} p) (₂ t) ≡ ₂ u
   zero≡   : (zero ≡ zero) ↦ True
   suc≡    : ∀ n m → (suc n ≡ suc m) ↦ (n ≡ m)
 

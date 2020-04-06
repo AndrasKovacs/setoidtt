@@ -26,16 +26,17 @@ data UnifyError
   | SpineError [Name] Tm Tm SpineError
   | StrengtheningError [Name] Tm Tm StrengtheningError
   | RelevantMetaInIrrelevantMode MId
+  | ProjMismatch
   deriving (Show, Exception)
 
 data ElabError
   = UnifyErrorWhile Tm Tm UnifyError
-  -- | SubsumptionErrorWhile Tm Tm UnifyError
   | NameNotInScope Name
   | ExpectedFunction Tm
   | ExpectedType Tm Tm
   | IcitMismatch Icit Icit
   | ExpectedSg Tm
+  | UnappliedProj
 
 data Err = Err {
   errNames :: [Name],
@@ -87,6 +88,8 @@ showUnifyError ns e = case e of
       (showTm ns lhs) (showTm ns rhs)
   RelevantMetaInIrrelevantMode m ->
     error (printf "Relevant meta cannot be solved in irrelevant mode: %s" (show m))
+  ProjMismatch ->
+    "Mismatched Σ projections"
 
 showError :: [Name] -> ElabError -> String
 showError ns = \case
@@ -111,3 +114,5 @@ showError ns = \case
     (show i) (show i')
   ExpectedSg ty ->
     "Expected a pair type, instead inferred:\n\n  " ++ showTm ns ty
+  UnappliedProj ->
+    "Projections must be fully applied."

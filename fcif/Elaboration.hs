@@ -372,8 +372,11 @@ unify rel cxt un l r = go un l r where
     (SNil, SNil)                                   -> pure ()
     (SApp sp u uu i, SApp sp' u' uu' i') | i == i' -> goSp sp sp' >>
                                                       goU uu uu' >> go uu u u'
+    (SProj1 sp spu, SProj1 sp' spu')               -> goSp sp sp' >> goU spu spu'
+    (SProj2 sp spu, SProj2 sp' spu')               -> goSp sp sp' >> goU spu spu'
+    (SProj1{}     , SProj2{}       )               -> throwIO ProjMismatch
+    (SProj2{}     , SProj1{}       )               -> throwIO ProjMismatch
     _                                              -> error "impossible"
-
 
 
 -- Elaboration
@@ -445,9 +448,6 @@ checkEq cxt t a l r = case t of
   t ->
     check cxt t (vEq cxt a l r) Prop
 
-unglue :: Val -> Val
-unglue (VEqGlue _ _ _ t) = t
-unglue t                 = t
 
 check :: Cxt -> Raw -> VTy -> U -> IO Tm
 check cxt topT (force cxt -> topA) ~topU = case (topT, unglue topA) of
@@ -535,6 +535,33 @@ infer cxt = \case
           report cxt (NameNotInScope x)
         go _ _ _ _ = error "impossible"
     go (cxt^.names) (cxt^.nameOrigin) (cxt^.types) 0
+
+  RSg x a b -> do
+    (a, au) <- inferTy cxt a
+    let ~va = eval cxt a
+    (b, bu) <- inferTy (bind x NOSource va au cxt) b
+    pure (Sg x a au b bu, VU (au <> bu), Set)
+
+  RPair t u -> do -- we only try to infer non-dependent Sg
+    (t, a, au) <- infer cxt t
+    (u, b, bu) <- infer cxt u
+    pure (Pair t au u bu, VSg "_" a au (const b) bu, au <> bu)
+
+  RAppE (unSrc -> RProj1) t -> do
+    (t, sg, sgu) <- infer cxt t
+    case unglue (force cxt sg) of
+      VSg x a au b bu -> pure (Proj1 t sgu, a, au)
+      sg              -> report cxt $ ExpectedSg (quote cxt sg)
+
+  RAppE (unSrc -> RProj2) t -> do
+    (t, sg, sgu) <- infer cxt t
+    let ~vt = eval cxt t
+    case unglue (force cxt sg) of
+      VSg x a au b bu -> pure (Proj2 t sgu, b (vProj1 vt sgu), bu)
+      sg              -> report cxt $ ExpectedSg (quote cxt sg)
+
+  RProj1 -> report cxt UnappliedProj
+  RProj2 -> report cxt UnappliedProj
 
   RPi x i a b -> do
     (a, au) <- inferTy cxt a
@@ -625,28 +652,3 @@ infer cxt = \case
              VPiIS "y" a \ ~y -> VPiEP "p" (vEq cxt a x y) \ ~p ->
              vEq cxt b (vApp f x Set Expl) (vApp f y Set Expl)
     pure (Ap, ty, Prop)
-
-  RSg x a b -> do
-    (a, au) <- inferTy cxt a
-    let ~va = eval cxt a
-    (b, bu) <- inferTy (bind x NOSource va au cxt) b
-    pure (Sg x a au b bu, VU (au <> bu), Set)
-
-  -- we only try to infer non-dependent Sg
-  RPair t u -> do
-    (t, a, au) <- infer cxt t
-    (u, b, bu) <- infer cxt u
-    pure (Pair t au u bu, VSg "_" a au (const b) bu, au <> bu)
-
-  RProj1 t -> do
-    (t, sg, sgu) <- infer cxt t
-    case unglue (force cxt sg) of
-      VSg x a au b bu -> pure (Proj1 t sgu, a, au)
-      sg              -> report cxt $ ExpectedSg (quote cxt sg)
-
-  RProj2 t -> do
-    (t, sg, sgu) <- infer cxt t
-    let ~vt = eval cxt t
-    case unglue (force cxt sg) of
-      VSg x a au b bu -> pure (Proj2 t sgu, b (vProj1 vt sgu), bu)
-      sg              -> report cxt $ ExpectedSg (quote cxt sg)

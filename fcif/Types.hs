@@ -56,9 +56,9 @@ data Raw
 
   | RSg Name Raw Raw
   | RPair Raw Raw
-  | RProj1 Raw
-  | RProj2 Raw
 
+  | RProj1
+  | RProj2
   | RTop
   | RTt
   | RBot                             -- ^ ⊥ : Prop
@@ -220,6 +220,10 @@ axiomToTm = \case
   AAp        -> Ap
   ATrans     -> Trans
   AExfalso u -> Exfalso u
+
+unglue :: Val -> Val
+unglue (VEqGlue _ _ _ t) = t
+unglue t                 = t
 
 data Head
   = HVar Lvl

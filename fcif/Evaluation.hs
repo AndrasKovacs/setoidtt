@@ -134,7 +134,7 @@ vEq l topA ~topX ~topY =
             | b1 && b2  ->
               glue (
                 vEx "p" (vEq l (VU au) a a') \p →
-                vAll (pick x x') a \x → vEq l (VU Set) (b x) (b' (vCoe l au a a' p x)))
+                vAll (pick x x') a \x → vEq l (VU bu) (b x) (b' (vCoe l au a a' p x)))
             | otherwise -> glue  VBot
           _ -> stuck
 
@@ -153,10 +153,14 @@ vEq l topA ~topX ~topY =
           p1y = vProj1 topY sgu
           p2x = vProj2 topX sgu
           p2y = vProj2 topY sgu
-      in vEx "p" (vEq l a p1x p1y) \p -> vEq l (b p1y) (vCoe l bu (b p1x) (b p1y) p p2x) p2y)
+      in vEx "p" (vEq l a p1x p1y) \p ->
+         vEq l (b p1x)
+               (vCoe l bu (b p1x) (b p1y)
+                          (vAp a (VU bu) (VLam x Expl a au b) p1x p1y p) p2x)
+               p2y)
 
     VNe{} -> stuck
-    _     -> error "impossible"
+    _     -> stuck -- error "impossible"
 
 tryRegularity :: Lvl -> U -> Val -> Val -> Val -> Val -> Val
 tryRegularity l ~u a b ~p ~t =

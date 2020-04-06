@@ -37,7 +37,7 @@ pBind    = pIdent <|> symbol "_"
 
 keywords :: S.Set String
 keywords = S.fromList [
-  "let", "in", "λ", "Set", "Prop", "π₁", "π₂", "trans",
+  "let", "in", "λ", "Set", "Prop", "₁", "₂", "trans",
   "⊤",   "tt", "⊥", "exfalso", "Eq", "refl", "coe", "sym", "ap"]
 
 pIdent :: Parser Name
@@ -62,6 +62,8 @@ pAtom  =
                <|> (RSym     <$  symbol "sym"    )
                <|> (RTrans   <$  symbol "trans"  )
                <|> (RAp      <$  symbol "ap"     )
+               <|> (RProj1   <$  symbol "₁"      )
+               <|> (RProj2   <$  symbol "₂"      )
                <|> (RHole    <$  char   '_'      ))
 
   <|> do {
@@ -79,13 +81,9 @@ pArg =
 
 pSpine :: Parser Raw
 pSpine = do
-  h <- pAtom
+  h    <- pAtom
   args <- many pArg
   pure $ foldl (\t (i, u) -> RApp t u i) h args
-
-pProj :: Parser Raw
-pProj = (RProj1 <$> (symbol "π₁" *> pTm))
-    <|> (RProj2 <$> (symbol "π₂" *> pTm))
 
 pLamBinder :: Parser (Name, Maybe Raw, Icit)
 pLamBinder =
@@ -130,13 +128,6 @@ pFunOrSpineOrPair = do
       Just _  -> RSg "_" sp <$> pTm
       Nothing -> pure sp
 
--- pFunOrSpineOrPair :: Parser Raw
--- pFunOrSpineOrPair = do
---   sp <- pSpine
---   optional pArrow >>= \case
---     Nothing -> pure sp
---     Just _  -> RPi "_" Expl sp <$> pTm
-
 pLet :: Parser Raw
 pLet = do
   symbol "let"
@@ -149,7 +140,7 @@ pLet = do
   pure $ RLet x (maybe RHole id ann) t u
 
 pTm :: Parser Raw
-pTm = withPos (pLam <|> pLet <|> pProj <|> try pPi <|> try pSg <|> pFunOrSpineOrPair)
+pTm = withPos (pLam <|> pLet <|> try pPi <|> try pSg <|> pFunOrSpineOrPair)
 
 pSrc :: Parser Raw
 pSrc = ws *> pTm <* eof

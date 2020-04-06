@@ -119,8 +119,8 @@ go p ns = \case
         (parens ((x++).(" : "++).go False ns a)
          .(" × "++). go (case b of Pi{} -> True; _ -> False) (x:ns) b)
 
-  Proj1 t tu     -> showParen p (("π₁ "++).go True ns t)
-  Proj2 t tu     -> showParen p (("π₂ "++).go True ns t)
+  Proj1 t tu     -> showParen p (("₁ "++).go True ns t)
+  Proj2 t tu     -> showParen p (("₂ "++).go True ns t)
   Pair t tu u uu -> parens (go False ns t . (", "++) . go False ns u)
 
 showTm :: [Name] -> Tm -> String
