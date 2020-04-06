@@ -1,0 +1,72 @@
+
+-- lib
+--------------------------------------------------------------------------------
+
+let ₁₂ : {A : Set}{B : A → Set}{C : (a : A) → B a → Set}
+         → (inp : (a : A) × (b : B a) × C a b)
+	 → B (₁ inp)
+  = λ inp. ₁ (₂ inp) in
+
+let ₂₂ : {A : Set}{B : A → Set}{C : (a : A) → B a → Set}
+         → (inp : (a : A) × (b : B a) × C a b)
+	 → C (₁ inp) (₁₂ inp)
+  = λ inp. ₂ (₂ inp) in
+
+let the  : (A : Set) → A → A = λ A x. x in
+let theP : (A : Prop) → A → A = λ A x. x in
+
+-- Awodey-Frey-Speight encoding of natural numbers
+--------------------------------------------------------------------------------
+
+let Conᴺ : Set
+  = (N : Set) × N × (N → N) in
+
+let Subᴺ : Conᴺ → Conᴺ → Set
+  = λ Γ Δ. (Nᴹ : ₁ Γ → ₁ Δ)
+         × Eq (Nᴹ (₁₂ Γ)) (₁₂ Δ)
+	 × ((n : _) → Eq (Nᴹ (₂₂ Γ n)) (₂₂ Δ (Nᴹ n))) in
+
+let Tyᴺ : Conᴺ → Set
+  = λ Γ. (Nᴰ : ₁ Γ → Set) × Nᴰ (₁₂ Γ) × ({n} → Nᴰ n → Nᴰ (₂₂ Γ n)) in
+
+let Nat : Set
+  = (f : (Γ : Conᴺ) → ₁ Γ)
+  × ({Γ Δ}(σ : Subᴺ Γ Δ) → Eq (₁ σ (f Γ)) (f Δ)) in
+
+let zero : Nat
+  = (₁₂, λ σ. ₁ (₂ σ)) in
+
+-- We need some more meme magic here to infer the ₂ n arguments!
+-- Agda can probably do it because record types are nominal, but our
+-- sigmas are not.
+let suc : Nat → Nat
+  = λ n. (λ Γ. ₂₂ Γ (₁ n Γ),
+          λ {Γ}{Δ} σ. trans (₂ (₂ σ) (₁ n Γ)) (ap (₂₂ Δ) (₂ n {Γ}{Δ} σ))) in
+
+let syn : Conᴺ
+  = (Nat, (zero, suc)) in
+
+let rec : (Γ : Conᴺ) → Subᴺ syn Γ
+  = λ Γ. (λ n. ₁ n Γ, (refl, λ _. refl)) in
+
+let ind : (A : Tyᴺ syn) → (n : Nat) → ₁ A n
+  = λ A n.
+  let Γ : Conᴺ = ((n : Nat) × ₁ A n, ((zero, ₁₂ A), λ np. (suc (₁ np), ₂₂ A (₂ np)))) in
+  let res  = ₁ n Γ in
+  let res1 = ₁ res in
+  let res2 = ₂ res in
+  let proj1 : Subᴺ Γ syn = (λ n. ₁ n, (refl, λ _. refl)) in
+  let lem : Eq res1 n = trans (₂ n {Γ}{syn} proj1) (λ Γ. ₂ n {syn}{Γ} (rec Γ)) in
+  coe (ap (₁ A) lem) res2 in
+
+let zeroβ : (A : Tyᴺ syn) → Eq (ind A zero) (₁₂ A)
+    = λ _. refl in
+
+-- doesn't work?
+-- let sucβ : (A : Tyᴺ syn)(n : Nat) → Eq (ind A (suc n)) (₂₂ A (ind A n))
+--     = λ _ _. _ in
+
+let add : Nat → Nat → Nat
+  = ind (λ _. Nat → Nat, (λ b. b, λ rec b. suc (rec b))) in
+
+add

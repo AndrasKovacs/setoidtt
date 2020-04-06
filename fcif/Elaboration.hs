@@ -12,6 +12,7 @@ Current design:
 - ⊤ and ⊥ are in Prop, Π and Σ are universe-polymorphic
 - exfalso and coe are univ-polymorphic in target
 
+- simple projection unification (just drop matching projections from lhs and rhs)
 
 
 OLD notes
@@ -248,18 +249,39 @@ solveMeta cxt rel m sp rhs = do
   let closedRhs = closingTm (metaTy, spLen, spVarNames) rhs
   writeMeta m (Solved (eval emptyCxt closedRhs))
 
+-- | Fresh meta creation attempts to immediately eta-expand
+--   Sg and Top.
 freshMeta :: Cxt -> VTy -> U -> IO Tm
-freshMeta cxt (quote cxt -> a) au = do
-  let metaTy = closingTy cxt a
-  m <- newMeta (eval emptyCxt metaTy) au
+freshMeta cxt a au = case force cxt a of
+  VTop            -> pure Tt
+  VSg x a au b bu -> do
+    p1 <- freshMeta cxt a au
+    p2 <- freshMeta cxt (b (eval cxt p1)) bu
+    pure (Pair p1 au p2 bu)
+  (quote cxt -> a) -> do
+    let metaTy = closingTy cxt a
+    m <- newMeta (eval emptyCxt metaTy) au
 
-  let vars :: Types -> (Spine, Lvl)
-      vars TNil                              = (SNil, 0)
-      vars (TDef (vars -> (sp, !d)) _ _)     = (sp, d + 1)
-      vars (TBound (vars -> (sp, !d)) _ un)  = (SApp sp (VVar d) un Expl, d + 1)
+    let vars :: Types -> (Spine, Lvl)
+        vars TNil                              = (SNil, 0)
+        vars (TDef (vars -> (sp, !d)) _ _)     = (sp, d + 1)
+        vars (TBound (vars -> (sp, !d)) _ un)  = (SApp sp (VVar d) un Expl, d + 1)
 
-  let sp = fst $ vars (cxt^.types)
-  pure (quote cxt (VNe (HMeta m) sp))
+    let sp = fst $ vars (cxt^.types)
+    pure (quote cxt (VNe (HMeta m) sp))
+
+-- freshMeta :: Cxt -> VTy -> U -> IO Tm
+-- freshMeta cxt (quote cxt -> a) au = do
+--   let metaTy = closingTy cxt a
+--   m <- newMeta (eval emptyCxt metaTy) au
+
+--   let vars :: Types -> (Spine, Lvl)
+--       vars TNil                              = (SNil, 0)
+--       vars (TDef (vars -> (sp, !d)) _ _)     = (sp, d + 1)
+--       vars (TBound (vars -> (sp, !d)) _ un)  = (SApp sp (VVar d) un Expl, d + 1)
+
+--   let sp = fst $ vars (cxt^.types)
+--   pure (quote cxt (VNe (HMeta m) sp))
 
 unifyTypes :: Cxt -> Val -> Val -> IO ()
 unifyTypes cxt l r =

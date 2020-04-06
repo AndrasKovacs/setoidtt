@@ -105,7 +105,7 @@ test = main' "nf" $ unlines [
   -- "  = λ Γ Δ. (Nᴹ : ₁ Γ → ₁ Δ) × Set in",
   -- "Set  "
 
-  "(n m : _) → Eq {(A : Set) × Eq A A} n m"
+  -- "(n m : _) → Eq {(A : Set) × Eq A A} n m"
   ]
 
 test2 = main' "elab" $ unlines [

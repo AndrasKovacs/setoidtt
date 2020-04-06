@@ -144,23 +144,29 @@ vEq l topA ~topX ~topY =
 
     VU _ -> stuck
 
+    -- note that funext is always by explicit function!
     VPi x i a au b -> glue (
-      vAll x a \x -> vEq l (b x) (vApp topX x au i) (vApp topY x au i))
+      VPi x Expl a au \ ~x -> vEq l (b x) (vApp topX x au i) (vApp topY x au i))
 
-    VSg x a au b bu -> glue (
-      let sgu = au <> bu
-          p1x = vProj1 topX sgu
-          p1y = vProj1 topY sgu
-          p2x = vProj2 topX sgu
-          p2y = vProj2 topY sgu
-      in vEx "p" (vEq l a p1x p1y) \p ->
-         vEq l (b p1x)
-               (vCoe l bu (b p1x) (b p1y)
-                          (vAp a (VU bu) (VLam x Expl a au b) p1x p1y p) p2x)
-               p2y)
+    VSg x a au b bu ->
+      let ~p1x = vProj1 topX Set
+          ~p1y = vProj1 topY Set
+          ~p2x = vProj2 topX Set
+          ~p2y = vProj2 topY Set in
+      case (au, bu) of
+        (Set,  Prop) -> vEq l a p1x p1y
+        (Set,  Set ) -> glue (
+                         vEx "p" (vEq l a p1x p1y) \p ->
+                         vEq l (b p1x)
+                               (vCoe l bu (b p1x) (b p1y)
+                                  (vAp a (VU bu) (VLam x Expl a au b) p1x p1y p) p2x)
+                               p2y)
+        (Prop, Prop) -> error "impossible"
+        (Prop, Set ) -> vEq l (b p1x) p2x p2y
+        _            -> stuck
 
     VNe{} -> stuck
-    _     -> stuck -- error "impossible"
+    _     -> error "impossible"
 
 tryRegularity :: Lvl -> U -> Val -> Val -> Val -> Val -> Val
 tryRegularity l ~u a b ~p ~t =
@@ -380,4 +386,8 @@ conversion lvl un l r = (Yes <$ goTop lvl un l r) `catch` pure where
       (SNil, SNil)                                   -> pure ()
       (SApp sp u uu i, SApp sp' u' uu' i') | i == i' -> goSp sp sp' >>
                                                         goU uu uu' >> go uu u u'
+      (SProj1 sp spu, SProj1 sp' spu')               -> goSp sp sp' >> goU spu spu'
+      (SProj2 sp spu, SProj2 sp' spu')               -> goSp sp sp' >> goU spu spu'
+      (SProj1{}     , SProj2{}       )               -> throw No
+      (SProj2{}     , SProj1{}       )               -> throw No
       _                                              -> error "impossible"
