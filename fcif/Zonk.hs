@@ -38,10 +38,10 @@ zonk vs l t = go t where
     Top            -> Top
     Tt             -> Tt
     Bot            -> Bot
-    Exfalso u      -> Exfalso u
+    Exfalso u      -> Exfalso (forceU u)
     Eq             -> Eq
     Refl           -> Refl
-    Coe u          -> Coe u
+    Coe u          -> Coe (forceU u)
     Sym            -> Sym
     Trans          -> Trans
     Ap             -> Ap

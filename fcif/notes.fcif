@@ -1,4 +1,6 @@
 
+-- Test: Awodey-Frey-Speight encoding for natural numbers
+
 -- lib
 --------------------------------------------------------------------------------
 
@@ -12,10 +14,33 @@ let ₂₂ : {A : Set}{B : A → Set}{C : (a : A) → B a → Set}
 	 → C (₁ inp) (₁₂ inp)
   = λ inp. ₂ (₂ inp) in
 
-let the  : (A : Set) → A → A = λ A x. x in
+let id   : {A : Set}  → A → A = λ x. x in
+let idP  : {A : Prop} → A → A = λ x. x in
+let the  : (A : Set)  → A → A = λ A x. x in
 let theP : (A : Prop) → A → A = λ A x. x in
 
--- Awodey-Frey-Speight encoding of natural numbers
+let isContr : Set → Set
+  = λ A. (a : A) × ((b : A) → Eq b a) in
+
+let Sing : {A : Set} → A → Set
+  = λ a. (b : _) × Eq a b in
+
+let singContr : {A a} → isContr (Sing {A} a)
+  = λ {A}{a}. ((a, refl), λ s. sym (₂ s)) in
+
+
+-- Lifting Prop to Set
+
+let Lift  : Prop → Set = λ P. Sing Set × P in
+let lift  : {P} → P → Lift P = λ p. ((Set, refl), p) in
+let lower : {P} → Lift P → P = λ lp. ₂ lp in
+
+-- other direction is definitional
+let liftlower : {P}(p : Lift P) → Eq (lift (lower p)) p
+  = λ p. ₂ (₁ p) in
+
+
+
 --------------------------------------------------------------------------------
 
 let Conᴺ : Set
@@ -31,17 +56,14 @@ let Tyᴺ : Conᴺ → Set
 
 let Nat : Set
   = (f : (Γ : Conᴺ) → ₁ Γ)
-  × ({Γ Δ}(σ : Subᴺ Γ Δ) → Eq (₁ σ (f Γ)) (f Δ)) in
+  × ((Γ Δ : _)(σ : Subᴺ Γ Δ) → Eq (₁ σ (f Γ)) (f Δ)) in
 
 let zero : Nat
-  = (₁₂, λ σ. ₁ (₂ σ)) in
+  = (₁₂, λ _ _ σ. ₁ (₂ σ)) in
 
--- We need some more meme magic here to infer the ₂ n arguments!
--- Agda can probably do it because record types are nominal, but our
--- sigmas are not.
 let suc : Nat → Nat
   = λ n. (λ Γ. ₂₂ Γ (₁ n Γ),
-          λ {Γ}{Δ} σ. trans (₂ (₂ σ) (₁ n Γ)) (ap (₂₂ Δ) (₂ n {Γ}{Δ} σ))) in
+          λ Γ Δ σ. trans (₂ (₂ σ) (₁ n Γ)) (ap (₂₂ Δ) (₂ n Γ Δ σ))) in
 
 let syn : Conᴺ
   = (Nat, (zero, suc)) in
@@ -49,24 +71,73 @@ let syn : Conᴺ
 let rec : (Γ : Conᴺ) → Subᴺ syn Γ
   = λ Γ. (λ n. ₁ n Γ, (refl, λ _. refl)) in
 
+let recZeroβ : (Γ : Conᴺ) → Eq (₁ (rec Γ) zero) (₁₂ Γ)
+  = λ _. refl in
+
+let recSucβ : (Γ : Conᴺ)(n : Nat) → Eq (₁ (rec Γ) (suc n)) (₂₂ Γ (₁ (rec Γ) n))
+  = λ _ _. refl in
+
 let ind : (A : Tyᴺ syn) → (n : Nat) → ₁ A n
   = λ A n.
   let Γ : Conᴺ = ((n : Nat) × ₁ A n, ((zero, ₁₂ A), λ np. (suc (₁ np), ₂₂ A (₂ np)))) in
-  let res  = ₁ n Γ in
-  let res1 = ₁ res in
-  let res2 = ₂ res in
+  let res = ₁ n Γ in
   let proj1 : Subᴺ Γ syn = (λ n. ₁ n, (refl, λ _. refl)) in
-  let lem : Eq res1 n = trans (₂ n {Γ}{syn} proj1) (λ Γ. ₂ n {syn}{Γ} (rec Γ)) in
-  coe (ap (₁ A) lem) res2 in
+  let lem : Eq (₁ res) n = trans (₂ n Γ syn proj1) (λ Γ. ₂ n syn Γ (rec Γ)) in
+  coe {₁ A (₁ res)}{₁ A n}(ap (₁ A) lem) (₂ res) in
 
-let zeroβ : (A : Tyᴺ syn) → Eq (ind A zero) (₁₂ A)
-    = λ _. refl in
+let indZeroβ : (A : Tyᴺ syn) → Eq (ind A zero) (₁₂ A)
+  = λ _. refl in
 
--- doesn't work?
--- let sucβ : (A : Tyᴺ syn)(n : Nat) → Eq (ind A (suc n)) (₂₂ A (ind A n))
---     = λ _ _. _ in
+ -- ₁ res =? zero
+ -- ₁ (₁₂ Γ) =? zero
+ -- ₁ (₁₂ Γ) =? zero
+ -- zero     =? zero OK
+
+ -- ₁ res =? suc n
+ -- ₁ (₁ (suc n) Γ) =? suc n
+ -- ₁ ((λ Γ. ₂₂ Γ (₁ n Γ)) Γ) =? suc n
+ -- ₁ (₂₂ Γ (₁ n Γ)) =? suc n
+ -- ₁ (suc (₁ (₁ n Γ)), ₂₂ A (₂ (₁ n Γ))) =? suc n
+ -- suc (₁ (₁ n Γ)) =? suc n
+ -- NOT definitionally the same! Hence, coe does not go away.
+
+let indSucβ : (A : Tyᴺ syn)(n : Nat) → Eq (ind A (suc n)) (₂₂ A (ind A n))
+  = λ A n . _ in
+
+-- Injectivity also not definitional
+let sucInj1 : (n m : Nat) → Eq n m -> Eq (suc n) (suc m)
+  = λ n m p. ap suc p in
+
+-- let sucInj2 : (n m : Nat) → Eq (suc n) (suc m) → Eq n m
+--   = λ n m p. p in
 
 let add : Nat → Nat → Nat
-  = ind (λ _. Nat → Nat, (λ b. b, λ rec b. suc (rec b))) in
+  = ₁ (rec (Nat → Nat, (id, λ f b. suc (f b)))) in
 
-add
+let n5  : Nat = suc (suc (suc (suc (suc zero)))) in
+let n10 : Nat = add n5 n5 in
+
+-- proof about numbers!!
+let add0 : (n : Nat) → Eq n (add n zero)
+  = λ n. lower
+    (ind (λ n. Lift (Eq n (add n zero)), (lift refl, λ {n} p. lift (ap suc (lower p)))) n)
+  in
+
+
+-- Church naturals
+--------------------------------------------------------------------------------
+
+let CNat : Set = (N : Set) → N → (N → N) → N in
+let czero : CNat = λ N z s. z in
+let csuc : CNat → CNat = λ a N z s. s (a N z s) in
+let cadd : CNat → CNat → CNat = λ a b N z s. a N (b N z s) s in
+let cmul : CNat → CNat → CNat = λ a b N z s. a N z (λ x. b N x s) in
+
+let c5 : CNat = csuc (csuc (csuc (csuc (csuc czero)))) in
+let c10 : CNat = cadd c5 c5 in
+let c100 : CNat = cmul c10 c10 in
+
+let n2c : Nat → CNat
+  = λ n. ₁ n (CNat, (czero, λ n. csuc n)) in
+
+n2c n10

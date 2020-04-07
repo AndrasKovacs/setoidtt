@@ -57,7 +57,7 @@ import ElabState
 import Errors
 import Pretty
 
-import Debug.Trace
+-- import Debug.Trace
 
 -- Context operations
 --------------------------------------------------------------------------------
@@ -270,18 +270,6 @@ freshMeta cxt a au = case force cxt a of
     let sp = fst $ vars (cxt^.types)
     pure (quote cxt (VNe (HMeta m) sp))
 
--- freshMeta :: Cxt -> VTy -> U -> IO Tm
--- freshMeta cxt (quote cxt -> a) au = do
---   let metaTy = closingTy cxt a
---   m <- newMeta (eval emptyCxt metaTy) au
-
---   let vars :: Types -> (Spine, Lvl)
---       vars TNil                              = (SNil, 0)
---       vars (TDef (vars -> (sp, !d)) _ _)     = (sp, d + 1)
---       vars (TBound (vars -> (sp, !d)) _ un)  = (SApp sp (VVar d) un Expl, d + 1)
-
---   let sp = fst $ vars (cxt^.types)
---   pure (quote cxt (VNe (HMeta m) sp))
 
 unifyTypes :: Cxt -> Val -> Val -> IO ()
 unifyTypes cxt l r =
@@ -317,7 +305,7 @@ unify rel cxt un l r = go un l r where
     (Relevant, Prop) -> do
       unify Irrelevant cxt un t t' `catch` \(e :: UnifyError) -> pure ()
 
-    _ -> case (force cxt t, force cxt t') of
+    (rel, un) -> case (force cxt t, force cxt t') of
 
       -- TODO: rigidity check. Also requires keeping track of rigid coercion,
       -- i.e. we have to know which coe is blocked on a meta and which one is blocked
@@ -360,19 +348,19 @@ unify rel cxt un l r = go un l r where
 
       (VNe h sp, VNe h' sp') -> case (h, h') of
 
-        (HVar x, HVar x') | x == x' -> goSp  sp sp'
+        (HVar x, HVar x') | x == x' -> goSp (err t t') sp sp'
         (HAxiom ax, HAxiom ax') -> case (ax, ax') of
 
-          (ARfl, ARfl)              -> goSp sp sp'
-          (ASym, ASym)              -> goSp sp sp'
-          (AAp , AAp )              -> goSp sp sp'
-          (AExfalso u, AExfalso u') -> goU u u' >> goSp sp sp'
+          (ARefl, ARefl)            -> goSp (err t t') sp sp'
+          (ASym, ASym)              -> goSp (err t t') sp sp'
+          (AAp , AAp )              -> goSp (err t t') sp sp'
+          (AExfalso u, AExfalso u') -> goU u u' >> goSp (err t t') sp sp'
           _                         -> err t t'
 
         (HCoe u a b p t, HCoe u' a' b' p' t') -> do
           goU u u' >> go Set a a' >> go Set b b' >> go Prop p p' >> go u t t'
 
-        (HMeta m, HMeta m') | m == m'   -> goSp sp sp'
+        (HMeta m, HMeta m') | m == m'   -> goSp (err t t') sp sp'
                             | otherwise -> try @SpineError (checkSp cxt sp) >>= \case
                                   Left{}  -> solveMeta cxt rel m' sp' (VNe (HMeta m) sp)
                                   Right{} -> solveMeta cxt rel m sp (VNe (HMeta m') sp')
@@ -389,16 +377,15 @@ unify rel cxt un l r = go un l r where
   goBind x a au un t t' =
     let v = VVar (cxt^.len) in unify rel (bindSrc x a au cxt) un (t v) (t' v)
 
-  goSp :: Spine -> Spine -> IO ()
-  goSp sp sp' = case (sp, sp') of
+  goSp :: IO () -> Spine -> Spine -> IO ()
+  goSp err sp sp' = case (sp, sp') of
     (SNil, SNil)                                   -> pure ()
-    (SApp sp u uu i, SApp sp' u' uu' i') | i == i' -> goSp sp sp' >>
+    (SApp sp u uu i, SApp sp' u' uu' i') | i == i' -> goSp err sp sp' >>
                                                       goU uu uu' >> go uu u u'
-    (SProj1 sp spu, SProj1 sp' spu')               -> goSp sp sp' >> goU spu spu'
-    (SProj2 sp spu, SProj2 sp' spu')               -> goSp sp sp' >> goU spu spu'
-    (SProj1{}     , SProj2{}       )               -> throwIO ProjMismatch
-    (SProj2{}     , SProj1{}       )               -> throwIO ProjMismatch
-    _                                              -> error "impossible"
+    (SProj1 sp spu, SProj1 sp' spu')               -> goSp err sp sp' >> goU spu spu'
+    (SProj2 sp spu, SProj2 sp' spu')               -> goSp err sp sp' >> goU spu spu'
+    _                                              -> err
+
 
 
 -- Elaboration
@@ -427,9 +414,7 @@ inferTy :: Cxt -> Raw -> IO (Tm, U)
 inferTy cxt a = do
   (a, au, _) <- infer cxt a
   au <- case force cxt au of
-    VSet                 -> pure Set
-    VProp                -> pure Prop
-    VU (UMeta x)         -> pure (UMeta x)
+    VU u -> pure u
     au@(VNe (HMeta{}) _) -> do
       u <- UMeta <$> newU
       unifyTypes cxt au (VU u)
@@ -449,7 +434,7 @@ checkEq cxt t a l r = case t of
     t <- checkEq cxt t a r l
     pure (tSym (quote cxt a) (quote cxt r) (quote cxt l) t)
   RAppE (unSrc -> RAppE (unSrc -> RTrans) p) q -> do
-    mid <- freshMeta cxt VSet Set
+    mid <- freshMeta cxt a Set
     let ~vmid = eval cxt mid
     p <- checkEq cxt p a l vmid
     q <- checkEq cxt q a vmid r
@@ -466,7 +451,7 @@ checkEq cxt t a l r = case t of
     unify Relevant cxt Set l (vApp vf (eval cxt x) Set Expl)
     unify Relevant cxt Set r (vApp vf (eval cxt y) Set Expl)
     p <- checkEq cxt p vb vx vy
-    pure (tAp b (quote cxt a) x y f p)
+    pure (tAp b (quote cxt a) f x y p)
   t ->
     check cxt t (vEq cxt a l r) Prop
 
@@ -605,6 +590,7 @@ infer cxt = \case
         let ~av = eval cxt a
         (b, bu) <- newTy (bind "x" NOInserted av au cxt)
         let bv ~x = Eval.eval (VDef (cxt^.vals) x) (cxt^.len + 1) b
+        unifyTypes cxt (VU bu) (VU topU)
         unifyTypes cxt (VNe (HMeta m) sp) (VPi "x" i av au bv)
         u <- check cxt u av au
         pure (App t u au i, bv (eval cxt u), bu)

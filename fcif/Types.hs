@@ -206,7 +206,7 @@ valsLen = go 0 where
   go acc (VSkip vs)  = go (acc + 1) vs
 
 data Axiom
-  = ARfl
+  = ARefl
   | ASym
   | ATrans
   | AAp
@@ -215,7 +215,7 @@ data Axiom
 
 axiomToTm :: Axiom -> Tm
 axiomToTm = \case
-  ARfl       -> Refl
+  ARefl      -> Refl
   ASym       -> Sym
   AAp        -> Ap
   ATrans     -> Trans

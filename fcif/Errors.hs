@@ -26,7 +26,6 @@ data UnifyError
   | SpineError [Name] Tm Tm SpineError
   | StrengtheningError [Name] Tm Tm StrengtheningError
   | RelevantMetaInIrrelevantMode MId
-  | ProjMismatch
   deriving (Show, Exception)
 
 data ElabError
@@ -88,8 +87,6 @@ showUnifyError ns e = case e of
       (showTm ns lhs) (showTm ns rhs)
   RelevantMetaInIrrelevantMode m ->
     error (printf "Relevant meta cannot be solved in irrelevant mode: %s" (show m))
-  ProjMismatch ->
-    "Mismatched Σ projections"
 
 showError :: [Name] -> ElabError -> String
 showError ns = \case

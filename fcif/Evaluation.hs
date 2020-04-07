@@ -8,6 +8,27 @@ import qualified Data.IntSet as IS
 import Types
 import ElabState
 
+-- import Debug.Trace
+
+-- valDbg :: Val -> String
+-- valDbg = \case
+--   VNe h _   -> case h of
+--     HVar _    -> "VNe HVar"
+--     HMeta _   -> "VNe HMeta"
+--     HAxiom ax -> "VNe " ++ show ax
+--     HCoe{}    -> "VNe HCoe"
+--   VPi{}     -> "VPi"
+--   VLam{}    -> "VLam"
+--   VU{}      -> "VU"
+--   VTop      -> "VTop"
+--   VTt       -> "VTt"
+--   VBot      -> "VBot"
+--   VEqGlue{} -> "VEqGlue"
+--   VEq{}     -> "VEq"
+--   VSg{}     -> "VSg"
+--   VPair{}   -> "VPair"
+
+
 -- Evaluation
 --------------------------------------------------------------------------------
 
@@ -23,7 +44,27 @@ vMeta m = case runLookupMeta m of
   Unsolved{} -> VMeta m
   Solved v   -> v
 
--- | Force the outermost constructor in a value.
+{-
+Choices about forcing.
+
+Approach 1: in evaluation, everything which is matched on is assumed
+to be forced. Pro: neat. Con: requires forcing universes in Sg, Pi, which
+is a bit too deep.
+
+Approach 2: in evaluation, every Val is assumed to be forced, but universes
+are *not*. Hence, even in eval every U match must force. Pro: perhaps more efficient?
+Con: less elegant.
+
+I like 1 because evaluation incurs zero overhead when we evaluate meta-free core syntax.
+Perhaps it would be the most efficient to summarize every stuck term in a VStuck,
+which would make forcing more efficient.
+
+
+-}
+
+
+-- | Force the outermost constructor. Does *not* force universes! Whenever
+--   we match on U, even in evaluation, we must force it!
 force :: Lvl -> Val -> Val
 force l = \case
   VNe h sp -> case h of
@@ -31,13 +72,12 @@ force l = \case
       Unsolved{} -> VNe h sp
       Solved v   -> force l (vAppSp v sp)
     HCoe u a b p t ->
-      vAppSp (vCoe l (forceU u) (force l a) (force l b) (force l p) (force l t)) sp
+      vAppSp (vCoe l u (force l a) (force l b) (force l p) (force l t)) sp
     _ -> VNe h sp
-
   VEq a t u -> vEq l (force l a) (force l t) (force l u)
-  VU u      -> VU (forceU u)
   v         -> v
 
+-- | Note: we *always* have to forceU on match site! Force does not touch universes.
 forceU :: U -> U
 forceU = \case
   UMax as -> IS.foldl' (\u x -> u <> maybe (UMeta x) forceU (runLookupU x)) Prop as
@@ -52,7 +92,7 @@ vProj1 :: Val -> U -> Val
 vProj1 v vu = case v of
   VPair t _ u _ -> t
   VNe h sp      -> VNe h (SProj1 sp vu)
-  _             -> error "impossible"
+  v             -> error "impossible"
 
 vProj2 :: Val -> U -> Val
 vProj2 v vu = case v of
@@ -73,7 +113,7 @@ vAppPI ~t ~u = vApp t u Prop Impl
 vAppPE ~t ~u = vApp t u Prop Expl
 
 vExfalso u a t     = vApp (VAxiom (AExfalso u) `vAppSI` a) t u Expl
-vRfl     a t       = VAxiom ARfl `vAppSI`  a `vAppSI`  t
+vRefl    a t       = VAxiom ARefl `vAppSI`  a `vAppSI`  t
 vSym a x y p       = VAxiom ASym `vAppSI`  a `vAppSI`  x `vAppSI`  y `vAppPE`  p
 vTrans a x y z p q = VAxiom ATrans `vAppSI`  a `vAppSI`  x `vAppSI`  y `vAppSI` z `vAppPE` p
                                    `vAppPE` q
@@ -109,46 +149,48 @@ infixl 8 □
 
 vEq :: Lvl -> Val -> Val -> Val -> Val
 vEq l topA ~topX ~topY =
+
   let stuck = VEq topA topX topY
       glue  = VEqGlue topA topX topY in
   case topA of
-    VU Prop ->
-      glue (vAnd (vImpl topX topY) (vImpl topY topX))
+    VU topU -> case forceU topU of
+      Prop ->
+        glue (vAnd (vImpl topX topY) (vImpl topY topX))
 
-    VU Set -> case (topX, topY) of
+      Set -> case (topX, topY) of
+        (VU Set,  VU Set)  -> glue VTop
+        (VU Prop, VU Prop) -> glue VTop
 
-      (VU Set,  VU Set)  -> glue VTop
-      (VU Prop, VU Prop) -> glue VTop
+        (VPi x i a (forceU -> au) b, VPi x' i' a' (forceU -> au') b') | i == i' ->
+          case univConv au au' of
+            Nothing    -> stuck
+            Just False -> glue VBot
+            Just True  -> glue (
+              vEx "p" (vEq l (VU au) a a') \p →
+              vAll (pick x x') a \x → vEq l (VU Set) (b x) (b' (vCoe l au a a' p x)))
 
-      (VPi x i a au b, VPi x' i' a' au' b') | i == i' ->
-        case univConv au au' of
-          Nothing    -> stuck
-          Just False -> glue VBot
-          Just True  -> glue (
-            vEx "p" (vEq l (VU au) a a') \p →
-            vAll (pick x x') a \x → vEq l (VU Set) (b x) (b' (vCoe l au a a' p x)))
+        (VSg x a (forceU -> au) b (forceU -> bu),
+         VSg x' a' (forceU -> au') b' (forceU -> bu')) ->
+          case (univConv au au', univConv bu bu') of
+            (Just b1, Just b2)
+              | b1 && b2  ->
+                glue (
+                  vEx "p" (vEq l (VU au) a a') \p →
+                  vAll (pick x x') a \x → vEq l (VU bu) (b x) (b' (vCoe l au a a' p x)))
+              | otherwise -> glue  VBot
+            _ -> stuck
 
-      (VSg x a au b bu, VSg x' a' au' b' bu') ->
-        case (univConv au au', univConv bu bu') of
-          (Just b1, Just b2)
-            | b1 && b2  ->
-              glue (
-                vEx "p" (vEq l (VU au) a a') \p →
-                vAll (pick x x') a \x → vEq l (VU bu) (b x) (b' (vCoe l au a a' p x)))
-            | otherwise -> glue  VBot
-          _ -> stuck
+        (VNe{}, _) -> stuck
+        (_, VNe{}) -> stuck
+        _          -> glue VBot
 
-      (VNe{}, _) -> stuck
-      (_, VNe{}) -> stuck
-      _          -> glue VBot
-
-    VU _ -> stuck
+      _ -> stuck
 
     -- note that funext is always by explicit function!
     VPi x i a au b -> glue (
       VPi x Expl a au \ ~x -> vEq l (b x) (vApp topX x au i) (vApp topY x au i))
 
-    VSg x a au b bu ->
+    VSg x a (forceU -> au) b (forceU -> bu) ->
       let ~p1x = vProj1 topX Set
           ~p1y = vProj1 topY Set
           ~p2x = vProj2 topX Set
@@ -180,12 +222,12 @@ tryRegularity l ~u a b ~p ~t =
 --   Coe refl on the other hand is confluent with everything.
 --   Right now we ignore the rigidity check.
 vCoe :: Lvl -> U -> Val -> Val -> Val -> Val -> Val
-vCoe l topU topA topB topP t = case topU of
+vCoe l topU topA topB topP t = case forceU topU of
   Prop -> vProj1 topP Prop □ t
   Set -> case (topA, topB) of
 
     -- canonical coercions
-    (VPi x i a au b, VPi x' i' a' au' b')
+    (VPi x i a (forceU -> au) b, VPi x' i' a' (forceU -> au') b')
       | i /= i'   -> vExfalso topU topB topP
       | otherwise -> case univConv au au' of
           Nothing    -> VNe (HCoe topU topA topB topP t) SNil
@@ -197,7 +239,8 @@ vCoe l topU topA topB topP t = case topU of
                 ~a0 = vCoe l au a' a (vSym (VU au) a a' p1) a1
             in vCoe l Set (b a0) (b' a1) (vApp p2 a0 au Expl) (vApp t a0 au i)
 
-    (VSg x a au b bu, VSg x' a' au' b' bu') ->
+    (VSg x a (forceU -> au) b (forceU -> bu),
+     VSg x' a' (forceU -> au') b' (forceU -> bu')) ->
       case (univConv au au', univConv bu bu') of
         (Just b1, Just b2)
           | b1 && b2 ->
@@ -240,7 +283,7 @@ eval vs l = go where
                       vCoe l u a b p t
     Exfalso u      -> VLamIS "A" (VU u) \ ~a -> VLamEP "p" VBot \ ~t ->
                       vExfalso u a t
-    Refl           -> VLamIS "A" VSet \ ~a -> VLamIS "x" a \ ~x -> vRfl a x
+    Refl           -> VLamIS "A" VSet \ ~a -> VLamIS "x" a \ ~x -> vRefl a x
     Sym            -> VLamIS "A" VSet \ ~a -> VLamIS "x" a \ ~x ->
                       VLamIS "y" a \ ~y -> VLamEP "p" (vEq l a x y) \ ~p ->
                       vSym a x y p
@@ -267,17 +310,22 @@ quote d = go where
       let goSp SNil = case h of
             HMeta m        -> Meta m
             HVar x         -> Var (d - x - 1)
-            HCoe u a b p t -> tCoe u (go a) (go b) (go p) (go t)
-            HAxiom ax      -> axiomToTm ax
+            HCoe u a b p t -> tCoe (forceU u) (go a) (go b) (go p) (go t)
+            HAxiom ax      -> case ax of
+              ARefl      -> Refl
+              ASym       -> Sym
+              ATrans     -> Trans
+              AAp        -> Ap
+              AExfalso u -> Exfalso (forceU u)
 
-          goSp (SApp sp u uu i) = App (goSp sp) (go u) uu i
-          goSp (SProj1 sp spu)  = Proj1 (goSp sp) spu
-          goSp (SProj2 sp spu)  = Proj2 (goSp sp) spu
+          goSp (SApp sp u uu i) = App (goSp sp) (go u) (forceU uu) i
+          goSp (SProj1 sp spu)  = Proj1 (goSp sp) (forceU spu)
+          goSp (SProj2 sp spu)  = Proj2 (goSp sp) (forceU spu)
 
       in goSp sp
 
-    VLam x i a au t -> Lam x i (go a) au (goBind t)
-    VPi x i a au b  -> Pi x i (go a) au (goBind b)
+    VLam x i a au t -> Lam x i (go a) (forceU au) (goBind t)
+    VPi x i a au b  -> Pi x i (go a) (forceU au) (goBind b)
     VU u            -> U (forceU u)
     VTop            -> Top
     VTt             -> Tt
@@ -285,8 +333,8 @@ quote d = go where
     VEqGlue a t u b -> go b
     VEq a t u       -> tEq (go a) (go t) (go u)
 
-    VSg x a au b bu -> Sg x (go a) au (goBind b) bu
-    VPair t tu u uu -> Pair (go t) tu (go u) uu
+    VSg x a au b bu -> Sg x (go a) (forceU au) (goBind b) (forceU bu)
+    VPair t tu u uu -> Pair (go t) (forceU tu) (go u) (forceU uu)
 
   goBind t = quote (d + 1) (t (VVar d))
 
@@ -295,11 +343,12 @@ quote d = go where
 --------------------------------------------------------------------------------
 
 univConv :: U -> U -> Maybe Bool
-univConv Set       Set        = Just True
-univConv Set       Prop       = Just False
-univConv Prop      Set        = Just False
-univConv (UMax xs) (UMax xs') = True <$ guard (xs == xs')
-univConv _         _          = Nothing
+univConv u u' = case (u, u') of
+  (Set      , Set     ) -> Just True
+  (Set      , Prop    ) -> Just False
+  (Prop     , Set     ) -> Just False
+  (UMax xs  , UMax xs') -> True <$ guard (xs == xs')
+  (_        , _       ) -> Nothing
 
 conversion :: Lvl -> U -> Val -> Val -> IO Perhaps
 conversion lvl un l r = (Yes <$ goTop lvl un l r) `catch` pure where
@@ -316,7 +365,7 @@ conversion lvl un l r = (Yes <$ goTop lvl un l r) `catch` pure where
     go :: U -> Val -> Val -> IO ()
     go un t t' = case forceU un of
       Prop -> pure ()
-      _    -> case (force lvl t, force lvl t') of
+      un   -> case (force lvl t, force lvl t') of
         (VEqGlue _ _ _ b, t') -> go Set b t'
         (t, VEqGlue _ _ _ b') -> go Set t b'
 
@@ -357,7 +406,7 @@ conversion lvl un l r = (Yes <$ goTop lvl un l r) `catch` pure where
           (HVar x, HVar x') | x == x' -> goSp  sp sp'
           (HAxiom ax, HAxiom ax') -> case (ax, ax') of
 
-            (ARfl, ARfl)              -> goSp sp sp'
+            (ARefl, ARefl)            -> goSp sp sp'
             (ASym, ASym)              -> goSp sp sp'
             (AAp , AAp )              -> goSp sp sp'
             (AExfalso u, AExfalso u') -> goU u u' >> goSp sp sp'
@@ -388,6 +437,4 @@ conversion lvl un l r = (Yes <$ goTop lvl un l r) `catch` pure where
                                                         goU uu uu' >> go uu u u'
       (SProj1 sp spu, SProj1 sp' spu')               -> goSp sp sp' >> goU spu spu'
       (SProj2 sp spu, SProj2 sp' spu')               -> goSp sp sp' >> goU spu spu'
-      (SProj1{}     , SProj2{}       )               -> throw No
-      (SProj2{}     , SProj1{}       )               -> throw No
-      _                                              -> error "impossible"
+      _                                              -> throw No

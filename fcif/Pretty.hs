@@ -80,9 +80,10 @@ goMetaSp ns (Meta m) = ("?"++).(show m++)
 goMetaSp _ _ = error "impossible"
 
 goSp :: [Name] -> Tm -> ShowS
-goSp ns (App t u _ i) = goSp ns t . (' ':) . goArg ns u i
+goSp ns (App t u _ Expl) = goSp ns t . (' ':) . goArg ns u Expl
+goSp ns (App t u _ Impl) = goSp ns t
+-- goSp ns (App t u _ Impl) = goSp ns t . (' ':) . goArg ns u Impl
 goSp ns t = go True ns t
-
 
 go :: Bool -> [Name] -> Tm -> ShowS
 go p ns = \case

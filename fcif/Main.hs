@@ -82,30 +82,14 @@ test1 = main' "elab" $ unlines [
   "Set"
   ]
 
-test = main' "nf" $ unlines [
-  -- "let ₁₂ : {A : Set}{B : A → Set}{C : (a : A) → B a → Set}",
-  -- " → (inp : (a : A) × (b : B a) × C a b)",
-  -- " → B (₁ inp)",
-  -- " = λ inp . ₁ (₂ inp) in",
-
-  -- "let foo : ((A : Set) × A) → Set = λ Γ. ₁ Γ → ₁ Γ in",
-  -- "Set"
-
-  -- "let ₁₂ : {A : Set}{B : A → Set}{C : (a : A) → B a → Set}",
-  -- "         → (inp : (a : A) × (b : B a) × C a b)",
-  -- "      → B (₁ inp)",
-  -- "  = λ inp. ₁ (₂ inp) in",
-  -- "let ₂₂ : {A : Set}{B : A → Set}{C : (a : A) → B a → Set}",
-  -- "         → (inp : (a : A) × (b : B a) × C a b)",
-  -- "      → C (₁ inp) (₁₂ inp)",
-  -- "  = λ inp. ₂ (₂ inp) in",
-  -- "let Conᴺ : Set",
-  -- "  = (N : Set) × N × (N → N) in",
-  -- "let Subᴺ : Conᴺ → Conᴺ → Set",
-  -- "  = λ Γ Δ. (Nᴹ : ₁ Γ → ₁ Δ) × Set in",
-  -- "Set  "
-
-  -- "(n m : _) → Eq {(A : Set) × Eq A A} n m"
+test = main' "elab" $ unlines [
+  "let isContr : Set → Set",
+  "  = λ A. (a : A) × ((b : A) → Eq b a) in",
+  "let Sing : {A} → A → Set",
+  "  = λ {A} a. (b : _) × Eq a b in",
+  "let singContr : {A a} → isContr (Sing {A} a)",
+  "  = λ {_}{a}. ((a, refl), λ s. sym (₂ s)) in",
+  "Set"
   ]
 
 test2 = main' "elab" $ unlines [
