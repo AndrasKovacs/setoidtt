@@ -57,7 +57,7 @@ import ElabState
 import Errors
 import Pretty
 
--- import Debug.Trace
+import Debug.Trace
 
 -- Context operations
 --------------------------------------------------------------------------------
@@ -358,6 +358,7 @@ unify rel cxt un l r = go un l r where
           _                         -> err t t'
 
         (HCoe u a b p t, HCoe u' a' b' p' t') -> do
+          -- traceShowM ("COE", showVal cxt (VNe h sp), showVal cxt (VNe h' sp'))
           goU u u' >> go Set a a' >> go Set b b' >> go Prop p p' >> go u t t'
 
         (HMeta m, HMeta m') | m == m'   -> goSp (err t t') sp sp'
@@ -505,7 +506,10 @@ check cxt topT (force cxt -> topA) ~topU = case (topT, unglue topA) of
     (t, va, au) <- insert cxt $ infer cxt t
     -- traceShowM ("inferred", showTm' cxt t, showVal cxt va, forceU au)
     unifyTypes cxt (VU au) (VU topU)
-    -- traceShowM ("unifyWhile", forceU au, showVal cxt va, showVal cxt topA)
+    -- traceM "unifyWhile---------------"
+    -- traceShowM (forceU au)
+    -- traceM (showVal cxt va)
+    -- traceM (showVal cxt topA)
     unifyTypes cxt va topA
     pure t
 

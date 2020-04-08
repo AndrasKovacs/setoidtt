@@ -199,7 +199,7 @@ vEq l topA ~topX ~topY =
         (Set,  Prop) -> vEq l a p1x p1y
         (Set,  Set ) -> glue (
                          vEx "p" (vEq l a p1x p1y) \p ->
-                         vEq l (b p1x)
+                         vEq l (b p1y)
                                (vCoe l bu (b p1x) (b p1y)
                                   (vAp a (VU bu) (VLam x Expl a au b) p1x p1y p) p2x)
                                p2y)

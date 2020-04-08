@@ -42,7 +42,9 @@ keywords = S.fromList [
 
 pIdent :: Parser Name
 pIdent = try $ do
-  x <- takeWhile1P Nothing isAlphaNum
+  start <- takeWhile1P Nothing isAlphaNum
+  rest  <- takeWhileP Nothing (\c -> isAlphaNum c || c == '\'' || c == '-')
+  let x = start ++ rest
   when (S.member x keywords) $
     fail (printf "Expected an identifier, but \"%s\" is a keyword." x)
   x <$ ws

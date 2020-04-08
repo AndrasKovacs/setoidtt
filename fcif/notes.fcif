@@ -19,6 +19,9 @@ let idP  : {A : Prop} → A → A = λ x. x in
 let the  : (A : Set)  → A → A = λ A x. x in
 let theP : (A : Prop) → A → A = λ A x. x in
 
+let tr : {A:Set}(B : A → Set){x y} → Eq x y → B x → B y
+  = λ B p bx. coe (ap B p) bx in
+
 let isContr : Set → Set
   = λ A. (a : A) × ((b : A) → Eq b a) in
 
@@ -35,12 +38,13 @@ let Lift  : Prop → Set = λ P. Sing Set × P in
 let lift  : {P} → P → Lift P = λ p. ((Set, refl), p) in
 let lower : {P} → Lift P → P = λ lp. ₂ lp in
 
--- other direction is definitional
+-- this direction is propositional, the other
+-- one is definitional (and cannot be even stated internally, using Eq)
 let liftlower : {P}(p : Lift P) → Eq (lift (lower p)) p
   = λ p. ₂ (₁ p) in
 
 
-
+-- AFS natural numbers
 --------------------------------------------------------------------------------
 
 let Conᴺ : Set
@@ -83,7 +87,7 @@ let ind : (A : Tyᴺ syn) → (n : Nat) → ₁ A n
   let res = ₁ n Γ in
   let proj1 : Subᴺ Γ syn = (λ n. ₁ n, (refl, λ _. refl)) in
   let lem : Eq (₁ res) n = trans (₂ n Γ syn proj1) (λ Γ. ₂ n syn Γ (rec Γ)) in
-  coe {₁ A (₁ res)}{₁ A n}(ap (₁ A) lem) (₂ res) in
+  coe (ap (₁ A) lem) (₂ res) in
 
 let indZeroβ : (A : Tyᴺ syn) → Eq (ind A zero) (₁₂ A)
   = λ _. refl in
@@ -101,8 +105,10 @@ let indZeroβ : (A : Tyᴺ syn) → Eq (ind A zero) (₁₂ A)
  -- suc (₁ (₁ n Γ)) =? suc n
  -- NOT definitionally the same! Hence, coe does not go away.
 
-let indSucβ : (A : Tyᴺ syn)(n : Nat) → Eq (ind A (suc n)) (₂₂ A (ind A n))
-  = λ A n . _ in
+
+-- let indSucβ : (A : Tyᴺ syn)(n : Nat) → Eq (ind A (suc n)) (₂₂ A (ind A n))
+--   = λ A n . _ in
+
 
 -- Injectivity also not definitional
 let sucInj1 : (n m : Nat) → Eq n m -> Eq (suc n) (suc m)
@@ -118,9 +124,11 @@ let n5  : Nat = suc (suc (suc (suc (suc zero)))) in
 let n10 : Nat = add n5 n5 in
 
 -- proof about numbers!!
+-- it's probably the most practical to write functions using rec and irrelevant
+-- proofs using ind
 let add0 : (n : Nat) → Eq n (add n zero)
   = λ n. lower
-    (ind (λ n. Lift (Eq n (add n zero)), (lift refl, λ {n} p. lift (ap suc (lower p)))) n)
+    (ind (λ n. Lift (Eq n (add n zero)), (lift refl, λ p. lift (ap suc (lower p)))) n)
   in
 
 
@@ -140,4 +148,46 @@ let c100 : CNat = cmul c10 c10 in
 let n2c : Nat → CNat
   = λ n. ₁ n (CNat, (czero, λ n. csuc n)) in
 
-n2c n10
+
+-- AFS propositional truncation
+--------------------------------------------------------------------------------
+
+let Conᵀ : Set → Set
+  = λ A. (T : Set) × (emb : A → T) × ((t t' : T) → Eq t t') in
+
+let Tyᵀ : {A}(Γ : Conᵀ A) → Set
+  = λ {A} Γ. (Tᴰ : ₁ Γ → Set) × (embᴰ : {a:A} → Tᴰ (₁ (₂ Γ) a))
+           × ({t}(tᴰ : Tᴰ t){t'}(t'ᴰ : Tᴰ t') → Eq (tr Tᴰ (₂ (₂ Γ) _ _) tᴰ) t'ᴰ) in
+
+let Subᵀ : {A} → Conᵀ A → Conᵀ A → Set
+  = λ {A} Γ Δ. (Tᴹ : ₁ Γ → ₁ Δ) × ({a} → Eq (Tᴹ (₁ (₂ Γ) a)) (₁ (₂ Δ) a)) in
+
+let T : Set → Set
+  = λ A. (f : (Γ : Conᵀ A) → ₁ Γ)
+       × ((Γ Δ : Conᵀ A)(σ : Subᵀ Γ Δ) → Eq (₁ σ (f Γ)) (f Δ)) in
+
+let emb : {A} → A → T A
+  = λ {A} a. (λ Γ. ₁(₂ Γ) a, λ Γ Δ σ. ₂ σ) in
+
+let trunc : {A}(t t' : T A) → Eq t t'
+  = λ t t' Γ. ₂ (₂ Γ) _ _ in
+
+let synᵀ : {A} → Conᵀ A
+  = λ {A}. (T A, (emb, trunc)) in
+
+let recᵀ : {A} → (Γ : Conᵀ A) → Subᵀ synᵀ Γ
+  = λ Γ. (λ t. ₁ t Γ, refl) in
+
+let indᵀ : {A}(M : Tyᵀ synᵀ) → (t : T A) → ₁ M t
+  = λ {A} M t.
+    let total : Conᵀ A
+      = ((t : T A) × ₁ M t,
+         (λ a. (emb a, ₁ (₂ M) {a}),
+	  λ tp tp'. (trunc (₁ tp) (₁ tp'), ₂ (₂ M) _ _))) in
+    let res : (t : T A) × ₁ M t = ₁ t total in
+    let proj1 : Subᵀ total synᵀ = (λ t. ₁ t, λ _. refl) in
+    let lem : Eq (₁ res) t
+      = trans (₂ t total synᵀ proj1) (λ Γ. ₂ t synᵀ Γ (recᵀ Γ)) in
+    tr (₁ M) lem (₂ res) in
+
+indᵀ
