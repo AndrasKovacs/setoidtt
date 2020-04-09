@@ -61,7 +61,7 @@ goPi ns p (Pi (fresh ns -> x) i a au b)
   | x /= "_" = goPiBind ns x i a au . goPi (x:ns) True b
   | otherwise =
      (if p then (" → "++) else id) .
-     go (case a of App{} -> False; Sg{} -> False; _ -> True) ns a .
+     go (case a of Pi{} -> True; Sg{} -> True; _ -> False) ns a .
      (" → "++) . go False (x:ns) b
 
 goPi ns p t = (if p then (" → "++) else id) . go False ns t
@@ -120,8 +120,9 @@ go p ns = \case
         (parens ((x++).(" : "++).go False ns a)
          .(" × "++). go (case b of Pi{} -> True; _ -> False) (x:ns) b)
 
-  Proj1 t tu     -> showParen p (("₁ "++).go True ns t)
-  Proj2 t tu     -> showParen p (("₂ "++).go True ns t)
+  Proj1 t tu     -> showParen p (go False ns t.(".₁"++))
+  Proj2 t tu     -> showParen p (go False ns t.(".₂"++))
+  ProjField t x i tu -> showParen p (go True ns t.(("."++x)++))
   Pair t tu u uu -> parens (go False ns t . (", "++) . go False ns u)
 
 showTm :: [Name] -> Tm -> String

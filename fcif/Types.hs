@@ -41,6 +41,10 @@ icit :: Icit -> a -> a -> a
 icit Impl i e = i
 icit Expl i e = e
 
+-- | Field projections.
+data RProj = RProj1 | RProj2 | RProjField Name
+  deriving Show
+
 -- | Surface syntax.
 data Raw
   = RVar Name                        -- ^ x
@@ -57,8 +61,7 @@ data Raw
   | RSg Name Raw Raw
   | RPair Raw Raw
 
-  | RProj1
-  | RProj2
+  | RProj Raw RProj
   | RTop
   | RTt
   | RBot                             -- ^ ⊥ : Prop
@@ -69,7 +72,8 @@ data Raw
   | RSym
   | RTrans
   | RAp
-deriving instance Show Raw
+  deriving Show
+
 
 pattern RAppI t u = RApp t u Impl
 pattern RAppE t u = RApp t u Expl
@@ -176,6 +180,7 @@ data Tm
   | Sg Name Ty U Ty U
   | Proj1 Tm U
   | Proj2 Tm U
+  | ProjField Tm Name Int U
   | Pair Tm U Tm U
 
   | U U
@@ -198,6 +203,7 @@ data Spine
   | SApp Spine ~Val U Icit
   | SProj1 Spine U
   | SProj2 Spine U
+  | SProjField Spine Name Int U
 
 valsLen :: Vals -> Int
 valsLen = go 0 where

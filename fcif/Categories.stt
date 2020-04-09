@@ -1,0 +1,47 @@
+
+let Cat : Set
+ = (Obj  : Set)
+ × (Mor  : Obj → Obj → Set)
+ × (id   : {i} → Mor i i)
+ × (comp : {i j k} → Mor j k → Mor i j  → Mor i k)
+ × (idl  : {i j}{f : Mor i j} → Eq (comp id f) f)
+ × (idr  : {i j}{f : Mor i j} → Eq (comp f id) f)
+ × (ass  : {i j k l}{f : Mor k l}{g : Mor j k}{h : Mor i j}
+           → Eq (comp (comp f g) h)(comp f (comp g h)))
+ × ⊤ in
+
+let Functor : Cat → Cat → Set = λ C D.
+   (Obj  : C.Obj → D.Obj)
+ × (Mor  : {i j} → C.Mor i j → D.Mor (Obj i) (Obj j))
+ × (id   : {i} → Eq (Mor (C.id {i})) (D.id))
+ × (comp : {i j k f g} → Eq (Mor (C.comp {i}{j}{k} f g)) (D.comp (Mor f) (Mor g)))
+ × ⊤ in
+
+let Id : {C} → Functor C C
+ = (λ i. i, (λ f. f, (refl, (refl, tt)))) in
+
+let Comp : {C D E} → Functor D E → Functor C D → Functor C E
+ = λ F G.
+   (λ i. F.Obj (G.Obj i) ,(
+    λ f. F.Mor (G.Mor f) ,(
+    trans (ap (F.Mor) (G.id)) (F.id) ,(
+    trans (ap (F.Mor) (G.comp)) (F.comp) ,tt
+    )))) in
+
+let CatCat : Cat
+ = (Cat                         ,(
+    Functor                     ,(
+    Id                          ,(
+    λ {C}{D}{E}. Comp {C}{D}{E} ,( -- the same expansion is required in Agda too
+    (refl, refl)                ,( -- allowing refl instead of (refl,refl) needs better unification
+    (refl, refl)                ,(
+    (refl, refl)                ,tt
+    )))))))
+ in
+
+Set
+
+-- Issues with sigma inference, see Comp {C}{D}{E}. We can't rely on nominal
+-- equality of records, like in Agda. This fails in Agda as well if we use
+-- sigmas.  Maybe we should implement equation eta-contraction, like in the Coq
+-- unifier guide?

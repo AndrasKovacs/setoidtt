@@ -24,6 +24,9 @@ type Parser = Parsec Void String
 ws :: Parser ()
 ws = L.space C.space1 (L.skipLineComment "--") (L.skipBlockComment "{-" "-}")
 
+withPos' :: Parser a -> Parser (SPos, a)
+withPos' p = (,) <$> (SPos <$> getSourcePos) <*> p
+
 withPos :: Parser Raw -> Parser Raw
 withPos p = RSrcPos <$> (SPos <$> getSourcePos) <*> p
 
@@ -37,7 +40,7 @@ pBind    = pIdent <|> symbol "_"
 
 keywords :: S.Set String
 keywords = S.fromList [
-  "let", "in", "λ", "Set", "Prop", "₁", "₂", "trans",
+  "let", "in", "λ", "Set", "Prop", "trans",
   "⊤",   "tt", "⊥", "exfalso", "Eq", "refl", "coe", "sym", "ap"]
 
 pIdent :: Parser Name
@@ -64,8 +67,6 @@ pAtom  =
                <|> (RSym     <$  symbol "sym"    )
                <|> (RTrans   <$  symbol "trans"  )
                <|> (RAp      <$  symbol "ap"     )
-               <|> (RProj1   <$  symbol "₁"      )
-               <|> (RProj2   <$  symbol "₂"      )
                <|> (RHole    <$  char   '_'      ))
 
   <|> do {
@@ -76,16 +77,26 @@ pAtom  =
             Just{}  -> do {t2 <- pTm; char ')'; pure (RPair t1 t2)}
         }
 
-pArg :: Parser (Icit, Raw)
-pArg =
-      ((Impl,) <$> (char '{' *> pTm <* char '}'))
-  <|> ((Expl,) <$> pAtom)
+pProj :: Parser (SPos, RProj)
+pProj =
+  withPos' (
+      (RProj1 <$ symbol ".₁")
+  <|> (RProj2 <$ symbol ".₂")
+  <|> (RProjField <$> (C.char '.' *> pIdent)))
+
+-- application or projection
+pArg :: Parser (Either (Icit,Raw) (SPos, RProj))
+pArg = (Right <$> pProj)
+   <|> (Left . (Impl,) <$> (char '{' *> pTm <* char '}'))
+   <|> (Left. (Expl,) <$> pAtom)
 
 pSpine :: Parser Raw
 pSpine = do
   h    <- pAtom
   args <- many pArg
-  pure $ foldl (\t (i, u) -> RApp t u i) h args
+  pure $ foldl (\t -> either (\(i, u) -> RApp t u i)
+                             (\(pos, p) -> RSrcPos pos (RProj t p)))
+         h args
 
 pLamBinder :: Parser (Name, Maybe Raw, Icit)
 pLamBinder =

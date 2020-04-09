@@ -23,29 +23,30 @@ zonk vs l t = go t where
   goBind = zonk (VSkip vs) (l + 1)
 
   go = \case
-    Var x          -> Var x
-    Meta m         -> case runLookupMeta m of
-                        Solved v   -> quote (valsLen vs) v
-                        Unsolved{} -> Meta m
-    U u            -> U (forceU u)
-    Pi x i a au b  -> Pi x i (go a) (forceU au) (goBind b)
-    App t u uu ni  -> case goSp t of
-                        Left t  -> quote (valsLen vs) (vApp t (eval vs l u) (forceU uu) ni)
-                        Right t -> App t (go u) (forceU uu) ni
-    Lam x i a au t -> Lam x i (go a) (forceU au) (goBind t)
-    Let x a au t u -> Let x (go a) (forceU au) (go t) (goBind u)
-    Skip t         -> Skip (goBind t)
-    Top            -> Top
-    Tt             -> Tt
-    Bot            -> Bot
-    Exfalso u      -> Exfalso (forceU u)
-    Eq             -> Eq
-    Refl           -> Refl
-    Coe u          -> Coe (forceU u)
-    Sym            -> Sym
-    Trans          -> Trans
-    Ap             -> Ap
-    Sg x a au b bu -> Sg x (go a) (forceU au) (goBind b) (forceU bu)
-    Proj1 t tu     -> Proj1 (go t) (forceU tu)
-    Proj2 t tu     -> Proj2 (go t) (forceU tu)
-    Pair t tu u uu -> Pair (go t) (forceU tu) (go u) (forceU uu)
+    Var x              -> Var x
+    Meta m             -> case runLookupMeta m of
+                            Solved v   -> quote (valsLen vs) v
+                            Unsolved{} -> Meta m
+    U u                -> U (forceU u)
+    Pi x i a au b      -> Pi x i (go a) (forceU au) (goBind b)
+    App t u uu ni      -> case goSp t of
+                            Left t  -> quote (valsLen vs) (vApp t (eval vs l u) (forceU uu) ni)
+                            Right t -> App t (go u) (forceU uu) ni
+    Lam x i a au t     -> Lam x i (go a) (forceU au) (goBind t)
+    Let x a au t u     -> Let x (go a) (forceU au) (go t) (goBind u)
+    Skip t             -> Skip (goBind t)
+    Top                -> Top
+    Tt                 -> Tt
+    Bot                -> Bot
+    Exfalso u          -> Exfalso (forceU u)
+    Eq                 -> Eq
+    Refl               -> Refl
+    Coe u              -> Coe (forceU u)
+    Sym                -> Sym
+    Trans              -> Trans
+    Ap                 -> Ap
+    Sg x a au b bu     -> Sg x (go a) (forceU au) (goBind b) (forceU bu)
+    Proj1 t tu         -> Proj1 (go t) (forceU tu)
+    Proj2 t tu         -> Proj2 (go t) (forceU tu)
+    ProjField t x i tu -> ProjField (go t) x i (forceU tu)
+    Pair t tu u uu     -> Pair (go t) (forceU tu) (go u) (forceU uu)

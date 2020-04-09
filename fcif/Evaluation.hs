@@ -100,12 +100,21 @@ vProj2 v vu = case v of
   VNe h sp      -> VNe h (SProj2 sp vu)
   _             -> error "impossible"
 
+vProjField :: Val -> Name -> Int -> U -> Val
+vProjField v x i vu = case v of
+  VNe h sp        -> VNe h (SProjField sp x i vu)
+  VPair t tu u uu -> case i of
+    0 -> t
+    i -> vProjField u x (i - 1) uu
+  _ -> error "impossible"
+
 vAppSp :: Val -> Spine -> Val
 vAppSp h = go where
-  go SNil             = h
-  go (SApp sp u uu i) = vApp (go sp) u uu i
-  go (SProj1 sp spu)  = vProj1 (go sp) spu
-  go (SProj2 sp spu)  = vProj2 (go sp) spu
+  go SNil                    = h
+  go (SApp sp u uu i)        = vApp (go sp) u uu i
+  go (SProj1 sp spu)         = vProj1 (go sp) spu
+  go (SProj2 sp spu)         = vProj2 (go sp) spu
+  go (SProjField sp x i spu) = vProjField (go sp) x i spu
 
 vAppSI ~t ~u = vApp t u Set  Impl
 vAppSE ~t ~u = vApp t u Set  Expl
@@ -295,10 +304,11 @@ eval vs l = go where
                       VLamES "f" (VPiES "_" a (const b)) \ ~f -> VLamIS "x" a \ ~x ->
                       VLamIS "y" a \ ~y -> VLamEP "p" (vEq l a x y) \ ~p ->
                       vAp a b f x y p
-    Sg x a au b bu -> VSg x (go a) au (goBind b) bu
-    Pair t tu u uu -> VPair (go t) tu (go u) uu
-    Proj1 t tu     -> vProj1 (go t) tu
-    Proj2 t tu     -> vProj2 (go t) tu
+    Sg x a au b bu     -> VSg x (go a) au (goBind b) bu
+    Pair t tu u uu     -> VPair (go t) tu (go u) uu
+    Proj1 t tu         -> vProj1 (go t) tu
+    Proj2 t tu         -> vProj2 (go t) tu
+    ProjField t x i tu -> vProjField (go t) x i tu
 
   goBind t v = eval (VDef vs v) (l + 1) t
 
@@ -318,9 +328,10 @@ quote d = go where
               AAp        -> Ap
               AExfalso u -> Exfalso (forceU u)
 
-          goSp (SApp sp u uu i) = App (goSp sp) (go u) (forceU uu) i
-          goSp (SProj1 sp spu)  = Proj1 (goSp sp) (forceU spu)
-          goSp (SProj2 sp spu)  = Proj2 (goSp sp) (forceU spu)
+          goSp (SApp sp u uu i)        = App (goSp sp) (go u) (forceU uu) i
+          goSp (SProj1 sp spu)         = Proj1 (goSp sp) (forceU spu)
+          goSp (SProj2 sp spu)         = Proj2 (goSp sp) (forceU spu)
+          goSp (SProjField sp x i spu) = ProjField (goSp sp) x i (forceU spu)
 
       in goSp sp
 
@@ -430,11 +441,20 @@ conversion lvl un l r = (Yes <$ goTop lvl un l r) `catch` pure where
     goBind x a au un t t' =
       let v = VVar lvl in goTop (lvl + 1) un (t v) (t' v)
 
+    goProjField :: Spine -> U -> U -> Int -> IO ()
+    goProjField _               spu spu' 0 = goU spu spu'
+    goProjField (SProj2 sp spu) _   spu' i = goProjField sp spu spu' (i - 1)
+    goProjField _               _   _    _ = throw No
+
     goSp :: Spine -> Spine -> IO ()
     goSp sp sp' = case (sp, sp') of
       (SNil, SNil)                                   -> pure ()
-      (SApp sp u uu i, SApp sp' u' uu' i') | i == i' -> goSp sp sp' >>
-                                                        goU uu uu' >> go uu u u'
-      (SProj1 sp spu, SProj1 sp' spu')               -> goSp sp sp' >> goU spu spu'
-      (SProj2 sp spu, SProj2 sp' spu')               -> goSp sp sp' >> goU spu spu'
+      (SApp sp u uu i, SApp sp' u' uu' i') | i == i' -> goU uu uu' >> go uu u u'
+                                                        >> goSp sp sp'
+      (SProj1 sp spu, SProj1 sp' spu')               -> goU spu spu' >> goSp sp sp'
+      (SProj2 sp spu, SProj2 sp' spu')               -> goU spu spu' >> goSp sp sp'
+      (SProjField sp _ i spu,
+       SProjField sp' _ i' spu') | i == i'           -> goU spu spu' >> goSp sp sp'
+      (SProj1 sp spu, SProjField sp' x i spu')       -> goProjField sp spu spu' i
+      (SProjField sp x i spu, SProj1 sp' spu')       -> goProjField sp' spu' spu i
       _                                              -> throw No

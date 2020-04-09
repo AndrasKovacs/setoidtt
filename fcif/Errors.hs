@@ -35,7 +35,7 @@ data ElabError
   | ExpectedType Tm Tm
   | IcitMismatch Icit Icit
   | ExpectedSg Tm
-  | UnappliedProj
+  | NoSuchField Name
 
 data Err = Err {
   errNames :: [Name],
@@ -111,5 +111,5 @@ showError ns = \case
     (show i) (show i')
   ExpectedSg ty ->
     "Expected a pair type, instead inferred:\n\n  " ++ showTm ns ty
-  UnappliedProj ->
-    "Projections must be fully applied."
+  NoSuchField x ->
+    "No such field: " ++ show x

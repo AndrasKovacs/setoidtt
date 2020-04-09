@@ -1,0 +1,163 @@
+
+-- Test: Awodey-Frey-Speight encoding for natural numbers
+
+-- lib
+--------------------------------------------------------------------------------
+
+let id   : {A : Set}  → A → A = λ x. x in
+let idP  : {A : Prop} → A → A = λ x. x in
+let the  : (A : Set)  → A → A = λ A x. x in
+let theP : (A : Prop) → A → A = λ A x. x in
+
+let tr : {A:Set}(B : A → Set){x y} → Eq x y → B x → B y
+  = λ B p. coe (ap B p) in
+
+let isContr : Set → Set
+  = λ A. (a : A) × ((b : A) → Eq b a) in
+
+let Sing : {A : Set} → A → Set
+  = λ a. (b : _) × Eq a b in
+
+let singContr : {A a} → isContr (Sing {A} a)
+  = λ {A}{a}. ((a, refl), λ s. sym (s.₂)) in
+
+
+-- Lifting Prop to Set
+
+let Lift  : Prop → Set = λ P. Sing Set × P in
+let lift  : {P} → P → Lift P = λ p. ((Set, refl), p) in
+let lower : {P} → Lift P → P = λ lp. lp.₂ in
+
+-- this direction is propositional, the other
+-- one is definitional (and cannot be even stated internally, using Eq)
+let liftlower : {P}(p : Lift P) → Eq (lift (lower p)) p
+  = λ p. p.₁.₂ in
+
+-- AFS natural numbers
+--------------------------------------------------------------------------------
+
+let Conᴺ : Set
+  = (N : Set) × (z : N) × (s : N → N) × ⊤ in
+
+let Subᴺ : Conᴺ → Conᴺ → Set
+  = λ Γ Δ. (N : Γ.N → Δ.N)
+         × (z : Eq (N (Γ.z)) (Δ.z))
+	 × (s : (n : Γ.N) → Eq (N (Γ.s n)) (Δ.s (N n)))
+	 × ⊤ in
+
+let Tyᴺ : Conᴺ → Set
+  = λ Γ.  (N : Γ.N → Set)
+        × (z : N (Γ.z))
+	× (s : {n} → N n → N (Γ.s n))
+	× ⊤ in
+
+let Nat : Set
+  = (f : (Γ : Conᴺ) → Γ.N)
+  × ((Γ Δ : Conᴺ)(σ : Subᴺ Γ Δ) → Eq (σ.N (f Γ)) (f Δ)) in
+
+let zero : Nat
+  = (λ Γ. Γ.z, λ _ _ σ. σ.z) in
+
+let suc : Nat → Nat
+  = λ n. (λ Γ. Γ.s (n.₁ Γ),
+          λ Γ Δ σ. trans (σ.s (n.₁ Γ)) (ap (Δ.s) (n.₂ Γ Δ σ))) in
+
+let syn : Conᴺ
+  = (Nat, (zero, (suc, _))) in
+
+let rec : (Γ : Conᴺ) → Subᴺ syn Γ
+  = λ Γ. (λ n. n.₁ Γ, (refl, (λ _. refl, _))) in
+
+let recZeroβ : (Γ : Conᴺ) → Eq (rec Γ .₁ zero) (Γ.z)
+  = λ _. refl in
+
+let recSucβ : (Γ : Conᴺ)(n : Nat) → Eq (rec Γ .₁ (suc n)) (Γ.s (rec Γ .₁ n))
+  = λ _ _. refl in
+
+let ind : (A : Tyᴺ syn) → (n : Nat) → A.₁ n
+  = λ A n.
+  let Γ : Conᴺ
+    = ((n : Nat) × A.N n, ((zero, A.z), (λ np. (suc (np.₁), A.s (np.₂)), _))) in
+  let res = n.₁ Γ in
+  let proj1 : Subᴺ Γ syn = (λ n. n.₁, (refl, (λ _. refl, _))) in
+  let lem : Eq (res.₁) n = trans (n.₂ Γ syn proj1) (λ Γ. n.₂ syn Γ (rec Γ)) in
+  coe (ap (A.N) lem) (res.₂) in
+
+-- injectivity of suc + β for ind are not definitional
+
+let add : Nat → Nat → Nat
+  = rec (Nat → Nat, (id, (λ f b. suc (f b), _))) .₁ in
+
+let mul : Nat → Nat → Nat
+  = rec (Nat → Nat, (λ b. zero, (λ nmul b. add b (nmul b), _))) .₁ in
+
+let n5  : Nat = suc (suc (suc (suc (suc zero)))) in
+let n10 : Nat = add n5 n5 in
+let n100 : Nat = mul n10 n10 in
+
+-- proof about numbers!!
+-- it's probably the most practical to write functions using rec and irrelevant
+-- proofs using ind
+let add0 : (n : Nat) → Eq n (add n zero)
+  = λ n. lower
+    (ind (λ n. Lift (Eq n (add n zero)), (lift refl, (λ p. lift (ap suc (lower p)), _))) n)
+  in
+
+-- Church naturals
+--------------------------------------------------------------------------------
+
+let CNat : Set = (N : Set) → N → (N → N) → N in
+let czero : CNat = λ N z s. z in
+let csuc : CNat → CNat = λ a N z s. s (a N z s) in
+let cadd : CNat → CNat → CNat = λ a b N z s. a N (b N z s) s in
+let cmul : CNat → CNat → CNat = λ a b N z s. a N z (λ x. b N x s) in
+
+let c5 : CNat = csuc (csuc (csuc (csuc (csuc czero)))) in
+let c10 : CNat = cadd c5 c5 in
+let c100 : CNat = cmul c10 c10 in
+
+let n2c : Nat → CNat
+  = λ n. n .₁ (CNat, (czero, (λ n. csuc n, _))) in
+
+n2c n100
+
+-- -- AFS propositional truncation
+-- --------------------------------------------------------------------------------
+
+-- let Conᵀ : Set → Set
+--   = λ A. (T : Set) × (emb : A → T) × ((t t' : T) → Eq t t') in
+
+-- let Tyᵀ : {A}(Γ : Conᵀ A) → Set
+--   = λ {A} Γ. (Tᴰ : ₁ Γ → Set) × (embᴰ : {a:A} → Tᴰ (₁ (₂ Γ) a))
+--            × ({t}(tᴰ : Tᴰ t){t'}(t'ᴰ : Tᴰ t') → Eq (tr Tᴰ (₂ (₂ Γ) _ _) tᴰ) t'ᴰ) in
+
+-- let Subᵀ : {A} → Conᵀ A → Conᵀ A → Set
+--   = λ {A} Γ Δ. (Tᴹ : ₁ Γ → ₁ Δ) × ({a} → Eq (Tᴹ (₁ (₂ Γ) a)) (₁ (₂ Δ) a)) in
+
+-- let T : Set → Set
+--   = λ A. (f : (Γ : Conᵀ A) → ₁ Γ)
+--        × ((Γ Δ : Conᵀ A)(σ : Subᵀ Γ Δ) → Eq (₁ σ (f Γ)) (f Δ)) in
+
+-- let emb : {A} → A → T A
+--   = λ {A} a. (λ Γ. ₁(₂ Γ) a, λ Γ Δ σ. ₂ σ) in
+
+-- let trunc : {A}(t t' : T A) → Eq t t'
+--   = λ t t' Γ. ₂ (₂ Γ) _ _ in
+
+-- let synᵀ : {A} → Conᵀ A
+--   = λ {A}. (T A, (emb, trunc)) in
+
+-- let recᵀ : {A} → (Γ : Conᵀ A) → Subᵀ synᵀ Γ
+--   = λ Γ. (λ t. ₁ t Γ, refl) in
+
+-- let indᵀ : {A}(M : Tyᵀ synᵀ) → (t : T A) → ₁ M t
+--   = λ {A} M t.
+--     let total : Conᵀ A
+--       = ((t : T A) × ₁ M t,
+--          (λ a. (emb a, ₁ (₂ M) {a}),
+-- 	  λ tp tp'. (trunc (₁ tp) (₁ tp'), ₂ (₂ M) _ _))) in
+--     let res : (t : T A) × ₁ M t = ₁ t total in
+--     let proj1 : Subᵀ total synᵀ = (λ t. ₁ t, λ _. refl) in
+--     let lem : Eq (₁ res) t
+--       = trans (₂ t total synᵀ proj1) (λ Γ. ₂ t synᵀ Γ (recᵀ Γ)) in
+--     tr (₁ M) lem (₂ res) in

@@ -83,42 +83,8 @@ test1 = main' "elab" $ unlines [
   ]
 
 test = main' "elab" $ unlines [
-  " let Conᵀ : Set → Set",
-  "   = λ A. (T : Set) × (emb : A → T) × ((t t' : T) → Eq t t') in",
-  " ",
-  " let Tyᵀ : {A}(Γ : Conᵀ A) → Set",
-  "   = λ {A} Γ. (Tᴰ : ₁ Γ → Set) × (embᴰ : {a:A} → Tᴰ (₁ (₂ Γ) a))",
-  "            × ({t}(tᴰ : Tᴰ t){t'}(t'ᴰ : Tᴰ t') → Eq (coe (ap Tᴰ (₂ (₂ Γ) _ _)) tᴰ) t'ᴰ) in",
-  " ",
-  " let Subᵀ : {A} → Conᵀ A → Conᵀ A → Set",
-  "   = λ {A} Γ Δ. (Tᴹ : ₁ Γ → ₁ Δ) × ({a} → Eq (Tᴹ (₁ (₂ Γ) a)) (₁ (₂ Δ) a)) in",
-  " ",
-  " let T : Set → Set",
-  "   = λ A. (f : (Γ : Conᵀ A) → ₁ Γ)",
-  "        × ((Γ Δ : Conᵀ A)(σ : Subᵀ Γ Δ) → Eq (₁ σ (f Γ)) (f Δ)) in",
-  " ",
-  " let emb : {A} → A → T A",
-  "   = λ {A} a. (λ Γ. ₁(₂ Γ) a, λ Γ Δ σ. ₂ σ) in",
-  " ",
-  " let trunc : {A}(t t' : T A) → Eq t t'",
-  "   = λ t t' Γ. ₂ (₂ Γ) _ _ in",
-  " ",
-  " let synᵀ : {A} → Conᵀ A",
-  "   = λ {A}. (T A, (emb, trunc)) in",
-  " ",
-  " let recᵀ : {A} → (Γ : Conᵀ A) → Subᵀ synᵀ Γ",
-  "   = λ Γ. (λ t. ₁ t Γ, refl) in",
-  " ",
-  " let indᵀ : {A}(M : Tyᵀ synᵀ) → (t : T A) → ₁ M t",
-  "   = λ {A} M.",
-  "     let total : Conᵀ A",
-  "       = ((t : T A) × ₁ M t,",
-  "          (λ a. (emb a, ₁ (₂ M) {a}),",
-  "       λ tp tp'. (trunc (₁ tp) (₁ tp'), ₂ (₂ M) {₁ tp}(₂ tp){₁ tp'}(₂ tp')))) in",
-  "     _ in",
-  " ",
-  " Set"
-    ]
+  "(A : Set × Set) → ((B : Set) × B) → A.₂"
+   ]
 
 test2 = main' "elab" $ unlines [
   "let foo : (p : Eq {Set} Set Prop)(A : Set) → Prop",
@@ -148,8 +114,8 @@ test4 = main' "elab" $ unlines [
   " (p : (p : Eq {Set} A C) × ((x : A) → Eq {Set} B D))",
   " (f : A → B)",
   " (x : C).",
-  " coe {B} {D} ((π₂ p) (coe {C} {A} (sym {Set} {A} {C} (₁ p)) x)) (f (coe {C} {A}",
-  " (sym {Set} {A} {C} (₁ p)) x))  "
+  " coe {B} {D} ((p.₂) (coe {C} {A} (sym {Set} {A} {C} (p.₁)) x)) (f (coe {C} {A}",
+  " (sym {Set} {A} {C} (p.₁)) x))  "
   ]
 
 test3 = main' "elab" $ unlines [

@@ -103,8 +103,9 @@ checkSp cxt = (over _3 reverse <$>) . go where
         VVar x | IM.member x r -> throwIO $ NonLinearSpine x
                | otherwise     -> pure (IM.insert x d r, d + 1, x:xs)
         _      -> throwIO SpineNonVar
-    SProj1{} -> throwIO SpineProjection
-    SProj2{} -> throwIO SpineProjection
+    SProj1{}     -> throwIO SpineProjection
+    SProj2{}     -> throwIO SpineProjection
+    SProjField{} -> throwIO SpineProjection
 
 -- | Close a type in a cxt by wrapping it in Pi types and explicit weakenings.
 closingTy :: Cxt -> Ty -> Ty
@@ -219,23 +220,15 @@ strengthen rel str = go where
   goBind t = strengthen rel (liftStr str) (t (VVar (str^.cod)))
 
   goSp h = \case
-    SNil           -> pure h
-    SApp sp u uu i -> App <$> goSp h sp <*> go u <*> pure uu <*> pure i
-    SProj1 sp spu  -> Proj1 <$> goSp h sp <*> pure spu
-    SProj2 sp spu  -> Proj2 <$> goSp h sp <*> pure spu
+    SNil                  -> pure h
+    SApp sp u uu i        -> App <$> goSp h sp <*> go u <*> pure uu <*> pure i
+    SProj1 sp spu         -> Proj1 <$> goSp h sp <*> pure spu
+    SProj2 sp spu         -> Proj2 <$> goSp h sp <*> pure spu
+    SProjField sp x i spu -> ProjField <$> goSp h sp <*> pure x <*> pure i <*> pure spu
 
 -- | May throw UnifyError.
 solveMeta :: Cxt -> Relevance -> MId -> Spine -> Val -> IO ()
 solveMeta cxt rel m sp rhs = do
-
-  -- these normal forms are only used in error reporting
-  let ~topLhs = quote cxt (VNe (HMeta m) sp)
-      ~topRhs = quote cxt rhs
-
-  (ren, spLen, spVars) <- checkSp cxt sp
-         `catch` (throwIO . SpineError (cxt^.names) topLhs topRhs)
-  rhs <- strengthen rel (Str spLen (cxt^.len) ren (Just m)) rhs
-         `catch` (throwIO . StrengtheningError (cxt^.names) topLhs topRhs)
 
   (metaTy, metaU) <- lookupMeta m >>= \case
     Unsolved a au -> pure (a, au)
@@ -245,14 +238,27 @@ solveMeta cxt rel m sp rhs = do
     (Irrelevant, Set) -> throw (RelevantMetaInIrrelevantMode m)
     _                 -> pure ()
 
+  -- these normal forms are only used in error reporting
+  let ~topLhs = quote cxt (VNe (HMeta m) sp)
+      ~topRhs = quote cxt rhs
+
+  (ren, spLen, spVars) <- checkSp cxt sp
+    `catch` (throwIO . SpineError (cxt^.names) topLhs topRhs)
+
+  rhs <- strengthen rel (Str spLen (cxt^.len) ren (Just m)) rhs
+    `catch` (throwIO . StrengtheningError (cxt^.names) topLhs topRhs)
+
   let spVarNames = map (lvlName (cxt^.names)) spVars
   let closedRhs = closingTm (metaTy, spLen, spVarNames) rhs
   writeMeta m (Solved (eval emptyCxt closedRhs))
 
--- | Fresh meta creation attempts to immediately eta-expand
---   Sg and Top.
+-- | Fresh meta creation attempts to immediately eta-expand Sg and Top. It
+--   doesn't expand functions.
+--   TODO: trigger eta-expansion on pattern condition failure from
+--   projections. What about expanding unsolved metas? In a full impl, perhaps
+--   we can try to expand all leftover metas after finishing a binding group...
 freshMeta :: Cxt -> VTy -> U -> IO Tm
-freshMeta cxt a au = case force cxt a of
+freshMeta cxt a au = case unglue (force cxt a) of
   VTop            -> pure Tt
   VSg x a au b bu -> do
     p1 <- freshMeta cxt a au
@@ -269,7 +275,6 @@ freshMeta cxt a au = case force cxt a of
 
     let sp = fst $ vars (cxt^.types)
     pure (quote cxt (VNe (HMeta m) sp))
-
 
 unifyTypes :: Cxt -> Val -> Val -> IO ()
 unifyTypes cxt l r =
@@ -381,12 +386,20 @@ unify rel cxt un l r = go un l r where
   goSp :: IO () -> Spine -> Spine -> IO ()
   goSp err sp sp' = case (sp, sp') of
     (SNil, SNil)                                   -> pure ()
-    (SApp sp u uu i, SApp sp' u' uu' i') | i == i' -> goSp err sp sp' >>
-                                                      goU uu uu' >> go uu u u'
-    (SProj1 sp spu, SProj1 sp' spu')               -> goSp err sp sp' >> goU spu spu'
-    (SProj2 sp spu, SProj2 sp' spu')               -> goSp err sp sp' >> goU spu spu'
+    (SApp sp u uu i, SApp sp' u' uu' i') | i == i' -> goU uu uu' >> go uu u u'
+                                                      >> goSp err sp sp'
+    (SProj1 sp spu, SProj1 sp' spu')               -> goU spu spu' >> goSp err sp sp'
+    (SProj2 sp spu, SProj2 sp' spu')               -> goU spu spu' >> goSp err sp sp'
+    (SProjField sp _ i spu,
+     SProjField sp' _ i' spu') | i == i'           -> goU spu spu' >> goSp err sp sp'
+    (SProj1 sp spu, SProjField sp' x i spu')       -> goProjField err sp spu spu' i
+    (SProjField sp x i spu, SProj1 sp' spu')       -> goProjField err sp' spu' spu i
     _                                              -> err
 
+  goProjField :: IO () -> Spine -> U -> U -> Int -> IO ()
+  goProjField err _               spu spu' 0 = goU spu spu'
+  goProjField err (SProj2 sp spu) _   spu' i = goProjField err sp spu spu' (i - 1)
+  goProjField err _               _   _    _ = err
 
 
 -- Elaboration
@@ -558,21 +571,28 @@ infer cxt = \case
     (u, b, bu) <- infer cxt u
     pure (Pair t au u bu, VSg "_" a au (const b) bu, au <> bu)
 
-  RAppE (unSrc -> RProj1) t -> do
+  RProj t RProj1 -> do
     (t, sg, sgu) <- infer cxt t
     case unglue (force cxt sg) of
       VSg x a au b bu -> pure (Proj1 t sgu, a, au)
       sg              -> report cxt $ ExpectedSg (quote cxt sg)
 
-  RAppE (unSrc -> RProj2) t -> do
+  RProj t RProj2 -> do
     (t, sg, sgu) <- infer cxt t
     let ~vt = eval cxt t
     case unglue (force cxt sg) of
       VSg x a au b bu -> pure (Proj2 t sgu, b (vProj1 vt sgu), bu)
       sg              -> report cxt $ ExpectedSg (quote cxt sg)
 
-  RProj1 -> report cxt UnappliedProj
-  RProj2 -> report cxt UnappliedProj
+  RProj t (RProjField x) -> do
+    (topT, topSg, topSgu) <- infer cxt t
+    let go :: Val -> VTy -> U -> Int -> IO (Tm, VTy, U)
+        go ~t ~sg ~sgu i = case unglue (force cxt sg) of
+          VSg x' a au b bu
+            | x == x'   -> pure (ProjField topT x i topSgu, a, au)
+            | otherwise -> go (vProj2 t sgu) (b (vProj1 t sgu)) bu (i + 1)
+          _ -> report cxt (NoSuchField x)
+    go (eval cxt topT) topSg topSgu 0
 
   RPi x i a b -> do
     (a, au) <- inferTy cxt a
