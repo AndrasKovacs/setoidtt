@@ -20,8 +20,8 @@ Core theory:
 - Strict `Prop` with definitional proof irrelevance.
 - A universe `Set` of set(oid)s with `Prop : Set` and `Set : Set`.
 - `Prop` is *not* a subtype of `Set`. An embedding from `Prop` to `Set` is definable though, with sigmas and equality.
-- Sigma, Pi, `⊤` and `⊥` type formers. `⊤` and `⊥` are in `Prop`. Sigma is in `Prop` if both fields are in `Prop`, pi is in `Prop` is the codomain is in `Prop`. We can eliminate from `⊥` to both `Prop` and `Set`.
-- Equality type `Eq : {A : Set} → A → A → Prop`. We don't have `Eq` for `{A : Prop}` because they are irrelevant anyway.
+- Sigma, Pi, `⊤` and `⊥` type formers. `⊤` and `⊥` are in `Prop`. Sigma is in `Prop` if both fields are in `Prop`, Ii is in `Prop` if the codomain is in `Prop`. We can eliminate from `⊥` to both `Prop` and `Set`.
+- Equality type `Eq : {A : Set} → A → A → Prop`. 
 - `coe : {A B : Set} → Eq A B → A → B`.
 - `refl : {A : Set}{x : A} → Eq x x`.
 - `ap : {A B : Set}(f : A → B){x y : A} → Eq x y → Eq (f x) (f y)`.
