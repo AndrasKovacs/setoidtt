@@ -12,35 +12,6 @@ Current design:
 - ⊤ and ⊥ are in Prop, Π and Σ are universe-polymorphic
 - exfalso and coe are univ-polymorphic in target
 
-- simple projection unification (just drop matching projections from lhs and rhs)
-
-
-OLD notes
-
-- Eval is not relevance-directed, unification is
-- Unification only appeals to irrelevance when the sides are rigidly disjoint.
-  We can't just skip over irrelevant equations because we want to solve metas.
-
-- PLANZ:
-    - in surface lang, generic record types, polymorphic over Set/Prop
-      - empty record type always in Prop
-    - telescope functions only internally
-    - glued evaluation
-    - eval does *not* mark irrelevance, but unification is irrelevance-directed
-      - we don't get a big benefit from not eval-ing irrelevant things, as we
-        already have local eval.
-    - binders marked with type + univ
-    - fun applications marked with univ of argument
-    - record projections marked with univ of record (from which we project)
-
-    - work out faster pruning with glued eval
-    - work out postponing in general
-    - work out utilizing computing coercion for postponing
-      - this requires types in spines (which we have even without
-        full typed unif! Since we are already passing type env in unification,
-        so we can grab the types of neutral heads)
-      - The only remaining advantage of full typed unif seems to be Top eta in Set!
-
 -}
 
 import Control.Exception
