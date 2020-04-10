@@ -1,5 +1,11 @@
 
--- Test: Awodey-Frey-Speight encoding for natural numbers
+-- Awodey-Frey-Speight encoding for natural numbers
+-- https://www.andrew.cmu.edu/user/awodey/preprints/impred.pdf
+
+-- The AWS-encoding works with funext and impredicative Set. We have Set:Set and
+-- funext, so it works here as well, but since our funext computes, our
+-- eliminators fully compute on closed values (elim β-rules for open canonical
+-- terms are not definitional though).
 
 -- lib
 --------------------------------------------------------------------------------

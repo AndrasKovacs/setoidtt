@@ -1,4 +1,7 @@
 
+-- The category of categories
+------------------------------------------------------------
+
 let Cat : Set
  = (Obj  : Set)
  × (Mor  : Obj → Obj → Set)
@@ -32,7 +35,7 @@ let CatCat : Cat
  = (Cat                         ,(
     Functor                     ,(
     Id                          ,(
-    λ {C}{D}{E}. Comp {C}{D}{E} ,( -- the same expansion is required in Agda too
+    λ {C}{D}{E}. Comp {C}{D}{E} ,( -- TODO to get rid of this expansion. We need the same in Agda
     (refl, refl)                ,( -- allowing refl instead of (refl,refl) needs better unification
     (refl, refl)                ,(
     (refl, refl)                ,tt
@@ -40,8 +43,3 @@ let CatCat : Cat
  in
 
 Set
-
--- Issues with sigma inference, see Comp {C}{D}{E}. We can't rely on nominal
--- equality of records, like in Agda. This fails in Agda as well if we use
--- sigmas.  Maybe we should implement equation eta-contraction, like in the Coq
--- unifier guide?

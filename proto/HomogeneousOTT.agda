@@ -1,6 +1,11 @@
 
 {-# OPTIONS --type-in-type --rewriting --prop --show-irrelevant --injective-type-constructors #-}
 
+{-
+Sketch of something like the setoidtt core theory in Agda with REWRITE.
+Also some experiments with inductive types.
+-}
+
 module HomogeneousOTT where
 
 open import Data.Product
