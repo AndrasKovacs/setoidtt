@@ -43,11 +43,13 @@ Implementation features:
 - Type-based field projections for right-nested sigma types. E.g. if `t : (A : Set) × (foo : A) × ⊤`, then
   `t.foo : t.A`.
 
-Divergence from prior works:
+Difference from prior/related works:
 
 1. Versus OTT: no heterogeneous equality. I think that this is merely an unnecessary complication with dubious practical benefits. The entire point of using HEq in usual MLTT+UIP is that we want to avoid proving and invoking coercion computation laws as much as possible, instead collecting every coercion into a single hidden coercion, which can be eliminated by UIP in one shot when we want to go back to homogeneous equality. Given computing coercion and proof-irrelevant equalities, the motivation for HEq is largely lost. While we can still try to base our system around HEq, as OTT did, we actually end up with more proof obligations and code duplication in general, as HEq-s require re-proving type equalities whenever we want to talk about value equalities.
 
 2. Versus STT: no explicit substitutions, no "dependent" equality. The point here is that as soon as we have every type in some universe, type equality is *always* just equality of type codes, and coercion is always just over a single homogeneous equality of type codes. Hence, the "local universes"-style coercions with explicit substitutions are not necessary anymore, which is a good news, since the STT-style coercion would be a major pain to implement in an ergonomic way.
+
+3. Versus [XTT](https://arxiv.org/abs/1904.08562): XTT is a set-truncated cubical type theory. Compared to it, `setoidtt` is simpler in syntax and semantics, supports more computation rules (e.g. function equality is pointwise by definition) and support propositional extensionality. `setoidtt` also has no need for the rather ugly typecasing construction in XTT. IMO, cubical type theory is oversized for set-level mathematics, and `setoidtt` seems to be just better in practical terms.
 
 Semantics: TODO, but I conjecture that a standard setoid model can be given similarly to STT (of course, assuming we have consistent universe setup without `Set : Set`). In the current system, the only dubious point is the strict computation of `Eq` on canonical type formers. This is semantically justified by a very general, hitherto undescribed form of induction-recursion. If injectivity of type formers is only given weakly as "projections", as in [sott](https://github.com/bobatkey/sott), that can be modeled with large induction-induction, see "Constructing a universe for the setoid model" [here](https://types2020.di.unito.it/abstracts/BookOfAbstractsTYPES2020.pdf).
 
