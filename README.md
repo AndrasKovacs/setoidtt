@@ -39,7 +39,7 @@ That's it. In the actual implementation, a few additional convenient primitives 
 Implementation features:
 
 - Implicit arguments, first-class implicit function types, metavariables, pattern unification with pruning.
-- Universe inference with simple but apparently effective universe unification with universe polymorphic constructions
+- Universe inference with simple but apparently effective universe unification, for universe polymorphic constructions
   such as functions, sigmas and `coe`.
 - Enhanced type inference for `Eq` and `coe`: extension of bidirectional discipline to also propagate information about equation sides + a variant of glued evaluation which tracks `Eq` types even after they are computed away.
 - Type-based field projections for right-nested sigma types. E.g. if `t : (A : Set) × (foo : A) × ⊤`, then
