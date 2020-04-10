@@ -44,7 +44,7 @@ Implementation features:
 - Enhanced type inference for `Eq` and `coe`: extension of bidirectional discipline to also propagate information about equation sides + a variant of glued evaluation which tracks `Eq` types even after they are computed away.
 - Type-based field projections for right-nested sigma types. E.g. if `t : (A : Set) × (foo : A) × ⊤`, then
   `t.foo : t.A`.
-- A novel solution for unification with strict `Prop`, where unification is universe-directed but not type-directed.
+- A novel solution for unification with strict `Prop`, where unification is universe-directed but not type-directed. I find this a sweet spot between the full-blown type directed unification of Agda (which is powerful but adds complexity and performance overhead), and the fully syntax-directed unification of Coq, which is frankly rather ugly and fiddly for strict `Prop`.
 
 Difference from prior/related works:
 
