@@ -62,7 +62,7 @@ AFAIK, the interpretation of split fibration laws for general inductive types is
 
 - Install Haskell Stack: https://docs.haskellstack.org/en/stable/README/ if you don't already have it
 - `stack install` from this directory
-- This copies the executable `fcif` to `~/.local/bin`.
+- This copies the executable `setoidtt` to `~/.local/bin`.
 
 #### Usage
 
