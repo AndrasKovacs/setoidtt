@@ -27,3 +27,4 @@ TAGS
 *.vo
 *.aux
 *.glob
+*.lock
