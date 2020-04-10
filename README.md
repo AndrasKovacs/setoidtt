@@ -17,7 +17,7 @@ The current implementation differs from both of the above. However, my intended 
 
 Core theory:
 
-- Strict `Prop` with definitional proof irrelevance.
+- Strict `Prop` with [definitional proof irrelevance](https://dl.acm.org/doi/10.1145/3290316).
 - A universe `Set` of set(oid)s with `Prop : Set` and `Set : Set`.
 - `Prop` is *not* a subtype of `Set`. An embedding from `Prop` to `Set` is definable though, with sigmas and equality.
 - Sigma, Pi, `⊤` and `⊥` type formers. `⊤` and `⊥` are in `Prop`. Sigma is in `Prop` if both fields are in `Prop`, Ii is in `Prop` if the codomain is in `Prop`. We can eliminate from `⊥` to both `Prop` and `Set`.
@@ -44,6 +44,7 @@ Implementation features:
 - Enhanced type inference for `Eq` and `coe`: extension of bidirectional discipline to also propagate information about equation sides + a variant of glued evaluation which tracks `Eq` types even after they are computed away.
 - Type-based field projections for right-nested sigma types. E.g. if `t : (A : Set) × (foo : A) × ⊤`, then
   `t.foo : t.A`.
+- A novel solution for unification with strict `Prop`, where unification is universe-directed but not type-directed.
 
 Difference from prior/related works:
 
