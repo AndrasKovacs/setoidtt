@@ -7,14 +7,18 @@ Graph : Set
 Graph = Σ Set (λ A → A → A → Set)
 
 Hom : Graph → Graph → Set
-Hom (A , R) (A' , R') = Σ (A → A') λ f → (∀ {a a'} → R a a' → R' (f a) (f a'))
+Hom (A , R) (A' , R') =
+  Σ (A → A') λ f
+  → (∀ {a a' fa fa'} → fa ≡ f a → fa' ≡ f a' → R a a' → R' fa fa')
 
 Id : ∀{A} → Hom A A
-Id {A , R} = (λ a → a) , λ f → f
+Id {A , R} = (λ a → a) , λ {refl refl f → f}
 
 Comp : ∀ {A B C} → Hom B C → Hom A B → Hom A C
-Comp (F , R) (F' , R') = (λ a → F (F' a)) , λ f → R (R' f)
+Comp (F , R) (F' , R') =
+  (λ a → F (F' a)) , λ {refl refl f → R refl refl  (R' refl refl f)}
 
+-- OK
 Idl : ∀ {A B}{F : Hom A B} → Comp F (Id {A}) ≡ F
 Idl = {!!}
 

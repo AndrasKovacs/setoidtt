@@ -1,9 +1,9 @@
 
-name:        fcif
+name:        setoidtt
 version:     0.1.0.0
 license:     BSD3
 category:    Language
-description: "Implementation of \"Elaboration with First-Class Implicit Function Types\""
+description: "Exploratory implementation of a setoid type theory"
 
 default-extensions:
 - BangPatterns
