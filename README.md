@@ -3,7 +3,7 @@ Prototype implementation for a variant of setoid type theory. This repository cu
 
 The goal of the current `setoidtt` is to figure out various details in design choices, type inference, evaluation and ergonomics. Thus it lacks many features and it only operates on a file containing a single expression. Its pretty printing and error messages are also very rough.
 
-I plan to start a second "production-strength" implementation after basic design choices are hammered out. The second version will hopefully turn into a longer-term project into where I throw in all kinds of advanced elaboration features. 
+I plan to start a second "production-strength" implementation after basic design choices are hammered out. The second version will hopefully turn into a longer-term project where I throw in all kinds of advanced elaboration features. 
 
 #### Features & inspiration
 
