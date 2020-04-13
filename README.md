@@ -25,7 +25,7 @@ Core theory:
 - `coe : {A B : Set} → Eq A B → A → B`.
 - `refl : {A : Set}{x : A} → Eq x x`.
 - `ap : {A B : Set}(f : A → B){x y : A} → Eq x y → Eq (f x) (f y)`.
-- `Eq` and `coe` computes on type structure, in particular we have
+- `Eq` and `coe` compute on type/term structure, in particular we have
   - Propositional extensionality: `Eq {Prop} A B = ((A → B) ∧ (B → A))`
   - Function extensionality: `Eq {(x : A) → B} f g = ((x : A) → Eq (f x) (g x))`.
   - Injective type formers.
