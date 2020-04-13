@@ -308,14 +308,14 @@ unify rel cxt un l r = go un l r where
   go :: U -> Val -> Val -> IO ()
   go un t t' = case (rel, forceU un) of
     (Relevant, Prop) -> do
-      unify Irrelevant cxt un t t' `catch` \(e :: UnifyError) -> pure ()
+      unify Irrelevant cxt Prop t t' `catch` \(e :: UnifyError) -> pure ()
 
     (rel, un) -> case (force cxt t, force cxt t') of
 
       -- TODO: rigidity check. Also requires keeping track of rigid coercion,
       -- i.e. we have to know which coe is blocked on a meta and which one is blocked
       -- on a neutral.
-      (VEq a t u,       VEq a' t' u'       ) -> go Set a a' >>  go Set t t' >> go Set u u'
+      (VEq a t u,       VEq a' t' u'       ) -> go Set a a' >> go Set t t' >> go Set u u'
       (VEq a t u,       VEqGlue a' t' u' b') -> go Set a a' >> go Set t t' >> go Set u u'
       (VEqGlue a t u b, VEq a' t' u'       ) -> go Set a a' >> go Set t t' >> go Set u u'
       (VEqGlue _ _ _ b, t'                 ) -> go Set b t'
@@ -353,27 +353,27 @@ unify rel cxt un l r = go un l r where
 
       (VNe h sp, VNe h' sp') -> case (h, h') of
 
-        (HVar x, HVar x') | x == x' -> goSp (err t t') sp sp'
+        (HVar x, HVar x') | x == x' -> goSp (err t t') rel un sp sp'
         (HAxiom ax, HAxiom ax') -> case (ax, ax') of
 
-          (ARefl, ARefl)            -> goSp (err t t') sp sp'
-          (ASym, ASym)              -> goSp (err t t') sp sp'
-          (AAp , AAp )              -> goSp (err t t') sp sp'
-          (AExfalso u, AExfalso u') -> goU u u' >> goSp (err t t') sp sp'
+          (ARefl, ARefl)            -> goSp (err t t') rel un sp sp'
+          (ASym, ASym)              -> goSp (err t t') rel un sp sp'
+          (AAp , AAp )              -> goSp (err t t') rel un sp sp'
+          (AExfalso u, AExfalso u') -> goU u u' >> goSp (err t t') rel un sp sp'
           _                         -> err t t'
 
         (HCoe u a b p t, HCoe u' a' b' p' t') -> do
           -- traceShowM ("COE", showVal cxt (VNe h sp), showVal cxt (VNe h' sp'))
           goU u u' >> go Set a a' >> go Set b b' >> go Prop p p' >> go u t t'
 
-        (HMeta m, HMeta m') | m == m'   -> goSp (err t t') sp sp'
+        (HMeta m, HMeta m') | m == m'   -> goSp (err t t') rel un sp sp'
                             | otherwise -> try @SpineError (checkSp cxt sp) >>= \case
                                   Left{}  -> solveMeta cxt rel m' sp' (VNe (HMeta m) sp)
                                   Right{} -> solveMeta cxt rel m sp (VNe (HMeta m') sp')
 
         (HMeta m, h') -> solveMeta cxt rel m sp (VNe h' sp')
         (h, HMeta m') -> solveMeta cxt rel m' sp' (VNe h sp)
-        _             -> err (VNe h sp) (VNe h' sp')
+        _             -> err t t'
 
       (VNe (HMeta m) sp, t')  -> solveMeta cxt rel m sp t'
       (t, VNe (HMeta m') sp') -> solveMeta cxt rel m' sp' t
@@ -383,18 +383,21 @@ unify rel cxt un l r = go un l r where
   goBind x a au un t t' =
     let v = VVar (cxt^.len) in unify rel (bindSrc x a au cxt) un (t v) (t' v)
 
-  goSp :: IO () -> Spine -> Spine -> IO ()
-  goSp err sp sp' = case (sp, sp') of
-    (SNil, SNil)                                   -> pure ()
-    (SApp sp u uu i, SApp sp' u' uu' i') | i == i' -> goU uu uu' >> go uu u u'
-                                                      >> goSp err sp sp'
-    (SProj1 sp spu, SProj1 sp' spu')               -> goU spu spu' >> goSp err sp sp'
-    (SProj2 sp spu, SProj2 sp' spu')               -> goU spu spu' >> goSp err sp sp'
-    (SProjField sp _ i spu,
-     SProjField sp' _ i' spu') | i == i'           -> goU spu spu' >> goSp err sp sp'
-    (SProj1 sp spu, SProjField sp' x i spu')       -> goProjField err sp spu spu' i
-    (SProjField sp x i spu, SProj1 sp' spu')       -> goProjField err sp' spu' spu i
-    _                                              -> err
+  goSp :: IO () -> Relevance -> U -> Spine -> Spine -> IO ()
+  goSp err rel un sp sp' = case (rel, forceU un) of
+    (Relevant, Prop) ->
+      goSp err Irrelevant Prop sp sp' `catch` \(e :: UnifyError) -> pure ()
+    (_, un) -> case (sp, sp') of
+      (SNil, SNil)                                   -> pure ()
+      (SApp sp u uu i, SApp sp' u' uu' i') | i == i' -> goU uu uu' >> go uu u u'
+                                                        >> goSp err rel un sp sp'
+      (SProj1 sp spu, SProj1 sp' spu')               -> goU spu spu' >> goSp err rel spu sp sp'
+      (SProj2 sp spu, SProj2 sp' spu')               -> goU spu spu' >> goSp err rel spu sp sp'
+      (SProjField sp _ i spu,
+       SProjField sp' _ i' spu') | i == i'           -> goU spu spu' >> goSp err rel spu sp sp'
+      (SProj1 sp spu, SProjField sp' x i spu')       -> goProjField err sp spu spu' i
+      (SProjField sp x i spu, SProj1 sp' spu')       -> goProjField err sp' spu' spu i
+      _                                              -> err
 
   goProjField :: IO () -> Spine -> U -> U -> Int -> IO ()
   goProjField err _               spu spu' 0 = goU spu spu'
