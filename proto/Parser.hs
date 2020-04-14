@@ -37,20 +37,29 @@ parens p = char '(' *> p <* char ')'
 braces p = char '{' *> p <* char '}'
 pArrow   = symbol "→" <|> symbol "->"
 pBind    = pIdent <|> symbol "_"
+natLit   = lexeme L.decimal
 
 keywords :: S.Set String
 keywords = S.fromList [
   "let", "in", "λ", "Set", "Prop", "trans",
-  "⊤",   "tt", "⊥", "exfalso", "Eq", "refl", "coe", "sym", "ap"]
+  "⊤",   "tt", "⊥", "exfalso", "Eq", "refl", "coe", "sym", "ap", "ind",
+  "Nat", "zero", "suc"]
 
 pIdent :: Parser Name
 pIdent = try $ do
-  start <- takeWhile1P Nothing isAlphaNum
+  start <- takeWhile1P Nothing isLetter
   rest  <- takeWhileP Nothing (\c -> isAlphaNum c || c == '\'' || c == '-')
   let x = start ++ rest
   when (S.member x keywords) $
     fail (printf "Expected an identifier, but \"%s\" is a keyword." x)
   x <$ ws
+
+pNatLit :: Parser Raw
+pNatLit = do
+  (n :: Integer) <- natLit
+  let go 0 = RZero
+      go n = RAppE RSuc (go (n - 1))
+  pure (go n)
 
 pAtom :: Parser Raw
 pAtom  =
@@ -67,7 +76,12 @@ pAtom  =
                <|> (RSym     <$  symbol "sym"    )
                <|> (RTrans   <$  symbol "trans"  )
                <|> (RAp      <$  symbol "ap"     )
-               <|> (RHole    <$  char   '_'      ))
+               <|> (RInd     <$  symbol "ind"    )
+               <|> (RNat     <$  symbol "Nat"    )
+               <|> (RZero    <$  symbol "zero"   )
+               <|> (RSuc     <$  symbol "suc"    )
+               <|> (RHole    <$  char   '_'      )
+               <|> pNatLit                       )
 
   <|> do {
         char '(';

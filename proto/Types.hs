@@ -72,6 +72,11 @@ data Raw
   | RSym
   | RTrans
   | RAp
+
+  | RNat
+  | RZero
+  | RSuc
+  | RInd
   deriving Show
 
 
@@ -130,8 +135,15 @@ pattern TSnoc as a un <- ((\case TBound as a un -> Just (as, a, un)
                                  TDef as a un   -> Just (as, a, un)
                                  TNil           -> Nothing) -> Just (as, a, un))
 
+safeIx :: [a] -> Ix -> Maybe a
+safeIx as x = case drop x as of
+  a:_ -> Just a
+  []  -> Nothing
+
 lvlName :: [Name] -> Lvl -> Name
-lvlName ns x = ns !! (length ns - x - 1)
+lvlName ns x = case safeIx ns (length ns - x - 1) of
+  Just n   -> n
+  Nothing -> error (show (ns, x))
 
 -- | We need to distinguish invented names from source names, as
 --   we don't want the former to shadow the latter during name lookup
@@ -197,6 +209,10 @@ data Tm
   | Trans
   | Ap
   | Exfalso U
+  | Nat
+  | Zero
+  | Suc
+  | Ind U          -- ^ (P : Nat -> U i) -> P z -> ({n} -> P n -> P (suc n)) -> (n : _) -> P n
 
 data Spine
   = SNil
@@ -204,6 +220,7 @@ data Spine
   | SProj1 Spine U
   | SProj2 Spine U
   | SProjField Spine Name Int U
+  | SInd Spine U Val Val Val
 
 valsLen :: Vals -> Int
 valsLen = go 0 where
@@ -252,6 +269,10 @@ data Val
   | VSg Name ~Val U (VTy -> VTy) U
   | VPair ~Val U ~Val U
 
+  | VNat
+  | VZero
+  | VSuc ~Val
+
 pattern VSet           = VU Set
 pattern VProp          = VU Prop
 pattern VVar x         = VNe (HVar x) SNil
@@ -282,6 +303,8 @@ tTrans a x y z p q = Trans `AppSI`  a `AppSI`  x `AppSI`  y
                            `AppSI` z  `AppPE` p `AppPE` q
 tAp  a b f x y p   = Ap  `AppSI`  a `AppSI`  b `AppSE`  f `AppSI`  x `AppSI`  y
                          `AppPE`  p
+tInd u p z s n     = App (App (Ind u `AppSE` p) z u Expl) s u Expl `AppSE` n
+tSuc n             = Suc `AppSE` n
 
 -- Lenses
 --------------------------------------------------------------------------------

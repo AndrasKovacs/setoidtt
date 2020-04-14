@@ -1,6 +1,7 @@
 
 module EvalCxt
-  (eval, force, quote, Eval.forceU, Eval.vProj1, Eval.vProj2, Eval.vApp, vEq)
+  (eval, force, quote, Eval.forceU, Eval.vProj1, Eval.vProj2, Eval.vApp, vEq,
+   Eval.vAppSE, Eval.vAppSI, Eval.vAppPE, Eval.vAppPI)
   where
 
 import Lens.Micro.Platform

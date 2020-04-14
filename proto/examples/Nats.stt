@@ -1,0 +1,117 @@
+
+------------------------------------------------------------
+
+let id   : {A : Set}  → A → A = λ x. x in
+let idP  : {A : Prop} → A → A = λ x. x in
+let the  : (A : Set)  → A → A = λ A x. x in
+let theP : (A : Prop) → A → A = λ A x. x in
+
+let tr : {A:Set}(B : A → Set){x y} → Eq x y → B x → B y
+  = λ B p. coe (ap B p) in
+
+let isContr : Set → Set
+  = λ A. (a : A) × ((b : A) → Eq b a) in
+
+let Sing : {A : Set} → A → Set
+  = λ a. (b : _) × Eq a b in
+
+let singContr : {A a} → isContr (Sing {A} a)
+  = λ {A}{a}. ((a, refl), λ s. sym (s.₂)) in
+
+let Lift  : Prop → Set = λ P. Sing Set × P in
+let lift  : {P} → P → Lift P = λ p. ((Set, refl), p) in
+let lower : {P} → Lift P → P = λ lp. lp.₂ in
+
+let liftlower : {P}(p : Lift P) → Eq (lift (lower p)) p
+  = λ p. p.₁.₂ in
+
+------------------------------------------------------------
+
+let rec : {A : Set} → A → (A → A) → Nat → A
+  = λ {A} z s n. ind (λ _. A) z s n
+  in
+
+let add : Nat → Nat → Nat
+  = rec (λ x. x) (λ hyp x. suc (hyp x))
+  in
+
+let mul : Nat → Nat → Nat
+  = rec (λ x. 0) (λ hyp x. add x (hyp x))
+  in
+
+let zero-add : {n} → Eq (add 0 n) n
+  = refl
+  in
+
+let add-zero
+  = ind (λ n. Eq (add n 0) n) refl (λ hyp. hyp)
+  in
+
+let add-assoc
+  = ind (λ a. (b c : Nat) → Eq (add (add a b) c) (add a (add b c)))
+        (λ _ _. refl)
+        (λ hyp. hyp)
+  in
+
+-- example which does not work in Agda
+let Nat-sym-lem : {a} → Eq zero (suc a) → Eq (suc a) zero
+  = sym
+  in
+
+------------------------------------------------------------
+
+let Vec : Set → Nat → Set
+  = λ A n. rec (Lift ⊤) (λ B. A × B) n
+  in
+
+let nil : {A} → Vec A 0
+  = lift tt
+  in
+
+let cons : {A n} → A → Vec A n → Vec A (suc n)
+  = λ a as. (a, as)
+  in
+
+-- in Agda, this works because of constructor-headed function inference
+-- (a form of injectivity analysis)
+-- let v1 : Vec Nat 1
+--   = cons 10 nil
+--   in
+
+let v3 : Vec Nat 3
+  = (5, (5, (3, nil)))
+  in
+
+let append : {A} (n m : _) → Vec A n → Vec A m → Vec A (add n m)
+  = λ {A} n m xs ys.
+      ind (λ n. Vec A n → Vec A m → Vec A (add n m))
+          (λ xs ys. ys)
+	  (λ {n} app xs ys. ((xs.₁), app (xs.₂) ys))
+	  n xs ys
+  in
+
+let coenil :
+  {A B}(p : Eq {Set} A B) → Eq (coe (ap (λ A. Vec A 0) p) (nil {A})) (nil {B})
+  = λ p. tt
+  in
+
+
+-- The problem is that (xs : Vec A 0) is not definitionally equal to (nil : Vec A 0)
+--   (Lift ⊤) only has propositional η
+
+-- let append-assoc :
+--   {A n m k xs ys zs}
+--   → Eq (coe (ap (Vec A) (add-assoc n m k))
+--       (append (add n m) k (append n m xs ys) zs))
+--       (append n (add m k) xs (append m k ys zs))
+
+--   = λ {A}{n}{m}{k}{xs}{ys}{zs}.
+--      ind (λ n. (xs : Vec A n) → Eq (coe (ap (Vec A) (add-assoc n m k))
+--                                    (append (add n m) k (append n m xs ys) zs))
+--                                    (append n (add m k) xs (append m k ys zs)))
+--          (λ xs. _)
+--          _
+-- 	 n xs
+--   in
+
+5

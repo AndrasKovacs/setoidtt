@@ -13,6 +13,7 @@ import Pretty
 data SpineError
   = SpineNonVar
   | SpineProjection
+  | SpineInd
   | NonLinearSpine Lvl
   deriving (Show, Exception)
 
@@ -80,6 +81,8 @@ showUnifyError ns e = case e of
       (showTm ns lhs) (showTm ns rhs)
     SpineProjection ->
       "Projection in meta spine\n\n"
+    SpineInd ->
+      "Nat eliminator in meta spine\n\n"
     NonLinearSpine x -> printf
       ("Nonlinear variable %s in meta spine in equation\n\n" ++
        "  %s =? %s\n\n")

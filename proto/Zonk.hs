@@ -50,3 +50,7 @@ zonk vs l t = go t where
     Proj2 t tu         -> Proj2 (go t) (forceU tu)
     ProjField t x i tu -> ProjField (go t) x i (forceU tu)
     Pair t tu u uu     -> Pair (go t) (forceU tu) (go u) (forceU uu)
+    Ind u              -> Ind (forceU u)
+    Nat                -> Nat
+    Zero               -> Zero
+    Suc                -> Suc

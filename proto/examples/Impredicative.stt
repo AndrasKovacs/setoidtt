@@ -57,72 +57,72 @@ let Tyᴺ : Conᴺ → Set
 	× (s : {n} → N n → N (Γ.s n))
 	× ⊤ in
 
-let Nat : Set
+let nat : Set
   = (f : (Γ : Conᴺ) → Γ.N)
   × ((Γ Δ : Conᴺ)(σ : Subᴺ Γ Δ) → Eq (σ.N (f Γ)) (f Δ)) in
 
-let zero : Nat
+let Z : nat
   = (λ Γ. Γ.z, λ _ _ σ. σ.z) in
 
-let suc : Nat → Nat
+let S : nat → nat
   = λ n. (λ Γ. Γ.s (n.₁ Γ),
           λ Γ Δ σ. trans (σ.s (n.₁ Γ)) (ap (Δ.s) (n.₂ Γ Δ σ))) in
 
 let syn : Conᴺ
-  = (Nat, (zero, (suc, _))) in
+  = (nat, (Z, (S, _))) in
 
 let rec : (Γ : Conᴺ) → Subᴺ syn Γ
   = λ Γ. (λ n. n.₁ Γ, (refl, (λ _. refl, _))) in
 
-let recZeroβ : (Γ : Conᴺ) → Eq (rec Γ .₁ zero) (Γ.z)
+let recZβ : (Γ : Conᴺ) → Eq (rec Γ .₁ Z) (Γ.z)
   = λ _. refl in
 
-let recSucβ : (Γ : Conᴺ)(n : Nat) → Eq (rec Γ .₁ (suc n)) (Γ.s (rec Γ .₁ n))
+let recSβ : (Γ : Conᴺ)(n : nat) → Eq (rec Γ .₁ (S n)) (Γ.s (rec Γ .₁ n))
   = λ _ _. refl in
 
-let ind : (A : Tyᴺ syn) → (n : Nat) → A.₁ n
+let Ind : (A : Tyᴺ syn) → (n : nat) → A.₁ n
   = λ A n.
   let Γ : Conᴺ
-    = ((n : Nat) × A.N n, ((zero, A.z), (λ np. (suc (np.₁), A.s (np.₂)), _))) in
+    = ((n : nat) × A.N n, ((Z, A.z), (λ np. (S (np.₁), A.s (np.₂)), _))) in
   let res = n.₁ Γ in
   let proj1 : Subᴺ Γ syn = (λ n. n.₁, (refl, (λ _. refl, _))) in
   let lem : Eq (res.₁) n = trans (n.₂ Γ syn proj1) (λ Γ. n.₂ syn Γ (rec Γ)) in
   coe (ap (A.N) lem) (res.₂) in
 
--- injectivity of suc + β for ind are not definitional
+-- injectivity of S + β for Ind are not definitional
 
-let add : Nat → Nat → Nat
-  = rec (Nat → Nat, (id, (λ f b. suc (f b), _))) .₁ in
+let add : nat → nat → nat
+  = rec (nat → nat, (id, (λ f b. S (f b), _))) .₁ in
 
-let mul : Nat → Nat → Nat
-  = rec (Nat → Nat, (λ b. zero, (λ nmul b. add b (nmul b), _))) .₁ in
+let mul : nat → nat → nat
+  = rec (nat → nat, (λ b. Z, (λ nmul b. add b (nmul b), _))) .₁ in
 
-let n5  : Nat = suc (suc (suc (suc (suc zero)))) in
-let n10 : Nat = add n5 n5 in
-let n100 : Nat = mul n10 n10 in
+let n5  : nat = S (S (S (S (S Z)))) in
+let n10 : nat = add n5 n5 in
+let n100 : nat = mul n10 n10 in
 
 -- proof about numbers!!
 -- it's probably the most practical to write functions using rec and irrelevant
--- proofs using ind
-let add0 : (n : Nat) → Eq n (add n zero)
+-- proofs using Ind
+let add0 : (n : nat) → Eq n (add n Z)
   = λ n. lower
-    (ind (λ n. Lift (Eq n (add n zero)), (lift refl, (λ p. lift (ap suc (lower p)), _))) n)
+    (Ind (λ n. Lift (Eq n (add n Z)), (lift refl, (λ p. lift (ap S (lower p)), _))) n)
   in
 
 -- Church naturals
 --------------------------------------------------------------------------------
 
-let CNat : Set = (N : Set) → N → (N → N) → N in
-let czero : CNat = λ N z s. z in
-let csuc : CNat → CNat = λ a N z s. s (a N z s) in
-let cadd : CNat → CNat → CNat = λ a b N z s. a N (b N z s) s in
-let cmul : CNat → CNat → CNat = λ a b N z s. a N z (λ x. b N x s) in
+let Cnat : Set = (N : Set) → N → (N → N) → N in
+let cZ : Cnat = λ N z s. z in
+let cS : Cnat → Cnat = λ a N z s. s (a N z s) in
+let cadd : Cnat → Cnat → Cnat = λ a b N z s. a N (b N z s) s in
+let cmul : Cnat → Cnat → Cnat = λ a b N z s. a N z (λ x. b N x s) in
 
-let c5 : CNat = csuc (csuc (csuc (csuc (csuc czero)))) in
-let c10 : CNat = cadd c5 c5 in
-let c100 : CNat = cmul c10 c10 in
+let c5 : Cnat = cS (cS (cS (cS (cS cZ)))) in
+let c10 : Cnat = cadd c5 c5 in
+let c100 : Cnat = cmul c10 c10 in
 
-let n2c : Nat → CNat
-  = λ n. n .₁ (CNat, (czero, (λ n. csuc n, _))) in
+let n2c : nat → Cnat
+  = λ n. n .₁ (Cnat, (cZ, (λ n. cS n, _))) in
 
 n2c n100

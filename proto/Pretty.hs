@@ -32,9 +32,10 @@ goU p (UMeta x)  = (("U?"++show x)++)
 goU p (UMax xs)  = (("UMax "++ show (IS.toList xs))++)
 
 goVar :: [Name] -> Ix -> ShowS
-goVar ns x = case ns !! x of
-  '*':n -> (n++)
-  n     -> (n++)
+goVar ns x = case safeIx ns x of
+  Just ('*':n) -> (n++)
+  Just n       -> (n++)
+  Nothing      -> error (show (ns, x))
 
 goArg :: [Name] -> Tm -> Icit -> ShowS
 goArg ns t i = icit i (bracket (go False ns t)) (go True ns t)
@@ -72,8 +73,9 @@ isMetaSp (App t _ _ _)  = isMetaSp t
 isMetaSp _              = False
 
 goMetaSp :: [Name] -> Tm -> ShowS
-goMetaSp ns (App t (Var x) _ i) | '*':_ <- ns !! x =
-  goMetaSp ns t
+goMetaSp ns (App t (Var x) _ i)
+  | Just ('*':_) <- safeIx ns x = goMetaSp ns t
+  | Nothing      <- safeIx ns x = error (show (ns, x))
 goMetaSp ns (App t u _ i)    =
   goMetaSp ns t . (' ':) . goArg ns u i
 goMetaSp ns (Meta m) = ("?"++).(show m++)
@@ -124,6 +126,11 @@ go p ns = \case
   Proj2 t tu     -> showParen p (go False ns t.(".₂"++))
   ProjField t x i tu -> showParen p (go True ns t.(("."++x)++))
   Pair t tu u uu -> parens (go False ns t . (", "++) . go False ns u)
+
+  Nat  -> ("Nat"++)
+  Zero -> ("zero"++)
+  Suc  -> ("suc"++)
+  Ind u -> ("ind"++)
 
 showTm :: [Name] -> Tm -> String
 showTm ns t = go False ns t []

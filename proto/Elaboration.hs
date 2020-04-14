@@ -28,7 +28,7 @@ import ElabState
 import Errors
 import Pretty
 
-import Debug.Trace
+-- import Debug.Trace
 
 -- Context operations
 --------------------------------------------------------------------------------
@@ -77,6 +77,7 @@ checkSp cxt = (over _3 reverse <$>) . go where
     SProj1{}     -> throwIO SpineProjection
     SProj2{}     -> throwIO SpineProjection
     SProjField{} -> throwIO SpineProjection
+    SInd{}       -> throwIO SpineInd
 
 -- | Close a type in a cxt by wrapping it in Pi types and explicit weakenings.
 closingTy :: Cxt -> Ty -> Ty
@@ -187,6 +188,9 @@ strengthen rel str = go where
     VEq a x y               -> tEq <$> go a <*> go x <*> go y
     VSg x a au b bu         -> Sg x <$> go a <*> pure au <*> goBind b <*> pure bu
     VPair t tu u uu         -> Pair <$> go t <*> pure tu <*> go u <*> pure uu
+    VNat                    -> pure Nat
+    VZero                   -> pure Zero
+    VSuc n                  -> tSuc <$> go n
 
   goBind t = strengthen rel (liftStr str) (t (VVar (str^.cod)))
 
@@ -196,6 +200,7 @@ strengthen rel str = go where
     SProj1 sp spu         -> Proj1 <$> goSp h sp <*> pure spu
     SProj2 sp spu         -> Proj2 <$> goSp h sp <*> pure spu
     SProjField sp x i spu -> ProjField <$> goSp h sp <*> pure x <*> pure i <*> pure spu
+    SInd sp u p z s       -> tInd u <$> go p <*> go z <*> go s <*> goSp h sp
 
 -- | May throw UnifyError.
 solveMeta :: Cxt -> Relevance -> MId -> Spine -> Val -> IO ()
@@ -222,6 +227,7 @@ solveMeta cxt rel m sp rhs = do
   let spVarNames = map (lvlName (cxt^.names)) spVars
   let closedRhs = closingTm (metaTy, spLen, spVarNames) rhs
   writeMeta m (Solved (eval emptyCxt closedRhs))
+
 
 -- | Fresh meta creation attempts to immediately eta-expand Sg and Top. It
 --   doesn't expand functions.
@@ -283,77 +289,82 @@ unify rel cxt un l r = go un l r where
 
     (rel, un) -> case (force cxt t, force cxt t') of
 
-      -- TODO: rigidity check. Also requires keeping track of rigid coercion,
-      -- i.e. we have to know which coe is blocked on a meta and which one is blocked
-      -- on a neutral.
-      (VEq a t u,       VEq a' t' u'       ) -> go Set a a' >> go Set t t' >> go Set u u'
-      (VEq a t u,       VEqGlue a' t' u' b') -> go Set a a' >> go Set t t' >> go Set u u'
-      (VEqGlue a t u b, VEq a' t' u'       ) -> go Set a a' >> go Set t t' >> go Set u u'
-      (VEqGlue _ _ _ b, t'                 ) -> go Set b t'
-      (t              , VEqGlue _ _ _ b'   ) -> go Set t b'
+        -- TODO: rigidity check. Also requires keeping track of rigid coercion,
+        -- i.e. we have to know which coe is blocked on a meta and which one is blocked
+        -- on a neutral.
+        (VEq a t u,       VEq a' t' u'       ) -> go Set a a' >> go Set t t' >> go Set u u'
+        (VEq a t u,       VEqGlue a' t' u' b') -> go Set a a' >> go Set t t' >> go Set u u'
+        (VEqGlue a t u b, VEq a' t' u'       ) -> go Set a a' >> go Set t t' >> go Set u u'
+        (VEqGlue _ _ _ b, t'                 ) -> go Set b t'
+        (t              , VEqGlue _ _ _ b'   ) -> go Set t b'
 
-      (VLam x _ a au t, VLam x' _ _ _ t') -> goBind (pick x x') a au un t t'
-      (VLam x i a au t, t')               -> goBind x a au un t (\ ~v -> vApp t' v au i)
-      (t, VLam x' i' a' au' t')           -> goBind x' a' au' un (\ ~v -> vApp t v au' i') t'
+        (VLam x _ a au t, VLam x' _ _ _ t') -> goBind (pick x x') a au un t t'
+        (VLam x i a au t, t')               -> goBind x a au un t (\ ~v -> vApp t' v au i)
+        (t, VLam x' i' a' au' t')           -> goBind x' a' au' un (\ ~v -> vApp t v au' i') t'
 
-      (VPi x i a au b, VPi x' i' a' au' b') | i == i' -> do
-        goU au au'
-        go Set a a'
-        goBind (pick x x') a au Set b b'
+        (VPi x i a au b, VPi x' i' a' au' b') | i == i' -> do
+          goU au au'
+          go Set a a'
+          goBind (pick x x') a au Set b b'
 
-      (VSg x a au b bu, VSg x' a' au' b' bu') -> do
-        goU au au'  >> goU bu bu'
-        go Set a a' >> goBind (pick x x') a au Set b b'
+        (VSg x a au b bu, VSg x' a' au' b' bu') -> do
+          goU au au'  >> goU bu bu'
+          go Set a a' >> goBind (pick x x') a au Set b b'
 
-      (VPair t tu u uu, VPair t' tu' u' uu') -> do
-        goU tu tu' >> goU uu uu'
-        go tu t t' >> go uu u u'
+        (VPair t tu u uu, VPair t' tu' u' uu') -> do
+          goU tu tu' >> goU uu uu'
+          go tu t t' >> go uu u u'
 
-      (VPair t tu u uu, t') -> do
-        let sgu = tu <> uu
-        go tu t (vProj1 t' sgu) >> go uu u (vProj2 t' sgu)
+        (VPair t tu u uu, t') -> do
+          let sgu = tu <> uu
+          go tu t (vProj1 t' sgu) >> go uu u (vProj2 t' sgu)
 
-      (t', VPair t tu u uu) -> do
-        let sgu = tu <> uu
-        go tu (vProj1 t' sgu) t >> go uu (vProj2 t' sgu) u
+        (t', VPair t tu u uu) -> do
+          let sgu = tu <> uu
+          go tu (vProj1 t' sgu) t >> go uu (vProj2 t' sgu) u
 
-      (VU u, VU u') -> goU u u'
-      (VTop, VTop)  -> pure ()
-      (VTt, VTt)    -> pure ()
-      (VBot, VBot)  -> pure ()
+        (VU u, VU u') -> goU u u'
+        (VTop, VTop)  -> pure ()
+        (VTt, VTt)    -> pure ()
+        (VBot, VBot)  -> pure ()
 
-      (VNe h sp, VNe h' sp') -> case (h, h') of
+        (VNat, VNat) -> pure ()
+        (VZero, VZero) -> pure ()
+        (VSuc n, VSuc n') -> go Set n n'
 
-        (HVar x, HVar x') | x == x' -> goSp (err t t') rel un sp sp'
-        (HAxiom ax, HAxiom ax') -> case (ax, ax') of
+        (VNe h sp, VNe h' sp') -> case (h, h') of
 
-          (ARefl, ARefl)            -> goSp (err t t') rel un sp sp'
-          (ASym, ASym)              -> goSp (err t t') rel un sp sp'
-          (AAp , AAp )              -> goSp (err t t') rel un sp sp'
-          (AExfalso u, AExfalso u') -> goU u u' >> goSp (err t t') rel un sp sp'
-          _                         -> err t t'
+          (HVar x, HVar x') | x == x' -> goSp (err t t') rel un sp sp'
+          (HAxiom ax, HAxiom ax') -> case (ax, ax') of
 
-        (HCoe u a b p t, HCoe u' a' b' p' t') -> do
-          -- traceShowM ("COE", showVal cxt (VNe h sp), showVal cxt (VNe h' sp'))
-          goU u u' >> go Set a a' >> go Set b b' >> go Prop p p' >> go u t t'
+            (ARefl, ARefl)            -> goSp (err t t') rel un sp sp'
+            (ASym, ASym)              -> goSp (err t t') rel un sp sp'
+            (AAp , AAp )              -> goSp (err t t') rel un sp sp'
+            (AExfalso u, AExfalso u') -> goU u u' >> goSp (err t t') rel un sp sp'
+            _                         -> err t t'
 
-        (HMeta m, HMeta m') | m == m'   -> goSp (err t t') rel un sp sp'
-                            | otherwise -> try @SpineError (checkSp cxt sp) >>= \case
-                                  Left{}  -> solveMeta cxt rel m' sp' (VNe (HMeta m) sp)
-                                  Right{} -> solveMeta cxt rel m sp (VNe (HMeta m') sp')
+          (HCoe u a b p t, HCoe u' a' b' p' t') -> do
+            -- traceShowM ("COE", showVal cxt (VNe h sp), showVal cxt (VNe h' sp'))
+            goU u u' >> go Set a a' >> go Set b b' >> go Prop p p' >> go u t t'
 
-        (HMeta m, h') -> solveMeta cxt rel m sp (VNe h' sp')
-        (h, HMeta m') -> solveMeta cxt rel m' sp' (VNe h sp)
-        _             -> err t t'
+          (HMeta m, HMeta m') | m == m'   -> goSp (err t t') rel un sp sp'
+                              | otherwise -> try @SpineError (checkSp cxt sp) >>= \case
+                                    Left{}  -> solveMeta cxt rel m' sp' (VNe (HMeta m) sp)
+                                    Right{} -> solveMeta cxt rel m sp (VNe (HMeta m') sp')
 
-      (VNe (HMeta m) sp, t')  -> solveMeta cxt rel m sp t'
-      (t, VNe (HMeta m') sp') -> solveMeta cxt rel m' sp' t
-      (t, t')                 -> err t t'
+          (HMeta m, h') -> solveMeta cxt rel m sp (VNe h' sp')
+          (h, HMeta m') -> solveMeta cxt rel m' sp' (VNe h sp)
+          _             -> err t t'
+
+        (VNe (HMeta m) sp, t')  -> solveMeta cxt rel m sp t'
+        (t, VNe (HMeta m') sp') -> solveMeta cxt rel m' sp' t
+        (t, t')                 -> err t t'
 
   goBind :: Name -> VTy -> U -> U -> (Val -> Val) -> (Val -> Val) -> IO ()
   goBind x a au un t t' =
     let v = VVar (cxt^.len) in unify rel (bindSrc x a au cxt) un (t v) (t' v)
 
+  -- TODO: it is unnecessary to track Relevance and U here!
   goSp :: IO () -> Relevance -> U -> Spine -> Spine -> IO ()
   goSp err rel un sp sp' = case (rel, forceU un) of
     (Relevant, Prop) ->
@@ -362,6 +373,12 @@ unify rel cxt un l r = go un l r where
       (SNil, SNil)                                   -> pure ()
       (SApp sp u uu i, SApp sp' u' uu' i') | i == i' -> goU uu uu' >> go uu u u'
                                                         >> goSp err rel un sp sp'
+
+
+      (SInd sp u p z s, SInd sp' u' p' z' s') ->
+        goSp err rel Set sp sp' >> goU u u'
+        >> go Set p p' >> go u z z' >> go u s s'
+
       (SProj1 sp spu, SProj1 sp' spu')               -> goU spu spu' >> goSp err rel spu sp sp'
       (SProj2 sp spu, SProj2 sp' spu')               -> goU spu spu' >> goSp err rel spu sp sp'
       (SProjField sp _ i spu,
@@ -427,19 +444,19 @@ checkEq cxt t a l r = case t of
     p <- checkEq cxt p a l vmid
     q <- checkEq cxt q a vmid r
     pure (tTrans (quote cxt a) (quote cxt l) mid (quote cxt r) p q)
-  RAppE (unSrc -> RAppE (unSrc -> RAp) f) p -> do
-    b <- freshMeta cxt VSet Set
-    let ~vb = eval cxt b
-    x <- freshMeta cxt vb Set
-    let ~vx = eval cxt x
-    y <- freshMeta cxt vb Set
-    let ~vy = eval cxt y
-    f <- check cxt f (VPi "_" Expl vb Set (const a)) Set
-    let ~vf = eval cxt f
-    unify Relevant cxt Set l (vApp vf (eval cxt x) Set Expl)
-    unify Relevant cxt Set r (vApp vf (eval cxt y) Set Expl)
-    p <- checkEq cxt p vb vx vy
-    pure (tAp b (quote cxt a) f x y p)
+  -- RAppE (unSrc -> RAppE (unSrc -> RAp) f) p -> do
+  --   b <- freshMeta cxt VSet Set
+  --   let ~vb = eval cxt b
+  --   x <- freshMeta cxt vb Set
+  --   let ~vx = eval cxt x
+  --   y <- freshMeta cxt vb Set
+  --   let ~vy = eval cxt y
+  --   f <- check cxt f (VPi "_" Expl vb Set (const a)) Set
+  --   let ~vf = eval cxt f
+  --   unify Relevant cxt Set l (vApp vf (eval cxt x) Set Expl)
+  --   unify Relevant cxt Set r (vApp vf (eval cxt y) Set Expl)
+  --   p <- checkEq cxt p vb vx vy
+  --   pure (tAp b (quote cxt a) f x y p)
   t ->
     check cxt t (vEq cxt a l r) Prop
 
@@ -658,3 +675,27 @@ infer cxt = \case
              VPiIS "y" a \ ~y -> VPiEP "p" (vEq cxt a x y) \ ~p ->
              vEq cxt b (vApp f x Set Expl) (vApp f y Set Expl)
     pure (Ap, ty, Prop)
+
+  RNat ->
+    pure (Nat, VSet, Set)
+
+  RZero ->
+    pure (Zero, VNat, Set)
+
+  RSuc ->
+    pure (Suc, VPiES "_" VNat (const VNat), Set)
+
+  RInd -> do
+    u <- UMeta <$> newU
+    let pty   = VPi "_" Expl VNat Set (const (VU u))
+        zty p = vAppSE p VZero
+        sty p = VPi "n" Impl VNat Set \ ~n -> VPi "_" Expl (vAppSE p n) u \_ ->
+                vAppSE p (VSuc n)
+
+    let ty = VPi "P" Expl pty Set   \ ~p ->
+             VPi "z" Expl (zty p) u \ ~z ->
+             VPi "s" Expl (sty p) u \ ~s ->
+             VPi "n" Expl VNat Set  \ ~n ->
+             vAppSE p n
+
+    pure (Ind u, ty, u)

@@ -10,23 +10,26 @@ import ElabState
 
 -- import Debug.Trace
 
--- valDbg :: Val -> String
--- valDbg = \case
---   VNe h _   -> case h of
---     HVar _    -> "VNe HVar"
---     HMeta _   -> "VNe HMeta"
---     HAxiom ax -> "VNe " ++ show ax
---     HCoe{}    -> "VNe HCoe"
---   VPi{}     -> "VPi"
---   VLam{}    -> "VLam"
---   VU{}      -> "VU"
---   VTop      -> "VTop"
---   VTt       -> "VTt"
---   VBot      -> "VBot"
---   VEqGlue{} -> "VEqGlue"
---   VEq{}     -> "VEq"
---   VSg{}     -> "VSg"
---   VPair{}   -> "VPair"
+valDbg :: Val -> String
+valDbg = \case
+  VNe h _   -> case h of
+    HVar x    -> "VNe HVar " ++ show x
+    HMeta _   -> "VNe HMeta"
+    HAxiom ax -> "VNe " ++ show ax
+    HCoe{}    -> "VNe HCoe"
+  VPi{}     -> "VPi"
+  VLam{}    -> "VLam"
+  VU{}      -> "VU"
+  VTop      -> "VTop"
+  VTt       -> "VTt"
+  VBot      -> "VBot"
+  VEqGlue{} -> "VEqGlue"
+  VEq{}     -> "VEq"
+  VSg{}     -> "VSg"
+  VPair{}   -> "VPair"
+  VNat{}    -> "VNat"
+  VZero{}   -> "VZero"
+  VSuc{}    -> "VSuc"
 
 
 -- Evaluation
@@ -108,6 +111,13 @@ vProjField v x i vu = case v of
     i -> vProjField u x (i - 1) uu
   _ -> error "impossible"
 
+vInd :: U -> Val -> Val -> Val -> Val -> Val
+vInd u p z s n = case n of
+  VZero    -> z
+  VSuc n   -> vApp (s `vAppSI` n) (vInd u p z s n) u Expl
+  VNe h sp -> VNe h (SInd sp u p z s)
+  v        -> error (valDbg v)
+
 vAppSp :: Val -> Spine -> Val
 vAppSp h = go where
   go SNil                    = h
@@ -115,6 +125,7 @@ vAppSp h = go where
   go (SProj1 sp spu)         = vProj1 (go sp) spu
   go (SProj2 sp spu)         = vProj2 (go sp) spu
   go (SProjField sp x i spu) = vProjField (go sp) x i spu
+  go (SInd sp u p z s)       = vInd u p z s (go sp)
 
 vAppSI ~t ~u = vApp t u Set  Impl
 vAppSE ~t ~u = vApp t u Set  Expl
@@ -140,22 +151,6 @@ vAll x a b = VPi x Expl a Prop b
 vEx :: Name -> Val -> (Val -> Val) -> Val
 vEx x a b = VSg x a Prop b Prop
 
-(∙) :: Val -> Val -> Val
-(∙) t u = vApp t u Set Expl
-infixl 8 ∙
-
-(∘) :: Val -> Val -> Val
-(∘) t u = vApp t u Prop Expl
-infixl 8 ∘
-
-(■) :: Val -> Val -> Val
-(■) t u = vApp t u Set Impl
-infixl 8 ■
-
-(□) :: Val -> Val -> Val
-(□) t u = vApp t u Prop Impl
-infixl 8 □
-
 vEq :: Lvl -> Val -> Val -> Val -> Val
 vEq l topA ~topX ~topY =
 
@@ -169,6 +164,7 @@ vEq l topA ~topX ~topY =
       Set -> case (topX, topY) of
         (VU Set,  VU Set)  -> glue VTop
         (VU Prop, VU Prop) -> glue VTop
+        (VNat   , VNat   ) -> glue VTop
 
         (VPi x i a (forceU -> au) b, VPi x' i' a' (forceU -> au') b') | i == i' ->
           case univConv au au' of
@@ -194,6 +190,14 @@ vEq l topA ~topX ~topY =
         _          -> glue VBot
 
       _ -> stuck
+
+    VNat -> case (topX, topY) of
+      (VZero , VZero  ) -> glue VTop
+      (VSuc n, VSuc n') -> vEq l VNat n n'
+         -- error (valDbg n ++ " " ++ valDbg n')
+      (VSuc _, VZero  ) -> glue VBot
+      (VZero , VSuc _ ) -> glue VBot
+      _                 -> stuck
 
     -- note that funext is always by explicit function!
     VPi x i a au b -> glue (
@@ -232,7 +236,7 @@ tryRegularity l ~u a b ~p ~t =
 --   Right now we ignore the rigidity check.
 vCoe :: Lvl -> U -> Val -> Val -> Val -> Val -> Val
 vCoe l topU topA topB topP t = case forceU topU of
-  Prop -> vProj1 topP Prop □ t
+  Prop -> vProj1 topP Prop `vAppPI` t
   Set -> case (topA, topB) of
 
     -- canonical coercions
@@ -310,6 +314,22 @@ eval vs l = go where
     Proj2 t tu         -> vProj2 (go t) tu
     ProjField t x i tu -> vProjField (go t) x i tu
 
+    Nat           -> VNat
+    Zero          -> VZero
+    Suc           -> VLamES "n" VNat VSuc
+
+    Ind u ->
+        let pty   = VPiES "_" VNat (const (VU u))
+            zty p = vAppSE p VZero
+            sty p = VPiIS "n" VNat \ ~n -> VPi "_" Expl (vAppSE p n) u \_ ->
+                    vAppSE p (VSuc n)
+
+            in VLam "P" Expl pty Set   \ ~p ->
+               VLam "z" Expl (zty p) u \ ~z ->
+               VLam "s" Expl (sty p) u \ ~s ->
+               VLam "n" Expl VNat Set  \ ~n ->
+               vInd u p z s n
+
   goBind t v = eval (VDef vs v) (l + 1) t
 
 quote :: Lvl -> Val -> Tm
@@ -332,6 +352,7 @@ quote d = go where
           goSp (SProj1 sp spu)         = Proj1 (goSp sp) (forceU spu)
           goSp (SProj2 sp spu)         = Proj2 (goSp sp) (forceU spu)
           goSp (SProjField sp x i spu) = ProjField (goSp sp) x i (forceU spu)
+          goSp (SInd sp u p z s)       = tInd (forceU u) (go p) (go z) (go s) (goSp sp)
 
       in goSp sp
 
@@ -346,6 +367,10 @@ quote d = go where
 
     VSg x a au b bu -> Sg x (go a) (forceU au) (goBind b) (forceU bu)
     VPair t tu u uu -> Pair (go t) (forceU tu) (go u) (forceU uu)
+
+    VNat            -> Nat
+    VZero           -> Zero
+    VSuc n          -> tSuc (go n)
 
   goBind t = quote (d + 1) (t (VVar d))
 
@@ -414,19 +439,19 @@ conversion lvl un l r = (Yes <$ goTop lvl un l r) `catch` pure where
 
         (VNe h sp, VNe h' sp') -> case (h, h') of
 
-          (HVar x, HVar x') | x == x' -> goSp  sp sp'
+          (HVar x, HVar x') | x == x' -> goSp un sp sp'
           (HAxiom ax, HAxiom ax') -> case (ax, ax') of
 
-            (ARefl, ARefl)            -> goSp sp sp'
-            (ASym, ASym)              -> goSp sp sp'
-            (AAp , AAp )              -> goSp sp sp'
-            (AExfalso u, AExfalso u') -> goU u u' >> goSp sp sp'
+            (ARefl, ARefl)            -> goSp un sp sp'
+            (ASym, ASym)              -> goSp un sp sp'
+            (AAp , AAp )              -> goSp un sp sp'
+            (AExfalso u, AExfalso u') -> goU u u' >> goSp un sp sp'
             _                         -> throw No
 
           (HCoe u a b p t, HCoe u' a' b' p' t') -> do
             goU u u' >> go Set a a' >> go Set b b' >> go Prop p p' >> go u t t'
 
-          (HMeta m, HMeta m') | m == m'   -> goSp sp sp'
+          (HMeta m, HMeta m') | m == m'   -> goSp un sp sp'
                               | otherwise -> throw Dunno
 
           (HMeta m, h') -> throw Dunno
@@ -446,15 +471,20 @@ conversion lvl un l r = (Yes <$ goTop lvl un l r) `catch` pure where
     goProjField (SProj2 sp spu) _   spu' i = goProjField sp spu spu' (i - 1)
     goProjField _               _   _    _ = throw No
 
-    goSp :: Spine -> Spine -> IO ()
-    goSp sp sp' = case (sp, sp') of
+    -- MISSING: relevance check!
+    goSp :: U -> Spine -> Spine -> IO ()
+    goSp (forceU -> Prop) _ _    = pure ()
+    goSp (forceU -> un  ) sp sp' = case (sp, sp') of
       (SNil, SNil)                                   -> pure ()
       (SApp sp u uu i, SApp sp' u' uu' i') | i == i' -> goU uu uu' >> go uu u u'
-                                                        >> goSp sp sp'
-      (SProj1 sp spu, SProj1 sp' spu')               -> goU spu spu' >> goSp sp sp'
-      (SProj2 sp spu, SProj2 sp' spu')               -> goU spu spu' >> goSp sp sp'
+                                                        >> goSp un sp sp'
+      (SInd sp u p z s, SInd sp' u' p' z' s') ->
+        goSp Set sp sp' >> goU u u' >> go Set p p' >> go u z z' >> go u s s'
+
+      (SProj1 sp spu, SProj1 sp' spu')               -> goU spu spu' >> goSp spu sp sp'
+      (SProj2 sp spu, SProj2 sp' spu')               -> goU spu spu' >> goSp spu sp sp'
       (SProjField sp _ i spu,
-       SProjField sp' _ i' spu') | i == i'           -> goU spu spu' >> goSp sp sp'
+       SProjField sp' _ i' spu') | i == i'           -> goU spu spu' >> goSp spu sp sp'
       (SProj1 sp spu, SProjField sp' x i spu')       -> goProjField sp spu spu' i
       (SProjField sp x i spu, SProj1 sp' spu')       -> goProjField sp' spu' spu i
       _                                              -> throw No

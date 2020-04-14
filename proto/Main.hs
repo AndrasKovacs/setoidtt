@@ -72,18 +72,15 @@ main' mode src = mainWith (pure [mode]) ((,src) <$> parseString src)
 
 ------------------------------------------------------------
 
-test1 = main' "elab" $ unlines [
-  "λ (Nat : Set)",
-  "  (zero : Nat)",
-  "  (suc : Nat → Nat)",
-  "  (f : Nat → Prop)",
-  "  (foo : Nat → Set). ",
-  "let g : Nat → Prop = f in",
-  "Set"
-  ]
-
-test = main' "elab" $ unlines [
-  "(A : Set × Set) → ((B : Set) × B) → A.₂"
+test = main' "nf" $ unlines [
+  "let add = ind (λ _. Nat → Nat) (λ x. x) (λ hyp x. suc (hyp x)) in",
+  "let zero-add : {n} → Eq (add 0 n) n = refl in",
+  "let add-zero",
+  " = ind (λ n. Eq (add n 0) n)",
+  "       refl",
+  "       (λ {n} hyp. hyp)",
+  " in",
+  "add-zero"
    ]
 
 test2 = main' "elab" $ unlines [
