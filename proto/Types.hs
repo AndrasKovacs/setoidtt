@@ -1,15 +1,25 @@
 
 module Types (
   module Types,
-  module Text.Megaparsec
+  module Text.Megaparsec,
+  type HasCallStack,
+  type Constraint
   ) where
 
 import Control.Exception
 import Text.Megaparsec (SourcePos(..), unPos, initialPos)
 import Lens.Micro.Platform
+import GHC.Stack
+import Data.Kind
 
 import qualified Data.IntMap.Strict as IM
 import qualified Data.IntSet as IS
+
+type family The k (c :: k) :: k where
+  The k c = c
+
+type Dbg = The Constraint ()
+-- type Dbg = HasCallStack
 
 -- Raw syntax
 --------------------------------------------------------------------------------

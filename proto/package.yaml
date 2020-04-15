@@ -1,5 +1,5 @@
 
-name:        setoidtt
+name:        setoidtt-proto
 version:     0.1.0.0
 license:     BSD3
 category:    Language
@@ -9,11 +9,14 @@ default-extensions:
 - BangPatterns
 - BlockArguments
 - ConstraintKinds
+- DataKinds
 - DeriveAnyClass
+- DerivingStrategies
 - EmptyCase
 - ExplicitNamespaces
 - FlexibleContexts
 - FlexibleInstances
+- InstanceSigs
 - FunctionalDependencies
 - LambdaCase
 - MultiParamTypeClasses
@@ -21,6 +24,7 @@ default-extensions:
 - OverloadedStrings
 - PartialTypeSignatures
 - PatternSynonyms
+- PolyKinds
 - RankNTypes
 - RecordWildCards
 - ScopedTypeVariables
@@ -29,7 +33,8 @@ default-extensions:
 - TemplateHaskell
 - TupleSections
 - TypeApplications
-- TypeInType
+- TypeFamilies
+- TypeOperators
 - UnicodeSyntax
 - ViewPatterns
 

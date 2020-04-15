@@ -9,7 +9,7 @@ import Lens.Micro.Platform
 import Types
 import qualified Evaluation as Eval
 
-eval :: Cxt -> Tm -> Val
+eval :: Dbg => Cxt -> Tm -> Val
 eval cxt = Eval.eval (cxt^.vals) (cxt^.len)
 {-# inline eval #-}
 
@@ -21,6 +21,6 @@ quote :: Cxt -> Val -> Tm
 quote cxt = Eval.quote (cxt^.len)
 {-# inline quote #-}
 
-vEq :: Cxt -> Val -> Val -> Val -> Val
+vEq :: Dbg => Cxt -> Val -> Val -> Val -> Val
 vEq cxt = Eval.vEq (cxt^.len)
 {-# inline vEq #-}

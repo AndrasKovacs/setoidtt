@@ -3,3 +3,7 @@ resolver: lts-15.0
 
 packages:
 - .
+
+# build:
+#   library-profiling: true
+#   executable-profiling: true

@@ -153,7 +153,6 @@ vEx x a b = VSg x a Prop b Prop
 
 vEq :: Lvl -> Val -> Val -> Val -> Val
 vEq l topA ~topX ~topY =
-
   let stuck = VEq topA topX topY
       glue  = VEqGlue topA topX topY in
   case topA of
@@ -234,7 +233,7 @@ tryRegularity l ~u a b ~p ~t =
 --   We can only use composition if the inner coe is rigidly *not* canonical.
 --   Coe refl on the other hand is confluent with everything.
 --   Right now we ignore the rigidity check.
-vCoe :: Lvl -> U -> Val -> Val -> Val -> Val -> Val
+vCoe :: Dbg => Lvl -> U -> Val -> Val -> Val -> Val -> Val
 vCoe l topU topA topB topP t = case forceU topU of
   Prop -> vProj1 topP Prop `vAppPI` t
   Set -> case (topA, topB) of
@@ -275,7 +274,7 @@ vCoe l topU topA topB topP t = case forceU topU of
   _ -> VNe (HCoe topU topA topB topP t) SNil
 
 
-eval :: Vals -> Lvl -> Tm -> Val
+eval :: Dbg => Vals -> Lvl -> Tm -> Val
 eval vs l = go where
   go = \case
     Var x          -> vVar x vs

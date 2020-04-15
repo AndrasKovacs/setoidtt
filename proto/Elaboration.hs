@@ -461,7 +461,7 @@ checkEq cxt t a l r = case t of
     check cxt t (vEq cxt a l r) Prop
 
 
-check :: Cxt -> Raw -> VTy -> U -> IO Tm
+check :: Dbg => Cxt -> Raw -> VTy -> U -> IO Tm
 check cxt topT (force cxt -> topA) ~topU = case (topT, unglue topA) of
   (RSrcPos p t, _) ->
     addSrcPos p (check cxt t topA topU)
@@ -519,7 +519,7 @@ check cxt topT (force cxt -> topA) ~topU = case (topT, unglue topA) of
 
 -- | We specialcase top-level lambdas (serving as postulates) for better
 --   printing: we don't print them in meta spines.
-inferTopLams :: Cxt -> Raw -> IO (Tm, VTy, U)
+inferTopLams :: Dbg => Cxt -> Raw -> IO (Tm, VTy, U)
 inferTopLams cxt = \case
   RLam x ann i t -> do
     (a, au) <- case ann of
@@ -533,7 +533,7 @@ inferTopLams cxt = \case
 
   t -> infer cxt t
 
-infer :: Cxt -> Raw -> IO (Tm, VTy, U)
+infer :: Dbg => Cxt -> Raw -> IO (Tm, VTy, U)
 infer cxt = \case
   RSrcPos p t -> addSrcPos p $ infer cxt t
 

@@ -30,7 +30,7 @@ module Indices where
   Graph : Set
   Graph = Σ Set (λ A → A → A → Set)
 
-  Hom : Graph → Graph → Set               -- injective record types, LOL
+  Hom : Graph → Graph → Set               -- injective record types
   Hom (A , R) (A' , R') =
     Σ (A → A') λ f
     → (∀ {a a'} → R a a' → R' (f a) (f a'))
@@ -43,6 +43,5 @@ module Indices where
   Comp (F , R , _) (F' , R' , _) =
     (λ a → F (F' a)) , (λ f → R (R' f)) , refl
 
-  -- not inferable
   Idl : ∀ {A B}{F : Hom A B} → Comp F (Id {A}) ≡ F
   Idl = {!!}
