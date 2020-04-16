@@ -1,5 +1,7 @@
+{-# LANGUAGE KindSignatures #-}
 {-# language MagicHash, UnboxedTuples, BangPatterns, ScopedTypeVariables,
-             DeriveAnyClass, RankNTypes, DeriveFunctor #-}
+             DeriveAnyClass, RankNTypes, DeriveFunctor, UnboxedSums,
+             PatternSynonyms #-}
 
 -- benchmarking various exception mechanisms
 -- module ExceptBench where
@@ -62,6 +64,26 @@ eqMaybe t t' = maybe False (\_ -> True) (go t t') where
   go Leaf       Leaf         = pure ()
   go (Node l r) (Node l' r') = go l l' >> go r r'
   go _ _                     = Nothing
+
+type UMaybe a = (# a | (# #) #)
+
+pattern UNothing :: forall (a :: *). UMaybe a
+pattern UNothing = (# | (# #) #)
+
+pattern UJust :: forall (a :: *). a -> UMaybe a
+pattern UJust a  = (# a | #)
+
+um2Bool :: UMaybe a -> Bool
+um2Bool UNothing  = False
+um2Bool (UJust a) = True
+
+eqUMaybe :: Tree -> Tree -> Bool
+eqUMaybe t t' = um2Bool (go t t') where
+  go Leaf Leaf = UJust ()
+  go (Node l r) (Node l' r') = case go l l' of
+    UNothing -> UNothing
+    UJust _  -> go r r'
+  go _ _ = UNothing
 
 newtype MaybeC a = MaybeC {runMaybeC :: forall r. r -> (a -> r) -> r}
   deriving Functor
@@ -128,12 +150,13 @@ main = do
       !tree20b = modTree tree20
       !tree23b = modTree tree23
 
-  defaultMain [
+  defaultMainWith (defaultConfig {displayMode = Condensed}) [
     bgroup "eq" [
       bgroup "tree1" [
         bench "eqBool"   $ whnf (join eqBool) tree1,
         bench "eqBool2"  $ whnf (join eqBool2) tree1,
         bench "eqMaybe"  $ whnf (join eqMaybe) tree1,
+        bench "eqUMaybe" $ whnf (join eqUMaybe) tree1,
         bench "eqMaybeC" $ whnf (join eqMaybeC) tree1,
         bench "eqCont"   $ whnf (join eqCont) tree1,
         bench "eqE"      $ whnfIO $ eqE tree1 tree1,
@@ -143,6 +166,7 @@ main = do
         bench "eqBool"   $ whnf (join eqBool) tree2,
         bench "eqBool2"  $ whnf (join eqBool2) tree2,
         bench "eqMaybe"  $ whnf (join eqMaybe) tree2,
+        bench "eqUMaybe"  $ whnf (join eqUMaybe) tree2,
         bench "eqMaybeC" $ whnf (join eqMaybeC) tree2,
         bench "eqCont"   $ whnf (join eqCont) tree2,
         bench "eqE"      $ whnfIO $ eqE tree2 tree2,
@@ -152,6 +176,7 @@ main = do
         bench "eqBool"   $ whnf (join eqBool) tree4,
         bench "eqBool2"  $ whnf (join eqBool2) tree4,
         bench "eqMaybe"  $ whnf (join eqMaybe) tree4,
+        bench "eqUMaybe" $ whnf (join eqUMaybe) tree4,
         bench "eqMaybeC" $ whnf (join eqMaybeC) tree4,
         bench "eqCont"   $ whnf (join eqCont) tree4,
         bench "eqE"      $ whnfIO $ eqE tree4 tree4,
@@ -161,6 +186,7 @@ main = do
         bench "eqBool"   $ whnf (join eqBool) tree10,
         bench "eqBool2"  $ whnf (join eqBool2) tree10,
         bench "eqMaybe"  $ whnf (join eqMaybe) tree10,
+        bench "eqUMaybe" $ whnf (join eqUMaybe) tree10,
         bench "eqMaybeC" $ whnf (join eqMaybeC) tree10,
         bench "eqCont"   $ whnf (join eqCont) tree10,
         bench "eqE"      $ whnfIO $ eqE tree10 tree10,
@@ -170,6 +196,7 @@ main = do
         bench "eqBool"   $ whnf (join eqBool) tree20,
         bench "eqBool2"  $ whnf (join eqBool2) tree20,
         bench "eqMaybe"  $ whnf (join eqMaybe) tree20,
+        bench "eqUMaybe" $ whnf (join eqUMaybe) tree20,
         bench "eqMaybeC" $ whnf (join eqMaybeC) tree20,
         bench "eqCont"   $ whnf (join eqCont) tree20,
         bench "eqE"      $ whnfIO $ eqE tree20 tree20,
@@ -179,6 +206,7 @@ main = do
         bench "eqBool"   $ whnf (join eqBool) tree23,
         bench "eqBool2"  $ whnf (join eqBool2) tree23,
         bench "eqMaybe"  $ whnf (join eqMaybe) tree23,
+        bench "eqUMaybe" $ whnf (join eqUMaybe) tree23,
         bench "eqMaybeC" $ whnf (join eqMaybeC) tree23,
         bench "eqCont"   $ whnf (join eqCont) tree23,
         bench "eqE"      $ whnfIO $ eqE tree23 tree23,
@@ -189,6 +217,7 @@ main = do
         bench "eqBool"   $ whnf (uncurry eqBool)   (tree1, tree1b),
         bench "eqBool2"  $ whnf (uncurry eqBool2)  (tree1, tree1b),
         bench "eqMaybe"  $ whnf (uncurry eqMaybe)  (tree1, tree1b),
+        bench "eqUMaybe" $ whnf (uncurry eqUMaybe)  (tree1, tree1b),
         bench "eqMaybeC" $ whnf (uncurry eqMaybeC) (tree1, tree1b),
         bench "eqCont"   $ whnf (uncurry eqCont)   (tree1, tree1b),
         bench "eqE"      $ whnfIO $ eqE tree1 tree1b,
@@ -198,6 +227,7 @@ main = do
         bench "eqBool"   $ whnf (uncurry eqBool)   (tree2, tree2b),
         bench "eqBool2"  $ whnf (uncurry eqBool2)  (tree2, tree2b),
         bench "eqMaybe"  $ whnf (uncurry eqMaybe)  (tree2, tree2b),
+        bench "eqUMaybe" $ whnf (uncurry eqUMaybe)  (tree2, tree2b),
         bench "eqMaybeC" $ whnf (uncurry eqMaybeC) (tree2, tree2b),
         bench "eqCont"   $ whnf (uncurry eqCont)   (tree2, tree2b),
         bench "eqE"      $ whnfIO $ eqE tree2 tree2b,
@@ -207,6 +237,7 @@ main = do
         bench "eqBool"   $ whnf (uncurry eqBool)   (tree4, tree4b),
         bench "eqBool2"  $ whnf (uncurry eqBool2)  (tree4, tree4b),
         bench "eqMaybe"  $ whnf (uncurry eqMaybe)  (tree4, tree4b),
+        bench "eqUMaybe" $ whnf (uncurry eqUMaybe)  (tree4, tree4b),
         bench "eqMaybeC" $ whnf (uncurry eqMaybeC) (tree4, tree4b),
         bench "eqCont"   $ whnf (uncurry eqCont)   (tree4, tree4b),
         bench "eqE"      $ whnfIO $ eqE tree4 tree4b,
@@ -216,6 +247,7 @@ main = do
         bench "eqBool"   $ whnf (uncurry eqBool)   (tree10, tree10b),
         bench "eqBool2"  $ whnf (uncurry eqBool2)  (tree10, tree10b),
         bench "eqMaybe"  $ whnf (uncurry eqMaybe)  (tree10, tree10b),
+        bench "eqUMaybe" $ whnf (uncurry eqUMaybe)  (tree10, tree10b),
         bench "eqMaybeC" $ whnf (uncurry eqMaybeC) (tree10, tree10b),
         bench "eqCont"   $ whnf (uncurry eqCont)   (tree10, tree10b),
         bench "eqE"      $ whnfIO $ eqE tree10 tree10b,
@@ -225,6 +257,7 @@ main = do
         bench "eqBool"   $ whnf (uncurry eqBool)   (tree20, tree20b),
         bench "eqBool2"  $ whnf (uncurry eqBool2)  (tree20, tree20b),
         bench "eqMaybe"  $ whnf (uncurry eqMaybe)  (tree20, tree20b),
+        bench "eqUMaybe" $ whnf (uncurry eqUMaybe)  (tree20, tree20b),
         bench "eqMaybeC" $ whnf (uncurry eqMaybeC) (tree20, tree20b),
         bench "eqCont"   $ whnf (uncurry eqCont)   (tree20, tree20b),
         bench "eqE"      $ whnfIO $ eqE tree20 tree20b,
@@ -234,6 +267,7 @@ main = do
         bench "eqBool"   $ whnf (uncurry eqBool)   (tree23, tree23b),
         bench "eqBool2"  $ whnf (uncurry eqBool2)  (tree23, tree23b),
         bench "eqMaybe"  $ whnf (uncurry eqMaybe)  (tree23, tree23b),
+        bench "eqUMaybe" $ whnf (uncurry eqUMaybe)  (tree23, tree23b),
         bench "eqMaybeC" $ whnf (uncurry eqMaybeC) (tree23, tree23b),
         bench "eqCont"   $ whnf (uncurry eqCont)   (tree23, tree23b),
         bench "eqE"      $ whnfIO $ eqE tree23 tree23b,
