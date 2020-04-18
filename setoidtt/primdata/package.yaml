@@ -1,0 +1,58 @@
+name:                primdata
+version:             0.1.0.0
+license:             BSD3
+author:              "András Kovács"
+maintainer:          "puttamalac@gmail.com"
+copyright:           "2018-2020 András Kovács"
+
+dependencies:
+- base >= 4.7 && < 5
+
+default-extensions:
+- AllowAmbiguousTypes
+- BangPatterns
+- CPP
+- MagicHash
+- RankNTypes
+- RoleAnnotations
+- ScopedTypeVariables
+- TypeApplications
+- UnboxedTuples
+- GeneralizedNewtypeDeriving
+
+ghc-options:
+  - -rtsopts
+  - -Wall
+  - -Wno-missing-signatures
+  - -Wno-name-shadowing
+  - -Wno-unused-do-bind
+  - -Wno-unused-matches
+  - -Wno-partial-type-signatures
+  - -ddump-simpl
+  - -dsuppress-all
+  - -dno-suppress-type-signatures
+  - -ddump-to-file
+  - -O2
+  # - -fllvm
+
+library:
+  source-dirs: .
+  dependencies:
+    - ghc-prim
+
+tests:
+  test:
+    source-dirs:
+      - test
+    main: Main.hs
+    dependencies:
+      - primdata
+      - QuickCheck
+      - tasty
+      - tasty-quickcheck
+      - ghc-prim
+    ghc-options:
+      - -ddump-simpl
+      - -dsuppress-all
+      - -dno-suppress-type-signatures
+      - -ddump-to-file

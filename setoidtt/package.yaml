@@ -1,0 +1,66 @@
+
+name:        setoidtt
+version:     0.1.0.0
+license:     BSD2
+category:    Language
+description: "Implementation of a variant of setoid type theory"
+
+default-extensions:
+- BangPatterns
+- BlockArguments
+- CPP
+- ConstraintKinds
+- DataKinds
+- DeriveAnyClass
+- DerivingStrategies
+- EmptyCase
+- ExplicitNamespaces
+- FlexibleContexts
+- FlexibleInstances
+- GADTs
+- FunctionalDependencies
+- InstanceSigs
+- LambdaCase
+- MagicHash
+- MultiParamTypeClasses
+- NoMonomorphismRestriction
+- OverloadedStrings
+- PartialTypeSignatures
+- PatternSynonyms
+- PolyKinds
+- RankNTypes
+- RecordWildCards
+- ScopedTypeVariables
+- StandaloneDeriving
+- Strict
+- TemplateHaskell
+- TupleSections
+- TypeApplications
+- TypeFamilies
+- TypeOperators
+- UnboxedTuples
+- UnicodeSyntax
+- ViewPatterns
+
+ghc-options:
+- -Wall
+- -Wno-name-shadowing
+- -Wno-missing-signatures
+- -Wno-unused-do-bind
+- -Wno-unused-matches
+- -Wno-partial-type-signatures
+- -Wno-type-defaults
+- -Wno-missing-pattern-synonym-signatures
+
+dependencies:
+- base >= 4.7 && < 5
+- unordered-containers
+- megaparsec
+- array-primops
+
+source-dirs: .
+
+executable:
+  main: Main.hs
+  ghc-options:
+    - -O0

@@ -28,3 +28,4 @@ TAGS
 *.aux
 *.glob
 *.lock
+*.dump-simpl

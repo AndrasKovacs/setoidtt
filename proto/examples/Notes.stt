@@ -1,0 +1,196 @@
+
+-- -- Prop and Set
+
+-- let foo : Set = Set in   -- Set : Set
+-- let foo : Set = Prop in  -- Prop : Set
+--                          -- Prop is *not* a sub-universe of Set
+
+-- -- ⊤ : Prop
+-- -- ⊥ : Prop
+
+-- -- sigma types
+-- let foo : (A : Set) × A = (Set, Set) in
+
+-- let foo : (A : Set) × (B : Set) × (C : Set) × ⊤
+--    = (Set, (Set, (Set, tt))) in
+
+-- let bar1 = foo.B in
+-- let bar2 = foo.C in
+
+-- -- (usual universe typing for (x : A) × B x)
+-- -- (for functions: h-level is h-level of codomain)
+-- let id : {A : Set} → A → A
+--   = λ x. x in
+-- let idP : {A : Prop} → A → A
+--   = λ x. x in
+-- id Set   -- elaborated as id {Set} Set
+
+
+-- Evaluation + unification
+-- Do we want type-directed?
+--   With Strict Prop?
+
+-- Coq: everything is syntax-directed
+--      SProp is implemented with hacks (annotates binders with relevance)
+
+-- Agda: unification is fully type-directed, evaluation is not
+--             Agda tries to not compute irrelevant things (it is also a bit hacky)
+
+-- My version: eval in syntax-directed, conversion is *universe-directed* not type-directed
+
+    -- Agda:    f x y =? f x' y'
+    --   lookup the type of f, which is an iterated Pi type
+    --   (recomputing types all the time)
+
+-- I don't have eta for Unit : Set  (Coq also doesn't have this)
+--   (eta for Unit is the *only* thing which absolutely requires type-directed conversion)
+--   (all other eta rules can be solved in other ways)
+
+f : Bool → Set
+f true  = Nat
+f false = Lift ⊤     -- ⊤ : Prop    (using subtyping of Prop ≤ Set)
+
+in unification , I only know that (Lift ⊤ : Set)
+
+   t : ⊤       it is also the case    t : Lift ⊤        (Sterling-style rules)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+-- Setoid tt implementation
+
+-- paper: Setoid Type Theory
+-- also : Observational Type Theory
+
+
+-- every closed type is a setoid (set + equivalence relation)
+
+-- every dependent type is a setoid fibration ("dependent setoid")
+--    (this means that we have coercion operation + "coherence")
+
+-- practical:
+--   - funext
+--   - propositional extensionality  (univalence for propositions)
+--   - coercions compute
+--   - definitional proof irrelevance for Prop
+--     (A : Prop)(t u : A) → t ≡ u
+--   - Quotient types (QIIT)
+
+-- (Nicer setting for set-level math and programming)
+
+-- Alternative: MLTT + UIP + funext + PropExt
+--              ETT + PropExt  (undecidable type checking, no normalization)
+-- 	     (STT : a bit weaker PropExt)
+
+-- -- examples
+-- ------------------------------------------------------------
+
+-- -- programming with lists
+
+-- nil : List A
+-- p : List A = List B
+--     (List A = List B) ≡ (A = B)    -- (OTT)
+
+-- coe p (nil {A}) ≡ (nil {B})        -- my STT: holds
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+-- coe p (cons x xs) ≡ cons (coe p x) (coe p xs)    --
+
+-- -- sott (Bob Atkey)
+
+-- -- (split fibration equations)
+-- (p : A = A)            → coe p x ≡ x
+-- (p : A = B)(q : B = C) → coe (p ◾ q) x ≡ coe q (coe p x)  -- not in OTT
+
+
+-- -- my impl:
+-- ------------------------------------------------------------
+
+-- versus STT:
+--   - only homogeneous equality
+
+-- notions of equality for *all* types:
+--   - A type, σ₀, σ₁ substitutions, σ₀ = σ₁   then   A[σ₀] = A[σ₁]
+--   - coercions use this equality
+--   - doesn't require universes
+--   - semantics is ver nice & simple
+
+-- coe : returns in (A[σ₁])   if we only  know coe return B type
+--       it's difficult to invent A and σ s.t. A[σ] ≡ B
+
+-- coe : (A : Ty Δ)(σ₀ σ₁ : Sub Γ Δ) → Tm Γ (El (Δ~ σ₀ σ₁)) → Tm Γ (A[σ₀]) → Tm Γ (A[σ₁])
+--    B return type, invent A s.t. A[σ₁] ≡ B
+
+-- "local universes"
+-- Bool = Bool  only makes sense  Δ ≡ ∙
+
+-- -- my change:
+
+-- - every type is in some universe
+-- - every type equality is an equality of type codes
+
+-- - A[σ₀] = A[σ₁]     if every A is (El a)
+-- -  El (a[σ₀]) = El (a[σ₁])
+-- - type equality is _=_ : Set → Set → Prop (homogeneous)
+
+-- - (also have Pi in every universe)
+-- -    all congruences given as  "cong : (f : A → B) → x = y → f x = f y"
+-- -    refl : x = x
+
+-- listing of my primitives:
+--   _=_  : {A : Set} → A → A → Prop
+--   coe  : {A B : Set} → A = B → A → B
+--   refl : {A : Set}{x : A} → x = x
