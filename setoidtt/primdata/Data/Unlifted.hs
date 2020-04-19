@@ -10,6 +10,10 @@ import GHC.Prim
 --   Also, the result of `fromUnlifted#` should be forced as well; it is
 --   safe to not force it, but not optimally efficient, because `fromUnlifted#`
 --   pretty much always runs in constant time.
+--
+--   We also need a default value for the purpose of initializing arrays, because
+--   it is not possible to use any "error" thunk for this purpose safely.
 class Unlifted a where
   toUnlifted#   :: a -> ArrayArray#
   fromUnlifted# :: ArrayArray# -> a
+  default#      :: a

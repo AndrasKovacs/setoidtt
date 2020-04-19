@@ -4,4 +4,4 @@ packages:
 - .
 
 extra-deps:
-  - primitive-unlifted-0.1.3.0
+  - ../primdata

@@ -10,13 +10,15 @@ import qualified Data.Array.FI as FI
 import Data.Unlifted
 
 type role Array representational
-data Array a = Array (MutableByteArray# RealWorld)
+data Array (a :: *) = Array (MutableByteArray# RealWorld)
 
 instance Unlifted (Array a) where
   toUnlifted# (Array arr) = unsafeCoerce# arr
   {-# inline toUnlifted# #-}
   fromUnlifted# arr = Array (unsafeCoerce# arr)
   {-# inline fromUnlifted# #-}
+  default# = empty
+  {-# inline default# #-}
 
 new :: forall a. Flat a => Int -> IO (Array a)
 new (I# n) = IO $ \s -> case newByteArray# (n *# size# @a proxy#) s of

@@ -6,7 +6,9 @@ import GHC.Magic
 import GHC.Prim
 
 import Data.Unlifted
+import Data.Array.UndefElem
 import qualified Data.Array.LIL as A
+
 
 type role Array representational
 newtype Array a = Array (A.Array Any)
@@ -84,7 +86,7 @@ sizedMap (I# size) f = \(Array (A.Array arr)) ->
                     s -> go (i +# 1#) marr size s
             _  -> s
     in runRW# $ \s ->
-        case newArray# size A.undefElem s of
+        case newArray# size undefElem s of
             (# s, marr #) -> case go 0# marr size s of
                 s -> case unsafeFreezeArray# marr s of
                   (# _ , arr #) -> Array (A.Array arr)
@@ -114,7 +116,7 @@ rfoldl' f z = \(Array arr) -> A.rfoldl' (\b a -> f b $! (fromUnlifted# (unsafeCo
 fromList :: Unlifted a => [a] -> Array a
 fromList = \xs -> runRW# $ \s ->
   case length xs of
-      I# size -> case newArray# size A.undefElem s of
+      I# size -> case newArray# size undefElem s of
         (# s, marr #) -> go xs 0# s where
             go (x:xs) i s = case toUnlifted# x of
                              x -> case writeArray# marr i (unsafeCoerce# x) s of

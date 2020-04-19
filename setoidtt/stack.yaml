@@ -3,3 +3,7 @@ resolver: lts-15.8
 
 packages:
 - .
+
+extra-deps:
+- ./primdata
+- ./dynamic-array

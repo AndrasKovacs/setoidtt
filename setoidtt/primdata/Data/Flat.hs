@@ -55,7 +55,7 @@ instance Flat (ty) where {                                      \
 ; readOffAddr#  addr# i# s# = case rd_addr addr# i# s# of       \
                         { (# s1#, x# #) -> (# s1#, ctr x# #) }  \
 ; writeOffAddr# addr# i# (ctr x#) s# = wr_addr addr# i# x# s#   \
-; {-# inline size# #-}                                        \
+; {-# inline size# #-}                                          \
 ; {-# inline indexByteArray# #-}                                \
 ; {-# inline readByteArray# #-}                                 \
 ; {-# inline writeByteArray# #-}                                \

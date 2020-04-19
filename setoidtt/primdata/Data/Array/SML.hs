@@ -6,6 +6,7 @@ import GHC.Prim
 import GHC.Magic
 
 import Data.Unlifted
+import Data.Array.UndefElem
 import qualified Data.Array.SIL as SIL
 
 type role Array representational
@@ -16,13 +17,15 @@ instance Unlifted (Array a) where
   {-# inline toUnlifted# #-}
   fromUnlifted# arr = Array (unsafeCoerce# arr)
   {-# inline fromUnlifted# #-}
+  default# = empty
+  {-# inline default# #-}
 
 new :: forall a.  Int -> a -> IO (Array a)
 new (I# i) a = IO (\s -> case newSmallArray# i a s of
     (# s, arr #) -> (# s, Array arr #))
 
 empty :: Array a
-empty = runRW# $ \s -> case newSmallArray# 0# SIL.undefElem s of
+empty = runRW# $ \s -> case newSmallArray# 0# undefElem s of
   (# s, arr #) -> Array arr
 {-# noinline empty #-}
 
@@ -61,6 +64,12 @@ thawSlice (SIL.Array arr) (I# start) (I# len) = IO $ \s ->
 thaw :: forall a. SIL.Array a -> IO (Array a)
 thaw arr = thawSlice arr 0 (SIL.size arr)
 {-# inline thaw #-}
+
+copySlice :: forall a. Array a -> Int -> Array a -> Int -> Int -> IO ()
+copySlice (Array src) (I# i) (Array dst) (I# j) (I# len) = IO $ \s ->
+  case copySmallMutableArray# src i dst j len s of
+    s -> (# s, () #)
+{-# inline copySlice #-}
 
 sizedThaw :: forall a. Int -> SIL.Array a -> IO (Array a)
 sizedThaw size arr = thawSlice arr 0 size

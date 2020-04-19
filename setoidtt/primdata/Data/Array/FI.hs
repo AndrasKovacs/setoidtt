@@ -16,6 +16,8 @@ instance Unlifted (Array a) where
   fromUnlifted# arr = Array (unsafeCoerce# arr)
   {-# inline toUnlifted# #-}
   {-# inline fromUnlifted# #-}
+  default# = empty
+  {-# inline default# #-}
 
 instance (Flat a, Show a) => Show (Array a) where
   show = show . Data.Array.FI.foldr (:) []

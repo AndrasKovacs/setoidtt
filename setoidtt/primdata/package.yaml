@@ -12,13 +12,15 @@ default-extensions:
 - AllowAmbiguousTypes
 - BangPatterns
 - CPP
+- GeneralizedNewtypeDeriving
+- KindSignatures
 - MagicHash
 - RankNTypes
 - RoleAnnotations
 - ScopedTypeVariables
 - TypeApplications
 - UnboxedTuples
-- GeneralizedNewtypeDeriving
+- FlexibleInstances
 
 ghc-options:
   - -rtsopts
@@ -33,7 +35,7 @@ ghc-options:
   - -dno-suppress-type-signatures
   - -ddump-to-file
   - -O2
-  # - -fllvm
+  - -fllvm
 
 library:
   source-dirs: .

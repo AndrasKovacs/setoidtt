@@ -3,17 +3,21 @@ module Data.Ref.U where
 
 import GHC.Prim
 import GHC.Types
-
+import GHC.Magic
 import Data.Unlifted
 
 type role Ref representational
 data Ref a = Ref (MutVar# RealWorld Any)
 
-instance Unlifted (Ref a) where
+instance Unlifted a => Unlifted (Ref a) where
   toUnlifted# (Ref r) = unsafeCoerce# r
   {-# inline toUnlifted# #-}
   fromUnlifted# r = Ref (unsafeCoerce# r)
   {-# inline fromUnlifted# #-}
+  default# = case toUnlifted# @a Data.Unlifted.default# of
+    a -> runRW# (\s -> case newMutVar# (unsafeCoerce# a) s of
+                    (# s, r #) -> Ref r)
+  {-# inlinable default# #-}
 
 new :: forall a. Unlifted a => a -> IO (Ref a)
 new a = case toUnlifted# a of

@@ -3,11 +3,11 @@ module Data.Array.SIL where
 
 import GHC.Prim
 import GHC.Types
-import GHC.Stack
 import GHC.Magic
 import Data.Foldable
 
 import Data.Unlifted
+import Data.Array.UndefElem
 
 type role Array representational
 data Array a = Array (SmallArray# a)
@@ -33,14 +33,12 @@ instance Unlifted (Array a) where
   fromUnlifted# arr = Array (unsafeCoerce# arr)
   {-# inline toUnlifted# #-}
   {-# inline fromUnlifted# #-}
+  default# = empty
+  {-# inline default# #-}
 
 instance Show a => Show (Array a) where
   show = show . Data.Array.SIL.foldr (:) []
   {-# inline show #-}
-
-undefElem :: HasCallStack => a
-undefElem = error "undefined element"
-{-# noinline undefElem #-}
 
 new# :: Int# -> a -> SmallArray# a
 new# n a = runRW# $ \s -> case newSmallArray# n a s of

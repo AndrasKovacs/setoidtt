@@ -5,15 +5,18 @@ import GHC.Types
 import GHC.Prim
 import qualified Data.Array.SMU as SMU
 import Data.Unlifted
+import IO
 
 type role Ref representational representational
 newtype Ref a b = Ref (SMU.Array Any)
 
-instance Unlifted (Ref a b) where
+instance (Unlifted a, Unlifted b) => Unlifted (Ref a b) where
   toUnlifted# (Ref r) = unsafeCoerce# r
   {-# inline toUnlifted# #-}
   fromUnlifted# r = Ref (unsafeCoerce# r)
   {-# inline fromUnlifted# #-}
+  default# = runIO $ new Data.Unlifted.default# Data.Unlifted.default#
+  {-# inline default# #-}
 
 new :: forall a b. (Unlifted a, Unlifted b) => a -> b -> IO (Ref a b)
 new a b = case toUnlifted# a of

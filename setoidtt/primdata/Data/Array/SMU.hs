@@ -8,6 +8,7 @@ import Data.Unlifted
 
 import qualified Data.Array.SIL as SIL
 import qualified Data.Array.SIU as SIU
+import Data.Array.UndefElem
 
 type role Array representational
 data Array a = Array (SmallMutableArray# RealWorld Any)
@@ -17,6 +18,8 @@ instance Unlifted (Array a) where
   {-# inline toUnlifted# #-}
   fromUnlifted# arr = Array (unsafeCoerce# arr)
   {-# inline fromUnlifted# #-}
+  default# = empty
+  {-# inline default# #-}
 
 new :: forall a. Unlifted a => Int -> a -> IO (Array a)
 new (I# i) a = case toUnlifted# a of
@@ -24,7 +27,7 @@ new (I# i) a = case toUnlifted# a of
     (# s, arr #) -> (# s, Array arr #))
 
 empty :: Array a
-empty = runRW# $ \s -> case newSmallArray# 0# SIL.undefElem s of
+empty = runRW# $ \s -> case newSmallArray# 0# undefElem s of
   (# s, arr #) -> Array arr
 {-# noinline empty #-}
 
@@ -61,6 +64,12 @@ thawSlice (SIU.Array (SIL.Array arr)) (I# start) (I# len) = IO $ \s ->
 thaw :: forall a. SIU.Array a -> IO (Array a)
 thaw arr = thawSlice arr 0 (SIU.size arr)
 {-# inline thaw #-}
+
+copySlice :: forall a. Array a -> Int -> Array a -> Int -> Int -> IO ()
+copySlice (Array src) (I# i) (Array dst) (I# j) (I# len) = IO $ \s ->
+  case copySmallMutableArray# src i dst j len s of
+    s -> (# s, () #)
+{-# inline copySlice #-}
 
 sizedThaw :: forall a. Int -> SIU.Array a -> IO (Array a)
 sizedThaw size arr = thawSlice arr 0 size
