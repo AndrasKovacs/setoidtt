@@ -1,0 +1,42 @@
+
+TODO
+  primdata:
+  - add tests
+  - include array-primops
+
+  dynamic-array:
+  - add tests
+  - use cmm primop for array resizing
+
+Design
+  Closures:
+    - higher-order closures, because of fast & easy primops and eq/coe
+        computation rules
+    - later:
+       - benchmark first-order closures
+       - attempt HOAS native codegen
+
+  Linking/loading:
+    - on first load:
+      - walk all transitive dependency modules, see if they're changed
+      - compute size of dependencies
+      - create
+
+  Parsing:
+    - Megaparsec with src spans, no operators
+
+    - later: CUSTOM parser:
+      - operate on Addr# of utf8 bytearray
+      - avoid decoding to Char if possible
+        - whitespace/newline/comment control characters are all ASCII
+          bytes
+	- symbols/keywords scannable with non-decoding templated code
+	- isAlpha/isLetter etc are implemented as foreign ccall jumping
+	  into big table of character categories; can we do better in some
+	  cases? Can we generate perfect hash function for isLetter etc?
+      - get inspiration from
+          https://github.com/ekmett/codex/blob/master/parsnip/src/Text/Parsnip/
+	  Internal/Parser.hs
+
+  Serialization:
+    - Compact regions

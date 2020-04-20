@@ -84,7 +84,28 @@ foldr f = \z (Array arr) -> go 0# (Data.Array.FI.size# @a arr) z arr where
     go i s z arr = case i <# s of
         1# -> f (arr !# i :: a) (go (i +# 1#) s z arr)
         _  -> z
-{-# INLINE foldr #-}
+{-# inline foldr #-}
+
+rfoldr :: forall a b. Flat a => (a -> b -> b) -> b -> Array a -> b
+rfoldr f = \z (Array arr) -> go (Data.Array.FI.size# @a arr -# 1#) z arr where
+    go i z arr = case i >=# 0# of
+        1# -> f (arr !# i :: a) (go (i -# 1#) z arr)
+        _  -> z
+{-# inline rfoldr #-}
+
+foldl' :: forall a b. Flat a => (b -> a -> b) -> b -> Array a -> b
+foldl' f = \z (Array arr) -> go 0# (Data.Array.FI.size# @a arr) z arr  where
+    go i s !z arr = case i <# s of
+        1# -> go (i +# 1#) s (f z (arr !# i :: a)) arr
+        _  -> z
+{-# inline foldl' #-}
+
+rfoldl' :: forall a b. Flat a => (b -> a -> b) -> b -> Array a -> b
+rfoldl' f = \z (Array arr) -> go (Data.Array.FI.size# @a arr -# 1#) z arr where
+    go i !z arr = case i >=# 0# of
+        1# -> go (i -# 1#) (f z (arr !# i :: a)) arr
+        _  -> z
+{-# inline rfoldl' #-}
 
 fromList :: forall a. Flat a => [a] -> Array a
 fromList xs = runRW# $ \s ->
@@ -94,5 +115,3 @@ fromList xs = runRW# $ \s ->
         go (x:xs) i s = case Data.Flat.writeByteArray# marr i x s of s -> go xs (i +# 1#) s
         go _      _ s = case unsafeFreezeByteArray# marr s of (# _, arr #) -> Array arr
 {-# inline fromList #-}
-
--- TODO

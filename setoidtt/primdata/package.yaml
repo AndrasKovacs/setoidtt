@@ -30,10 +30,10 @@ ghc-options:
   - -Wno-unused-do-bind
   - -Wno-unused-matches
   - -Wno-partial-type-signatures
-  - -ddump-simpl
-  - -dsuppress-all
-  - -dno-suppress-type-signatures
-  - -ddump-to-file
+  # - -ddump-simpl
+  # - -dsuppress-all
+  # - -dno-suppress-type-signatures
+  # - -ddump-to-file
   - -O2
   - -fllvm
 
@@ -53,8 +53,3 @@ tests:
       - tasty
       - tasty-quickcheck
       - ghc-prim
-    ghc-options:
-      - -ddump-simpl
-      - -dsuppress-all
-      - -dno-suppress-type-signatures
-      - -ddump-to-file

@@ -1,5 +1,7 @@
 
+import qualified Data.Array.FI as FI
 
 main :: IO ()
 main = do
-  putStrLn "Hello world"
+  let foo = FI.fromList [0..100000::Int]
+  print $ FI.foldr (+) 0 foo
