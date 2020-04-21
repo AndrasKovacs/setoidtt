@@ -26,7 +26,7 @@ empty :: Array a
 empty = Array A.empty
 {-# noinline empty #-}
 
-infixl 4 !
+infixl 7 !
 (!) :: Unlifted a => Array a -> Int -> a
 (!) (Array arr) i = case arr A.!## i of
   (# a #) -> case fromUnlifted# (unsafeCoerce# a) of
@@ -114,15 +114,15 @@ rfoldl' f z = \(Array arr) -> A.rfoldl' (\b a -> f b $! (fromUnlifted# (unsafeCo
 {-# inline rfoldl' #-}
 
 fromList :: Unlifted a => [a] -> Array a
-fromList = \xs -> runRW# $ \s ->
+fromList = \xs ->
   case length xs of
-      I# size -> case newArray# size undefElem s of
+      I# size -> Array (A.Array (runRW# $ \s -> case newArray# size undefElem s of
         (# s, marr #) -> go xs 0# s where
             go (x:xs) i s = case toUnlifted# x of
                              x -> case writeArray# marr i (unsafeCoerce# x) s of
                                s -> go xs (i +# 1#) s
             go _      _ s = case unsafeFreezeArray# marr s of
-                              (# _, arr #) -> Array (A.Array arr)
+                              (# _, arr #) -> arr))
 {-# inline fromList #-}
 
 toList :: Unlifted a => Array a -> [a]

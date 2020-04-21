@@ -26,8 +26,8 @@ new (I# n) = IO $ \s -> case newByteArray# (n *# size# @a proxy#) s of
 {-# inline new #-}
 
 empty :: Array a
-empty = runRW# $ \s -> case newByteArray# 0# s of
-  (# s, arr #) -> Array arr
+empty = Array (runRW# $ \s -> case newByteArray# 0# s of
+  (# s, arr #) -> arr)
 {-# noinline empty #-}
 
 read :: forall a. Flat a => Array a -> Int -> IO a

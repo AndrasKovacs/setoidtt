@@ -19,12 +19,10 @@ instance (Unlifted a, Unlifted b) => Unlifted (Ref a b) where
   {-# inline default# #-}
 
 new :: forall a b. (Unlifted a, Unlifted b) => a -> b -> IO (Ref a b)
-new a b = case toUnlifted# a of
-  a -> case toUnlifted# b of
-    b -> do
-      arr <- SMU.new @a 2 (unsafeCoerce# a)
-      SMU.write @b (unsafeCoerce# arr) 1 (unsafeCoerce# b)
-      pure (Ref (unsafeCoerce# arr))
+new a b = do
+  arr <- SMU.new @a 2 a
+  SMU.write (unsafeCoerce# arr) 1 b
+  pure (Ref (unsafeCoerce# arr))
 {-# inline new #-}
 
 readFst :: forall a b. (Unlifted a) => Ref a b -> IO a

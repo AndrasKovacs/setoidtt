@@ -25,8 +25,8 @@ new (I# i) a = IO (\s -> case newArray# i a s of
     (# s, arr #) -> (# s, Array arr #))
 
 empty :: Array a
-empty = runRW# $ \s -> case newArray# 0# undefElem s of
-  (# s, arr #) -> Array arr
+empty = Array (runRW# $ \s -> case newArray# 0# undefElem s of
+  (# s, arr #) -> arr)
 {-# noinline empty #-}
 
 read :: forall a.  Array a -> Int -> IO a

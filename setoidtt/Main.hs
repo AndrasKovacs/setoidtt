@@ -1,7 +1,11 @@
 
-import qualified Data.Array.FI as FI
+
+module Main where
+
+-- import qualified Data.Array.FI as FI
+import qualified Data.Array.Dynamic.L as DL
 
 main :: IO ()
 main = do
-  let foo = FI.fromList [0..100000::Int]
-  print $ FI.foldr (+) 0 foo
+  !arr <- DL.empty @Int
+  DL.push arr 0

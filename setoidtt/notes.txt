@@ -40,3 +40,31 @@ Design
 
   Serialization:
     - Compact regions
+
+
+
+
+
+
+
+-- I'm working on a setoidtt-based proof assistant which I intend to be
+-- "production strength", and I'm doing some dirty low-level benchmarking and
+-- boilerplate library writing. For those interested in high-performance
+-- Haskell, I post here some of my old and new findings. 1/N
+
+-- First, the state of libraries for minimum-overhead data structures has always
+-- been absolutely awful, so I finally started to roll my own, which is
+-- currently sketchy but I will add to it as I go on. 2/N
+
+-- I created 10 modules just for arrays:
+-- https://github.com/AndrasKovacs/setoidtt-proto/tree/master/setoidtt/primdata/Data/Array
+-- This may seem dumb but it's actually the whole spectrum of different layouts
+-- and element representations! Arrays can be a) small or large or unboxed b)
+-- mutable or immutable c) if boxed, can contain lifted or unlifted
+-- elements. 3/N
+
+-- Likewise, mutable refs can be lifted, unlifted or unboxed, and it also makes
+-- sense to have heterogeneous *pairs* of mutable refs, and so on, with possible
+-- layout combinations exploding accordingly. *Many* of these are useful; here I
+-- use 3 of them for the dumbest mutable dynamic array type:
+-- https://github.com/AndrasKovacs/setoidtt-proto/blob/master/setoidtt/dynamic-array/Data/Array/Dynamic/L.hs#L37

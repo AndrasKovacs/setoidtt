@@ -27,8 +27,8 @@ new (I# i) a = case toUnlifted# a of
     (# s, arr #) -> (# s, Array arr #))
 
 empty :: Array a
-empty = runRW# $ \s -> case newSmallArray# 0# undefElem s of
-  (# s, arr #) -> Array arr
+empty = Array (runRW# $ \s -> case newSmallArray# 0# undefElem s of
+  (# s, arr #) -> arr)
 {-# noinline empty #-}
 
 read :: forall a. Unlifted a => Array a -> Int -> IO a

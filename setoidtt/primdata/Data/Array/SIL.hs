@@ -54,17 +54,17 @@ empty :: Array a
 empty = new 0 undefElem
 {-# noinline empty #-}
 
-infixl 4 !#
+infixl 7 !#
 (!#) :: SmallArray# a -> Int# -> (# a #)
 (!#) = indexSmallArray#
 {-# inline (!#) #-}
 
-infixl 4 !##
+infixl 7 !##
 (!##) :: Array a -> Int -> (# a #)
 (!##) (Array arr) (I# i) = arr !# i
 {-# inline (!##) #-}
 
-infixl 4 !
+infixl 7 !
 (!) :: Array a -> Int -> a
 (!) arr i = case arr !## i of (# a #) -> a
 {-# inline (!) #-}
@@ -223,13 +223,11 @@ rfoldl' f z = \(Array arr) -> go (sizeofSmallArray# arr -# 1#) z arr where
 {-# inline rfoldl' #-}
 
 fromList :: [a] -> Array a
-fromList xs = runRW# $ \s ->
-  let len acc []     = acc
-      len acc (_:xs) = len (acc +# 1#) xs
-  in case len 0# xs of
-      size -> case newSmallArray# size undefElem s of
+fromList xs = case length xs of
+  I# size -> Array (runRW# $ \s ->
+     case newSmallArray# size undefElem s of
         (# s, marr #) -> go xs 0# s where
             go (x:xs) i s = case writeSmallArray# marr i x s of s -> go xs (i +# 1#) s
             go _      _ s = case unsafeFreezeSmallArray# marr s of
-                              (# _, arr #) -> Array arr
+                              (# _, arr #) -> arr)
 {-# inline fromList #-}

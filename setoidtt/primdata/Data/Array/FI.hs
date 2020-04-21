@@ -34,17 +34,17 @@ new (I# n) = Array (new# @a n)
 {-# inline new #-}
 
 empty :: Array a
-empty = runRW# $ \s -> case newByteArray# 0# s of
+empty = Array (runRW# $ \s -> case newByteArray# 0# s of
     (# s, marr #) -> case unsafeFreezeByteArray# marr s of
-      (# _, arr #) -> Array arr
+      (# _, arr #) -> arr)
 {-# noinline empty #-}
 
-infixl 4 !#
+infixl 7 !#
 (!#) :: forall a. Flat a => ByteArray# -> Int# -> a
 (!#) arr i = indexByteArray# @a arr i
 {-# inline (!#) #-}
 
-infixl 4 !
+infixl 7 !
 (!) :: forall a. Flat a => Array a -> Int -> a
 (!) (Array arr) (I# i) = indexByteArray# @a arr i
 {-# inline (!) #-}
@@ -108,10 +108,11 @@ rfoldl' f = \z (Array arr) -> go (Data.Array.FI.size# @a arr -# 1#) z arr where
 {-# inline rfoldl' #-}
 
 fromList :: forall a. Flat a => [a] -> Array a
-fromList xs = runRW# $ \s ->
-  case length xs of
-    I# len -> case newByteArray# (Data.Flat.size# @a proxy# *# len) s of
+fromList xs = case length xs of
+  I# len -> Array (runRW# $ \s ->
+    case newByteArray# (Data.Flat.size# @a proxy# *# len) s of
       (# s, marr #) -> go xs 0# s where
-        go (x:xs) i s = case Data.Flat.writeByteArray# marr i x s of s -> go xs (i +# 1#) s
-        go _      _ s = case unsafeFreezeByteArray# marr s of (# _, arr #) -> Array arr
+        go (x:xs) i s = case Data.Flat.writeByteArray# marr i x s of
+                          s -> go xs (i +# 1#) s
+        go _      _ s = case unsafeFreezeByteArray# marr s of (# _, arr #) -> arr)
 {-# inline fromList #-}

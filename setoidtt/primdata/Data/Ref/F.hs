@@ -22,8 +22,8 @@ instance Flat a => Unlifted (Ref a) where
 
 defaultRef :: forall a. Flat a => Ref a
 defaultRef =
-  runRW# (\s -> case newByteArray# (F.size# @a proxy#) s of
-    (# s, arr #) -> Ref arr)
+  Ref (runRW# (\s -> case newByteArray# (F.size# @a proxy#) s of
+    (# s, arr #) -> arr))
 {-# specialize noinline defaultRef :: Ref Int #-}
 {-# specialize noinline defaultRef :: Ref Char #-}
 {-# specialize noinline defaultRef :: Ref Double #-}
