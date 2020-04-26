@@ -24,17 +24,17 @@ Core theory:
 - Equality type `Eq : {A : Set} → A → A → Prop`. 
 - `coe : {A B : Set} → Eq A B → A → B`.
 - `refl : {A : Set}{x : A} → Eq x x`.
-- `ap : {A B : Set}(f : A → B){x y : A} → Eq x y → Eq (f x) (f y)`.
 - `Eq` and `coe` compute on type/term structure, in particular we have
   - Propositional extensionality: `Eq {Prop} A B = ((A → B) ∧ (B → A))`
-  - Function extensionality: `Eq {(x : A) → B} f g = ((x : A) → Eq (f x) (g x))`.
+  - Function extensionality: `Eq {(x : A) → B} f g = ((x : A) → Eq (f x) (g x))`. This implies to congruence can be
+    derived from `refl` at function type.
   - Injective type formers.
   - Besides the canonical cases for `coe` computation, we also have `coe (p : Eq A A) x = x` and `coe p (coe q x) = coe (trans q p) x`. Semantically, these correspond to open types being split fibrations, not just fibrations.
 
 That's it. In the actual implementation, a few additional convenient primitives are built in, which are nevertheless derivable in the above core theory:
 
 - `coe` for `Prop`, an overloading of `coe` as `Eq {Prop} A B → A → B`.
-- Symmetry and transitivity for `Eq`.
+- Symmetry transitivity and congruence for `Eq`.
 
 Implementation features:
 
