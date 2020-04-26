@@ -26,7 +26,7 @@ Core theory:
 - `refl : {A : Set}{x : A} → Eq x x`.
 - `Eq` and `coe` compute on type/term structure, in particular we have
   - Propositional extensionality: `Eq {Prop} A B = ((A → B) ∧ (B → A))`
-  - Function extensionality: `Eq {(x : A) → B} f g = ((x : A) → Eq (f x) (g x))`. This implies to congruence can be
+  - Function extensionality: `Eq {(x : A) → B} f g = ((x : A) → Eq (f x) (g x))`. This implies that congruence can be
     derived from `refl` at function type.
   - Injective type formers.
   - Besides the canonical cases for `coe` computation, we also have `coe (p : Eq A A) x = x` and `coe p (coe q x) = coe (trans q p) x`. Semantically, these correspond to open types being split fibrations, not just fibrations.
