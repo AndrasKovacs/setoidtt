@@ -3,20 +3,22 @@ module Data.Ref.L where
 
 import GHC.Prim
 import GHC.Types
-import GHC.Magic
 import Data.Unlifted
+
+import IO
+import Data.Array.UndefElem
 
 type role Ref representational
 data Ref a = Ref (MutVar# RealWorld a)
 
 instance Unlifted (Ref a) where
-  toUnlifted# (Ref r) = unsafeCoerce# r
-  {-# inline toUnlifted# #-}
-  fromUnlifted# r     = Ref (unsafeCoerce# r)
-  {-# inline fromUnlifted# #-}
-  default# = runRW# (\s -> case newMutVar# (error "undefined element") s of
-    (# s , r #) -> Ref r)
-  {-# noinline default# #-}
+  type Rep (Ref a) = MutVar# RealWorld a
+  to# (Ref r) = r
+  {-# inline to# #-}
+  from# r = Ref r
+  {-# inline from# #-}
+  defaultElem = runIO (new undefElem)
+  {-# noinline defaultElem #-}
 
 new :: a -> IO (Ref a)
 new a = IO (\s -> case newMutVar# a s of

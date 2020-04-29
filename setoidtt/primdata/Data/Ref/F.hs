@@ -13,12 +13,13 @@ type role Ref representational
 data Ref a = Ref (MutableByteArray# RealWorld)
 
 instance Flat a => Unlifted (Ref a) where
-  toUnlifted# (Ref r) = unsafeCoerce# r
-  {-# inline toUnlifted# #-}
-  fromUnlifted# r = Ref (unsafeCoerce# r)
-  {-# inline fromUnlifted# #-}
-  default# = defaultRef
-  {-# inline default# #-}
+  type Rep (Ref a) = MutableByteArray# RealWorld
+  to# (Ref r) = r
+  {-# inline to# #-}
+  from# r = Ref r
+  {-# inline from# #-}
+  defaultElem = defaultRef
+  {-# inline defaultElem #-}
 
 defaultRef :: forall a. Flat a => Ref a
 defaultRef =

@@ -12,12 +12,13 @@ type role Array representational
 data Array a = Array ByteArray#
 
 instance Unlifted (Array a) where
-  toUnlifted# (Array arr) = unsafeCoerce# arr
-  fromUnlifted# arr = Array (unsafeCoerce# arr)
-  {-# inline toUnlifted# #-}
-  {-# inline fromUnlifted# #-}
-  default# = empty
-  {-# inline default# #-}
+  type Rep (Array a) = ByteArray#
+  to# (Array arr) = arr
+  from#           = Array
+  {-# inline to# #-}
+  {-# inline from# #-}
+  defaultElem = empty
+  {-# inline defaultElem #-}
 
 instance (Flat a, Show a) => Show (Array a) where
   show = show . Data.Array.FI.foldr (:) []

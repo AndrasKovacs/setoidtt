@@ -1,5 +1,4 @@
 
-
 module Data.Array.Dynamic.L  (
     empty
   , Array
@@ -29,12 +28,12 @@ module Data.Array.Dynamic.L  (
 import Data.Unlifted
 import Data.Array.UndefElem
 
-import qualified Data.Ref.UU    as RUU
-import qualified Data.Ref.F     as RF
-import qualified Data.Array.LML as LML
+import qualified Data.Ref.UU   as RUU
+import qualified Data.Ref.F    as RF
+import qualified Data.Array.LM as LM
 
 type role Array representational
-newtype Array (a :: *) = Array (RUU.Ref (RF.Ref Int) (LML.Array a))
+newtype Array (a :: *) = Array (RUU.Ref (RF.Ref Int) (LM.Array a))
   deriving Unlifted
 
 defaultCapacity :: Int
@@ -44,14 +43,14 @@ defaultCapacity = 5
 empty :: forall a. IO (Array a)
 empty = do
   sizeRef <- RF.new 0
-  arrRef  <- LML.new defaultCapacity undefElem
+  arrRef  <- LM.new defaultCapacity undefElem
   Array <$> RUU.new sizeRef arrRef
 {-# inline empty #-}
 
 unsafeRead :: Array a -> Int -> IO a
 unsafeRead (Array r) i = do
   elems <- RUU.readSnd r
-  LML.read elems i
+  LM.read elems i
 {-# inline unsafeRead #-}
 
 read :: Array a -> Int -> IO a
@@ -65,7 +64,7 @@ read (Array r) i = do
 unsafeWrite :: Array a -> Int -> a -> IO ()
 unsafeWrite (Array r) i a = do
   elems <- RUU.readSnd r
-  LML.write elems i a
+  LM.write elems i a
 {-# inline unsafeWrite #-}
 
 write :: Array a -> Int -> a -> IO ()
@@ -81,22 +80,22 @@ push (Array r) ~a = do
   sizeRef <- RUU.readFst r
   elems   <- RUU.readSnd r
   size    <- RF.read sizeRef
-  let cap = LML.size elems
+  let cap = LM.size elems
   RF.write sizeRef (size + 1)
   if (size == cap) then do
     let cap' = 2 * cap
-    elems' <- LML.new cap' undefElem
-    LML.copySlice elems 0 elems' 0 size
-    LML.write elems' size a
+    elems' <- LM.new cap' undefElem
+    LM.copySlice elems 0 elems' 0 size
+    LM.write elems' size a
     RUU.writeSnd r elems'
   else do
-    LML.write elems size a
+    LM.write elems size a
 {-# inline push #-}
 
 clear :: Array a -> IO ()
 clear (Array r) = do
   (`RF.write` 0) =<< RUU.readFst r
-  RUU.writeSnd r =<< LML.new defaultCapacity undefElem
+  RUU.writeSnd r =<< LM.new defaultCapacity undefElem
 {-# inline clear #-}
 
 size :: Array a -> IO Int
@@ -125,10 +124,12 @@ show :: Show a => Array a -> IO String
 show (Array r) = do
   elems  <- RUU.readSnd r
   size <- RF.read =<< RUU.readFst r
-  elems' <- LML.freezeSlice elems 0 size
+  elems' <- LM.freezeSlice elems 0 size
   pure (Prelude.show elems')
 
--- foldl' :: (b -> a -> b) -> b -> Array a -> IO b
+-- foldl' :: forall a b. (b -> a -> b) -> b -> Array a -> IO b
+-- foldl' f b = \arr -> _
+
 -- foldl' f b = \arr -> do
 --   s <- size arr
 --   let go i b | i == s    = pure b

@@ -9,11 +9,13 @@ dependencies:
 - base >= 4.7 && < 5
 
 default-extensions:
-  - RoleAnnotations
-  - RankNTypes
-  - KindSignatures
   - GeneralizedNewtypeDeriving
+  - KindSignatures
   - LambdaCase
+  - MagicHash
+  - RankNTypes
+  - RoleAnnotations
+  - UndecidableInstances
 
 ghc-options:
   - -Wall
@@ -29,8 +31,8 @@ library:
   source-dirs: .
   dependencies:
     - primdata
-  ghc-options:
-    - -ddump-simpl
-    - -dsuppress-all
-    - -dno-suppress-type-signatures
-    - -ddump-to-file
+  # ghc-options:
+  #   - -ddump-simpl
+  #   - -dsuppress-all
+  #   - -dno-suppress-type-signatures
+  #   - -ddump-to-file

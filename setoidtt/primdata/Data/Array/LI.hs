@@ -1,5 +1,5 @@
 
-module Data.Array.LIL where
+module Data.Array.LI where
 
 import GHC.Prim
 import GHC.Types
@@ -13,13 +13,13 @@ type role Array representational
 data Array a = Array (Array# a)
 
 instance Functor Array where
-  fmap = Data.Array.LIL.map
+  fmap = Data.Array.LI.map
   {-# inline fmap #-}
 
 instance Foldable Array where
-  foldr  = Data.Array.LIL.foldr
+  foldr  = Data.Array.LI.foldr
   foldr' = foldr'
-  foldl' = Data.Array.LIL.foldl'
+  foldl' = Data.Array.LI.foldl'
   null arr = size arr == 0
   length = size
   {-# inline foldr  #-}
@@ -29,15 +29,16 @@ instance Foldable Array where
   {-# inline length #-}
 
 instance Unlifted (Array a) where
-  toUnlifted# (Array arr) = unsafeCoerce# arr
-  fromUnlifted# arr = Array (unsafeCoerce# arr)
-  {-# inline toUnlifted# #-}
-  {-# inline fromUnlifted# #-}
-  default# = empty
-  {-# inline default# #-}
+  type Rep (Array a) = Array# a
+  to# (Array arr) = arr
+  from#           = Array
+  {-# inline to# #-}
+  {-# inline from# #-}
+  defaultElem = empty
+  {-# inline defaultElem #-}
 
 instance Show a => Show (Array a) where
-  show = show . Data.Array.LIL.foldr (:) []
+  show = show . Data.Array.LI.foldr (:) []
   {-# inline show #-}
 
 new# :: Int# -> a -> Array# a

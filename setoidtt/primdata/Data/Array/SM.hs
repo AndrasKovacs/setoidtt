@@ -1,5 +1,5 @@
 
-module Data.Array.SML where
+module Data.Array.SM where
 
 import GHC.Types
 import GHC.Prim
@@ -7,18 +7,19 @@ import GHC.Magic
 
 import Data.Unlifted
 import Data.Array.UndefElem
-import qualified Data.Array.SIL as SIL
+import qualified Data.Array.SI as SI
 
 type role Array representational
 data Array a = Array (SmallMutableArray# RealWorld a)
 
 instance Unlifted (Array a) where
-  toUnlifted# (Array arr) = unsafeCoerce# arr
-  {-# inline toUnlifted# #-}
-  fromUnlifted# arr = Array (unsafeCoerce# arr)
-  {-# inline fromUnlifted# #-}
-  default# = empty
-  {-# inline default# #-}
+  type Rep (Array a) = SmallMutableArray# RealWorld a
+  to# (Array arr) = arr
+  from#           = Array
+  {-# inline to# #-}
+  {-# inline from# #-}
+  defaultElem = empty
+  {-# inline defaultElem #-}
 
 new :: forall a.  Int -> a -> IO (Array a)
 new (I# i) a = IO (\s -> case newSmallArray# i a s of
@@ -55,14 +56,14 @@ size :: Array a -> Int
 size (Array arr) = I# (sizeofSmallMutableArray# arr)
 {-# inline size #-}
 
-thawSlice :: SIL.Array a -> Int -> Int -> IO (Array a)
-thawSlice (SIL.Array arr) (I# start) (I# len) = IO $ \s ->
+thawSlice :: SI.Array a -> Int -> Int -> IO (Array a)
+thawSlice (SI.Array arr) (I# start) (I# len) = IO $ \s ->
   case thawSmallArray# arr start len s of
     (# s, marr #) -> (# s, Array marr #)
 {-# inline thawSlice #-}
 
-thaw :: forall a. SIL.Array a -> IO (Array a)
-thaw arr = thawSlice arr 0 (SIL.size arr)
+thaw :: forall a. SI.Array a -> IO (Array a)
+thaw arr = thawSlice arr 0 (SI.size arr)
 {-# inline thaw #-}
 
 copySlice :: forall a. Array a -> Int -> Array a -> Int -> Int -> IO ()
@@ -71,25 +72,25 @@ copySlice (Array src) (I# i) (Array dst) (I# j) (I# len) = IO $ \s ->
     s -> (# s, () #)
 {-# inline copySlice #-}
 
-sizedThaw :: forall a. Int -> SIL.Array a -> IO (Array a)
+sizedThaw :: forall a. Int -> SI.Array a -> IO (Array a)
 sizedThaw size arr = thawSlice arr 0 size
 {-# inline sizedThaw #-}
 
-unsafeFreeze :: Array a -> IO (SIL.Array a)
+unsafeFreeze :: Array a -> IO (SI.Array a)
 unsafeFreeze (Array marr) = IO $ \s -> case unsafeFreezeSmallArray# marr s of
-  (# s, arr #) -> (# s, SIL.Array arr #)
+  (# s, arr #) -> (# s, SI.Array arr #)
 {-# inline unsafeFreeze #-}
 
-freezeSlice :: Array a -> Int -> Int -> IO (SIL.Array a)
+freezeSlice :: Array a -> Int -> Int -> IO (SI.Array a)
 freezeSlice (Array marr) (I# start) (I# len) = IO $ \s ->
   case freezeSmallArray# marr start len s of
-    (# s, arr #) -> (# s, (SIL.Array arr) #)
+    (# s, arr #) -> (# s, (SI.Array arr) #)
 {-# inline freezeSlice #-}
 
-freeze :: Array a -> IO (SIL.Array a)
+freeze :: Array a -> IO (SI.Array a)
 freeze arr = freezeSlice arr 0 (size arr)
 {-# inline freeze #-}
 
-sizedFreeze :: Int -> Array a -> IO (SIL.Array a)
+sizedFreeze :: Int -> Array a -> IO (SI.Array a)
 sizedFreeze size arr = freezeSlice arr 0 size
 {-# inline sizedFreeze #-}

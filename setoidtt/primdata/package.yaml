@@ -12,15 +12,18 @@ default-extensions:
 - AllowAmbiguousTypes
 - BangPatterns
 - CPP
+- DataKinds
+- FlexibleInstances
 - GeneralizedNewtypeDeriving
 - KindSignatures
 - MagicHash
+- PolyKinds
 - RankNTypes
 - RoleAnnotations
 - ScopedTypeVariables
 - TypeApplications
+- TypeFamilies
 - UnboxedTuples
-- FlexibleInstances
 
 ghc-options:
   - -rtsopts
@@ -30,10 +33,10 @@ ghc-options:
   - -Wno-unused-do-bind
   - -Wno-unused-matches
   - -Wno-partial-type-signatures
-  - -ddump-simpl
-  - -dsuppress-all
-  - -dno-suppress-type-signatures
-  - -ddump-to-file
+  # - -ddump-simpl
+  # - -dsuppress-all
+  # - -dno-suppress-type-signatures
+  # - -ddump-to-file
   - -O2
   - -fllvm
 

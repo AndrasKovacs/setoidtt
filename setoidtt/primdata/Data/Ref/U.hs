@@ -2,45 +2,34 @@
 module Data.Ref.U where
 
 import GHC.Prim
-import GHC.Types
-import GHC.Magic
 import Data.Unlifted
 
-type role Ref representational
-data Ref a = Ref (MutVar# RealWorld Any)
+import qualified Data.Array.UM as UM
 
-instance Unlifted a => Unlifted (Ref a) where
-  toUnlifted# (Ref r) = unsafeCoerce# r
-  {-# inline toUnlifted# #-}
-  fromUnlifted# r = Ref (unsafeCoerce# r)
-  {-# inline fromUnlifted# #-}
-  default# = case toUnlifted# @a Data.Unlifted.default# of
-    a -> runRW# (\s -> case newMutVar# (unsafeCoerce# a) s of
-                    (# s, r #) -> Ref r)
-  {-# inlinable default# #-}
+type role Ref representational representational
+newtype Ref a b = Ref (UM.Array a)
 
-new :: forall a. Unlifted a => a -> IO (Ref a)
-new a = case toUnlifted# a of
-  a -> IO (\s -> case newMutVar# (unsafeCoerce# a) s of
-    (# s , r #) -> (# s, Ref r #))
+instance (Unlifted a, Unlifted b) => Unlifted (Ref a b) where
+  type Rep (Ref a b) = MutableArrayArray# RealWorld
+  to# (Ref (UM.Array r)) = r
+  {-# inline to# #-}
+  from# r = Ref (UM.Array r)
+  {-# inline from# #-}
+  defaultElem = Ref defaultElem
+  {-# inline defaultElem #-}
+
+new :: forall a b. (Unlifted a, Unlifted b) => a -> b -> IO (Ref a b)
+new a b = Ref <$> UM.new @a 1 a
 {-# inline new #-}
 
-write :: forall a. Unlifted a => Ref a -> a -> IO ()
-write (Ref r) a = case toUnlifted# a of
-  a -> IO (\s -> case writeMutVar# r (unsafeCoerce# a) s of s -> (# s, () #))
-{-# inline write #-}
-
-read :: forall a. Unlifted a => Ref a -> IO a
-read (Ref r) = IO $ \s -> case readMutVar# r s of
-  (# s, a #) -> case fromUnlifted# (unsafeCoerce# a) of
-    !a -> (# s, a #)
+read :: forall a b. (Unlifted a) => Ref a b -> IO a
+read (Ref arr) = UM.read arr 0
 {-# inline read #-}
 
-modify :: Unlifted a => Ref a -> (a -> a) -> IO ()
-modify (Ref r) f = IO (\s -> case readMutVar# r s of
-  (# s, a #) -> case fromUnlifted# (unsafeCoerce# a) of
-    !a -> case f a of
-      !a -> case toUnlifted# a of
-        a -> case writeMutVar# r (unsafeCoerce# a) s of
-          s -> (# s, () #))
+write :: forall a b. (Unlifted a) => Ref a b -> a -> IO ()
+write (Ref arr) a = UM.write arr 0 a
+{-# inline write #-}
+
+modify :: forall a b. Unlifted a => Ref a b -> (a -> a) -> IO ()
+modify (Ref arr) f = UM.modify arr 0 f
 {-# inline modify #-}

@@ -11,14 +11,16 @@ default-extensions:
 - CPP
 - ConstraintKinds
 - DataKinds
+- DefaultSignatures
 - DeriveAnyClass
 - DerivingStrategies
+- DerivingVia
 - EmptyCase
 - ExplicitNamespaces
 - FlexibleContexts
 - FlexibleInstances
-- GADTs
 - FunctionalDependencies
+- GADTs
 - InstanceSigs
 - LambdaCase
 - MagicHash
@@ -54,15 +56,33 @@ ghc-options:
 
 dependencies:
 - base >= 4.7 && < 5
+- bytestring
+- containers
 - dynamic-array
-- megaparsec
+- ghc-prim
 - primdata
+- text-short
+- time
 - unordered-containers
-- persist
+- gauge
+- megaparsec
+- text
 
-source-dirs: .
+source-dirs:
+  - src
+
+library:
+  ghc-options:
+    - -O2
+    - -fllvm
+    - -ddump-simpl
+    - -dsuppress-all
+    - -dno-suppress-type-signatures
+    - -ddump-to-file
 
 executable:
   main: Main.hs
   ghc-options:
-    - -O0
+    - -O2
+    - -fllvm
+    - -rtsopts

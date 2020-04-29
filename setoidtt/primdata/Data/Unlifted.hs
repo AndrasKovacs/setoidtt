@@ -1,19 +1,50 @@
 
-module Data.Unlifted (Unlifted(..)) where
-import GHC.Prim
+module Data.Unlifted where
 
--- | Class for type which are isomorphic to an unlifted type. NOTE: the result
---   of `toUnlifted#` must always be bound in a case expression, if we later
---   `unsafeCoerce#` it to a lifted type. Otherwise GHC would try to create a
---   thunk for it, which is not unlifted anymore! Officially, coercion from an
---   unlifted to a lifted type is not supported, and not safe.
---   Also, the result of `fromUnlifted#` should be forced as well; it is
---   safe to not force it, but not optimally efficient, because `fromUnlifted#`
---   pretty much always runs in constant time.
---
---   We also need a default value for the purpose of initializing arrays, because
---   it is not possible to use any "error" thunk for this purpose safely.
-class Unlifted a where
-  toUnlifted#   :: a -> ArrayArray#
-  fromUnlifted# :: ArrayArray# -> a
-  default#      :: a
+{-| Class for types that can be represented as elements of TYPE 'UnliftedRep.
+    NOTE: this module is unsound to use in FFI:
+
+    https://gitlab.haskell.org/ghc/ghc/issues/16650
+
+    Do not pass any data to FFI which contains some unlifted value coerced to a
+    different unlifted type!
+-}
+
+import GHC.Prim
+import GHC.Types
+
+writeUnlifted# ::
+   forall (a :: TYPE 'UnliftedRep) s. MutableArrayArray# s -> Int# -> a -> State# s -> State# s
+writeUnlifted# marr i a s = writeArrayArrayArray# marr i (unsafeCoerce# a) s
+{-# inline writeUnlifted# #-}
+
+readUnlifted# :: forall (a :: TYPE 'UnliftedRep) s.
+         MutableArrayArray# s -> Int# -> State# s -> (# State# s, a #)
+readUnlifted# marr i s = unsafeCoerce# (readArrayArrayArray# marr i s)
+{-# inline readUnlifted# #-}
+
+indexUnlifted# :: forall (a :: TYPE 'UnliftedRep). ArrayArray# -> Int# -> a
+indexUnlifted# arr i = unsafeCoerce# (indexArrayArrayArray# arr i)
+{-# inline indexUnlifted# #-}
+
+setUnlifted# ::
+  forall (a :: TYPE 'UnliftedRep) s. MutableArrayArray# s -> a -> State# s -> State# s
+setUnlifted# marr a s =
+  let go :: MutableArrayArray# s -> a -> State# s -> Int# -> Int# -> State# s
+      go marr a s l i = case i ==# l of
+        1# -> s
+        _  -> case writeUnlifted# marr i a s of s -> go marr a s l (i +# 1#)
+  in go marr a s (sizeofMutableArrayArray# marr) 0#
+{-# inline setUnlifted# #-}
+
+newUnlifted# :: forall (a :: TYPE 'UnliftedRep) s. Int# -> a -> State# s -> (# State# s, MutableArrayArray# s #)
+newUnlifted# i a s = case newArrayArray# i s of
+  (# s, marr #) -> case setUnlifted# marr a s of
+    s -> (# s, marr #)
+{-# inline newUnlifted# #-}
+
+class Unlifted (a :: *) where
+  type Rep a  :: TYPE 'UnliftedRep
+  to#         :: a -> Rep a
+  from#       :: Rep a -> a
+  defaultElem :: a

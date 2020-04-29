@@ -30,10 +30,10 @@ import Data.Array.UndefElem
 
 import qualified Data.Ref.UU    as RUU
 import qualified Data.Ref.F     as RF
-import qualified Data.Array.LMU as LMU
+import qualified Data.Array.UM as UM
 
 type role Array representational
-newtype Array (a :: *) = Array (RUU.Ref (RF.Ref Int) (LMU.Array a))
+newtype Array (a :: *) = Array (RUU.Ref (RF.Ref Int) (UM.Array a))
   deriving Unlifted
 
 defaultCapacity :: Int
@@ -43,14 +43,14 @@ defaultCapacity = 5
 empty :: forall a. Unlifted a => IO (Array a)
 empty = do
   sizeRef <- RF.new 0
-  arrRef  <- LMU.new defaultCapacity undefElem
+  arrRef  <- UM.new defaultCapacity defaultElem
   Array <$> RUU.new sizeRef arrRef
 {-# inline empty #-}
 
 unsafeRead :: Unlifted a => Array a -> Int -> IO a
 unsafeRead (Array r) i = do
   elems <- RUU.readSnd r
-  LMU.read elems i
+  UM.read elems i
 {-# inline unsafeRead #-}
 
 read :: Unlifted a => Array a -> Int -> IO a
@@ -64,7 +64,7 @@ read (Array r) i = do
 unsafeWrite :: Unlifted a => Array a -> Int -> a -> IO ()
 unsafeWrite (Array r) i a = do
   elems <- RUU.readSnd r
-  LMU.write elems i a
+  UM.write elems i a
 {-# inline unsafeWrite #-}
 
 write :: Unlifted a => Array a -> Int -> a -> IO ()
@@ -80,22 +80,22 @@ push (Array r) ~a = do
   sizeRef <- RUU.readFst r
   elems   <- RUU.readSnd r
   size    <- RF.read sizeRef
-  let cap = LMU.size elems
+  let cap = UM.size elems
   RF.write sizeRef (size + 1)
   if (size == cap) then do
     let cap' = 2 * cap
-    elems' <- LMU.new cap' undefElem
-    LMU.copySlice elems 0 elems' 0 size
-    LMU.write elems' size a
+    elems' <- UM.new cap' undefElem
+    UM.copySlice elems 0 elems' 0 size
+    UM.write elems' size a
     RUU.writeSnd r elems'
   else do
-    LMU.write elems size a
+    UM.write elems size a
 {-# inline push #-}
 
 clear :: Unlifted a => Array a -> IO ()
 clear (Array r) = do
   (`RF.write` 0) =<< RUU.readFst r
-  RUU.writeSnd r =<< LMU.new defaultCapacity undefElem
+  RUU.writeSnd r =<< UM.new defaultCapacity undefElem
 {-# inline clear #-}
 
 size :: Array a -> IO Int
@@ -124,7 +124,7 @@ show :: (Show a, Unlifted a) => Array a -> IO String
 show (Array r) = do
   elems  <- RUU.readSnd r
   size <- RF.read =<< RUU.readFst r
-  elems' <- LMU.freezeSlice elems 0 size
+  elems' <- UM.freezeSlice elems 0 size
   pure (Prelude.show elems')
 {-# inlinable show #-}
 
