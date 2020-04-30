@@ -1,0 +1,7 @@
+resolver: lts-15.9
+
+packages:
+- .
+
+extra-deps:
+  - ../primdata

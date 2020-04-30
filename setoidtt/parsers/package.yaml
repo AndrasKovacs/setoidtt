@@ -1,0 +1,57 @@
+name:                parsers
+version:             0.1.0.0
+license:             BSD3
+author:              "András Kovács"
+maintainer:          "puttamalac@gmail.com"
+copyright:           "2018-2020 András Kovács"
+
+dependencies:
+- base >= 4.7 && < 5
+- bytestring
+- template-haskell
+- text-short
+
+default-extensions:
+  - BlockArguments
+  - BangPatterns
+  - KindSignatures
+  - DerivingVia
+  - LambdaCase
+  - MagicHash
+  - PatternSynonyms
+  - RankNTypes
+  - ScopedTypeVariables
+  - UnboxedTuples
+  - TemplateHaskell
+  - QuasiQuotes
+
+ghc-options:
+  - -Wall
+  - -Wno-missing-signatures
+  - -Wno-name-shadowing
+  - -Wno-unused-do-bind
+  - -Wno-unused-matches
+  - -Wno-partial-type-signatures
+  - -O2
+  - -fllvm
+  - -ddump-simpl
+  - -dsuppress-all
+  - -dno-suppress-type-signatures
+  - -ddump-to-file
+
+executables:
+  bench:
+    default-extensions:
+      - OverloadedStrings
+    source-dirs: bench
+    main: Main.hs
+    dependencies:
+      - gauge
+      - parsers
+      - attoparsec
+      - megaparsec
+    ghc-options:
+      - -rtsopts
+
+library:
+  source-dirs: .
