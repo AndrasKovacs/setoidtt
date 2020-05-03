@@ -50,6 +50,7 @@ executables:
       - parsers
       - attoparsec
       - megaparsec
+      - parsec
     ghc-options:
       - -rtsopts
 
