@@ -12,7 +12,6 @@ import Data.Char (ord)
 import Data.Foldable
 import Data.Word
 import GHC.Exts
-import GHC.Word
 import Language.Haskell.TH
 import System.IO.Unsafe
 
@@ -35,7 +34,7 @@ newtype Parser r e a = Parser {runParser# :: Read# r -> Addr# -> Res# e a}
 
 instance Functor (Parser r e) where
   fmap f (Parser g) = Parser \r s -> case g r s of
-    OK# a s  -> let b = f a in OK# b s
+    OK# a s  -> let !b = f a in OK# b s
     Err# e s -> Err# e s
   {-# inline fmap #-}
 
@@ -44,17 +43,13 @@ instance Functor (Parser r e) where
     Err# e s -> Err# e s
   {-# inline (<$) #-}
 
-err :: Error e -> Parser r e a
-err e = Parser \r s -> Err# e s
+err :: e -> Parser r e a
+err e = Parser \r s -> Err# (Custom e) s
 {-# inline err #-}
 
-defaultErr :: Parser r e a
-defaultErr = Parser \r s -> Err# Default s
-{-# inline defaultErr #-}
-
-customErr :: e -> Parser r e a
-customErr e = Parser \r s -> Err# (Custom e) s
-{-# inline customErr #-}
+empty :: Parser r e a
+empty = Parser \r s -> Err# Default s
+{-# inline empty #-}
 
 instance Applicative (Parser r e) where
   pure a = Parser \r s -> OK# a s
@@ -197,12 +192,17 @@ anyChar_ = Parser \(# eob, i #) buf -> case eqAddr# eob buf of
 {-# inline anyChar_ #-}
 
 satisfy :: (Char -> Bool) -> Parser r e Char
-satisfy f = (do {c <- anyChar; if f c then pure c else err Default}) <|> err Default
+satisfy f = Parser \r s -> case runParser# anyChar r s of
+  OK# c s | f c -> OK# c s
+  OK# c s       -> Err# Default s
+  Err# e s      -> Err# e s
 {-#  inline satisfy #-}
 
 satisfyA :: (Char -> Bool) -> Parser r e Char
-satisfyA f = (do {c <- anyCharA; if f c then pure c else defaultErr})
-          <|> defaultErr
+satisfyA f = Parser \r s -> case runParser# anyCharA r s of
+  OK# c s | f c -> OK# c s
+  OK# c s       -> Err# Default s
+  Err# e s      -> Err# e s
 {-#  inline satisfyA #-}
 
 many_ :: Parser r e a -> Parser r e ()
@@ -221,10 +221,15 @@ manyTill_ pa end = go where
   go = (() <$ end) <|> (pa >> go)
 {-# inline manyTill_ #-}
 
-chainl1 :: (b -> a -> b) -> Parser r e a -> Parser r e b -> Parser r e b
-chainl1 f elem start = start >>= go where
+chainl :: (b -> a -> b) -> Parser r e b -> Parser r e a -> Parser r e b
+chainl f start elem = start >>= go where
   go b = do {a <- elem; go $! f b a} <|> pure b
-{-# inline chainl1 #-}
+{-# inline chainl #-}
+
+chainr :: (a -> b -> b) -> Parser r e a -> Parser r e b -> Parser r e b
+chainr f elem end = go where
+  go = (f <$> elem <*> go) <|> end
+{-# inline chainr #-}
 
 silent :: Parser r e a -> Parser r e a
 silent pa = Parser \r s -> case runParser# pa r s of
@@ -254,24 +259,17 @@ asShortText :: Parser r e a -> Parser r e (T.ShortText)
 asShortText p = fmap (\(_ ,s) -> spanToShortText s) (spanned p)
 {-# inline asShortText #-}
 
-newtype BackwardsPos = BackwardsPos Int
-  deriving (Eq, Show, Ord, Num) via Int
+newtype Pos = Pos Int
+  deriving (Eq, Show) via Int
 
-flipPos :: B.ByteString -> BackwardsPos -> Int
-flipPos b (BackwardsPos p)
-  | p <= B.length b = B.length b - p
-  | otherwise       = error "flipPos: out of bounds"
-{-# inline flipPos #-}
-
--- | This is byte position counted backwards from the end of the input.
-getPos :: Parser r e BackwardsPos
-getPos = Parser \(# eob, _ #) s -> OK# (BackwardsPos (I# (minusAddr# eob s))) s
+getPos :: Parser r e Pos
+getPos = Parser \(# eob, _ #) s -> OK# (Pos (I# (minusAddr# eob s))) s
 {-# inline getPos #-}
 
-data Res e a = OK a B.ByteString | Err (Error e) B.ByteString
+data Result e a = OK a B.ByteString | Err (Error e) B.ByteString
   deriving Show
 
-runParser :: Parser r e a -> r -> B.ByteString -> Res e a
+runParser :: Parser r e a -> r -> B.ByteString -> Result e a
 runParser (Parser f) r b = unsafeDupablePerformIO do
   B.unsafeUseAsCString b \(Ptr buf) -> do
     let !(I# len) = B.length b
@@ -284,7 +282,7 @@ runParser (Parser f) r b = unsafeDupablePerformIO do
         let offset = minusAddr# s buf
         pure (OK a (B.drop (I# offset) b))
 
-runParser' :: Parser r e a -> r -> String -> Res e a
+runParser' :: Parser r e a -> r -> String -> Result e a
 runParser' p r str = runParser p r (B.pack (charToBytes =<< str))
 
 --------------------------------------------------------------------------------
@@ -307,32 +305,62 @@ strToBytes :: String -> [Word8]
 strToBytes = concatMap charToBytes
 {-# inline strToBytes #-}
 
-trySplit :: Int -> [a] -> Maybe ([a], [a])
-trySplit n as | n <= 0 = Just ([], as)
-trySplit n []     = Nothing
-trySplit n (a:as) = (\(as1, as2) -> (a:as1, as2)) <$> trySplit (n - 1) as
-
 packBytes :: [Word8] -> Word
 packBytes = fst . foldl' go (0, 0) where
   go (acc, shift) w | shift == 64 = error "packWords: too many bytes"
   go (acc, shift) w = (unsafeShiftL (fromIntegral w) shift .|. acc, shift+8)
 
-vectorize :: [Word8] -> ([Word], Maybe (Either (Int, Word) Word8))
-vectorize ws = case trySplit 8 ws of
-  Just (w8, rest) -> let (w8s, end) = vectorize rest
-                     in (packBytes w8:w8s, end)
-  Nothing         -> case ws of
-                       []  -> ([], Nothing)
-                       [w] -> ([], Just $ Right w)
-                       ws  -> ([], Just $ Left (length ws, packBytes ws))
+splitBytes :: [Word8] -> ([Word8], [Word])
+splitBytes ws = case quotRem (length ws) 8 of
+  (0, _) -> (ws, [])
+  (_, r) -> (as, chunk8s bs) where
+              (as, bs) = splitAt r ws
+              chunk8s [] = []
+              chunk8s ws = let (as, bs) = splitAt 8 ws in
+                           packBytes as : chunk8s bs
 
-scanByte# :: Word8 -> Parser r e ()
-scanByte# (W8# c) = Parser \r s ->
+scan8# :: Word -> Parser r e ()
+scan8# (W# c) = Parser \r s ->
   case indexWord8OffAddr# s 0# of
     c' -> case eqWord# c c' of
       1# -> OK# () (plusAddr# s 1#)
       _  -> Err# Default s
-{-# inline scanByte# #-}
+{-# inline scan8# #-}
+
+scan16# :: Word -> Parser r e ()
+scan16# (W# c) = Parser \r s ->
+  case indexWord16OffAddr# s 0# of
+    c' -> case eqWord# c c' of
+      1# -> OK# () (plusAddr# s 2#)
+      _  -> Err# Default s
+{-# inline scan16# #-}
+
+scan32# :: Word -> Parser r e ()
+scan32# (W# c) = Parser \r s ->
+  case indexWord32OffAddr# s 0# of
+    c' -> case eqWord# c c' of
+      1# -> OK# () (plusAddr# s 4#)
+      _  -> Err# Default s
+{-# inline scan32# #-}
+
+scan64# :: Word -> Parser r e ()
+scan64# (W# c) = Parser \r s ->
+  case indexWord64OffAddr# s 0# of
+    c' -> case eqWord# c c' of
+      1# -> OK# () (plusAddr# s 8#)
+      _  -> Err# Default s
+{-# inline scan64# #-}
+
+scanPartial64# :: Int -> Word -> Parser r e ()
+scanPartial64# (I# len) (W# w) = Parser \r s ->
+  case indexWordOffAddr# s 0# of
+    w' -> case uncheckedIShiftL# (8# -# len) 3# of
+      sh -> case uncheckedShiftL# w' sh of
+        w' -> case uncheckedShiftRL# w' sh of
+          w' -> case eqWord# w w' of
+            1# -> OK# () (plusAddr# s len)
+            _  -> Err# Default s
+{-# inline scanPartial64# #-}
 
 ensureBytes# :: Int -> Parser r e ()
 ensureBytes# (I# len) = Parser \(# eob, _ #) s ->
@@ -341,35 +369,29 @@ ensureBytes# (I# len) = Parser \(# eob, _ #) s ->
     _  -> Err# Default s
 {-# inline ensureBytes# #-}
 
-scanWord# :: Word -> Parser r e ()
-scanWord# (W# w) = Parser \r s ->
-  case indexWordOffAddr# s 0# of
-    w' -> case eqWord# w w' of
-      1# -> OK# () (plusAddr# s 8#)
-      _  -> Err# Default s
-{-# inline scanWord# #-}
-
--- | TODO: remove possible out-of-bound memory access!
-scanPartialWord# :: Int -> Word -> Parser r e ()
-scanPartialWord# (I# len) (W# w) = Parser \r s ->
-  case indexWordOffAddr# s 0# of
-    w' -> case uncheckedIShiftL# (8# -# len) 3# of
-      sh -> case uncheckedShiftL# w' sh of
-        w' -> case uncheckedShiftRL# w' sh of
-          w' -> case eqWord# w w' of
-            1# -> OK# () (plusAddr# s len)
-            _  -> Err# Default s
-
 string :: String -> Q Exp
 string str = do
-  let (w8s, end)  = vectorize $ strToBytes str
-      len         = 8 * length w8s + maybe 0 (either fst (const 1)) end
-      go []       = maybe ([| pure () |])
-                          (either (\(n, w) -> [| scanPartialWord# n w |])
-                                  (\w -> [| scanByte# w |]))
-                          end
-      go (w8:w8s) = [| scanWord# w8 >> $(go w8s) |]
-  [| ensureBytes# len >> $(go w8s) |]
+  let bytes          = strToBytes str
+      len            = length bytes
+      (leading, w8s) = splitBytes (strToBytes str)
+      scanw8s        = go w8s where
+                         go (w8:[] ) = [| scan64# w8 |]
+                         go (w8:w8s) = [| scan64# w8 >> $(go w8s) |]
+                         go []       = [| pure () |]
+  case w8s of
+    [] -> [| ensureBytes# len >> $(go leading) |] where
+             go (a:b:c:d:[]) = let w = packBytes [a, b, c, d] in [| scan32# w |]
+             go (a:b:c:d:ws) = let w = packBytes [a, b, c, d] in [| scan32# w >> $(go ws) |]
+             go (a:b:[])     = let w = packBytes [a, b]       in [| scan16# w |]
+             go (a:b:ws)     = let w = packBytes [a, b]       in [| scan16# w >> $(go ws) |]
+             go (a:[])       = [| scan8# a |]
+             go []           = [| pure () |]
+    _  -> case leading of
+      []  -> [| ensureBytes# len >> $scanw8s |]
+      [a] -> [| ensureBytes# len >> scan8# a >> $scanw8s |]
+      ws  -> let w = packBytes ws
+                 l = length ws
+             in [| ensureBytes# len >> scanPartial64# l w >> $scanw8s |]
 
 char :: Char -> Q Exp
 char c = string [c]

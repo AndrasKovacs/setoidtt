@@ -1,4 +1,4 @@
-name:                parsers
+name:                flatparse
 version:             0.1.0.0
 license:             BSD3
 author:              "András Kovács"
@@ -23,6 +23,7 @@ default-extensions:
   - ScopedTypeVariables
   - UnboxedTuples
   - TemplateHaskell
+  - TypeApplications
   - QuasiQuotes
 
 ghc-options:
@@ -47,7 +48,7 @@ executables:
     main: Main.hs
     dependencies:
       - gauge
-      - parsers
+      - flatparse
       - attoparsec
       - megaparsec
       - parsec

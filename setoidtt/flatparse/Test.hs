@@ -7,8 +7,11 @@ import Data.Bits
 import Data.Word
 import Data.List
 import Language.Haskell.TH
+import Language.Haskell.TH.Syntax
 
 import qualified Data.ByteString.Char8 as B
+
+-- string "thisisalongkeyword"
 
 -- inp = B.replicate 8192 'a' <> "bb"
 -- ws = many_ ($(someChar ' ') <|> $(someChar '\n'))
