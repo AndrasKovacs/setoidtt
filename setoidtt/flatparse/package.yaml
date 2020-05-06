@@ -8,23 +8,31 @@ copyright:           "2018-2020 András Kovács"
 dependencies:
 - base >= 4.7 && < 5
 - bytestring
+- containers
+- mtl
 - template-haskell
 - text-short
+- microlens-platform
 
 default-extensions:
-  - BlockArguments
   - BangPatterns
-  - KindSignatures
+  - BlockArguments
   - DerivingVia
+  - FlexibleInstances
+  - FunctionalDependencies
+  - KindSignatures
   - LambdaCase
   - MagicHash
+  - MultiParamTypeClasses
+  - OverloadedStrings
   - PatternSynonyms
+  - QuasiQuotes
   - RankNTypes
   - ScopedTypeVariables
-  - UnboxedTuples
   - TemplateHaskell
   - TypeApplications
-  - QuasiQuotes
+  - UnboxedTuples
+  - ViewPatterns
 
 ghc-options:
   - -Wall
