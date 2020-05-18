@@ -113,23 +113,23 @@ isGreekLetter :: Char -> Bool
 isGreekLetter c = ('Α' <= c && c <= 'Ω') || ('α' <= c && c <= 'ω')
 {-# inline isGreekLetter #-}
 
-infixr 6 <|>
-(<|>) :: Parser r e a -> Parser r e a -> Parser r e a
-(<|>) (Parser f) (Parser g) = Parser \r s ->
-  case f r s of
-    Err# e _ -> g r s
-    x        -> x
-{-# inline (<|>) #-}
-
 infixr 6 <!>
 (<!>) :: Parser r e a -> Parser r e a -> Parser r e a
 (<!>) (Parser f) (Parser g) = Parser \r s ->
+  case f r s of
+    Err# e _ -> g r s
+    x        -> x
+{-# inline (<!>) #-}
+
+infixr 6 <|>
+(<|>) :: Parser r e a -> Parser r e a -> Parser r e a
+(<|>) (Parser f) (Parser g) = Parser \r s ->
   case f r s of
     Err# e s' -> case eqAddr# s s' of
                    1# -> g r s
                    _  -> Err# e s'
     x         -> x
-{-# inline (<!>) #-}
+{-# inline (<|>) #-}
 
 try :: Parser r e a -> Parser r e a
 try (Parser f) = Parser \r s -> case f r s of
@@ -194,21 +194,23 @@ anyChar_ = Parser \(# eob, i #) buf -> case eqAddr# eob buf of
 satisfy :: (Char -> Bool) -> Parser r e Char
 satisfy f = Parser \r s -> case runParser# anyChar r s of
   OK# c s | f c -> OK# c s
-  OK# c s       -> Err# Default s
+  OK# c _       -> Err# Default s
   Err# e s      -> Err# e s
 {-#  inline satisfy #-}
 
 satisfyA :: (Char -> Bool) -> Parser r e Char
 satisfyA f = Parser \r s -> case runParser# anyCharA r s of
   OK# c s | f c -> OK# c s
-  OK# c s       -> Err# Default s
+  OK# c _       -> Err# Default s
   Err# e s      -> Err# e s
 {-#  inline satisfyA #-}
 
 many_ :: Parser r e a -> Parser r e ()
 many_ (Parser f) = go where
   go = Parser \r s -> case f r s of
-    Err# e _  -> OK# () s
+    Err# e s' -> case eqAddr# s s' of
+                   1# -> OK# () s
+                   _  -> Err# e s'
     OK# a s   -> runParser# go r s
 {-# inline many_ #-}
 
@@ -223,7 +225,7 @@ manyTill_ pa end = go where
 
 chainl :: (b -> a -> b) -> Parser r e b -> Parser r e a -> Parser r e b
 chainl f start elem = start >>= go where
-  go b = do {a <- elem; go $! f b a} <|> pure b
+  go b = do {!a <- elem; go $! f b a} <|> pure b
 {-# inline chainl #-}
 
 chainr :: (a -> b -> b) -> Parser r e a -> Parser r e b -> Parser r e b
@@ -237,16 +239,17 @@ silent pa = Parser \r s -> case runParser# pa r s of
   x        -> x
 {-# inline silent #-}
 
-data RawSpan = RawSpan Addr# Addr#
+data Pos = Pos Addr#
+data Span = Span !Pos !Pos
 
-spanned :: Parser r e a -> Parser r e (a, RawSpan)
+spanned :: Parser r e a -> Parser r e (a, Span)
 spanned (Parser f) = Parser \r s -> case f r s of
   Err# e s  -> Err# e s
-  OK# a s'  -> OK# (a, RawSpan s s') s'
+  OK# a s'  -> OK# (a, Span (Pos s) (Pos s')) s'
 {-# inline spanned #-}
 
-spanToShortText :: RawSpan -> T.ShortText
-spanToShortText (RawSpan start end) =
+spanToShortText :: Span -> T.ShortText
+spanToShortText (Span (Pos start) (Pos end)) =
   let len  = minusAddr# end start
   in T.fromShortByteStringUnsafe (SB.SBS (runRW# \s ->
        case newByteArray# len s of
@@ -259,11 +262,8 @@ asShortText :: Parser r e a -> Parser r e (T.ShortText)
 asShortText p = fmap (\(_ ,s) -> spanToShortText s) (spanned p)
 {-# inline asShortText #-}
 
-newtype Pos = Pos Int
-  deriving (Eq, Show) via Int
-
 getPos :: Parser r e Pos
-getPos = Parser \(# eob, _ #) s -> OK# (Pos (I# (minusAddr# eob s))) s
+getPos = Parser \(# eob, _ #) s -> OK# (Pos s) s
 {-# inline getPos #-}
 
 data Result e a = OK a B.ByteString | Err (Error e) B.ByteString
@@ -285,6 +285,7 @@ runParser (Parser f) r b = unsafeDupablePerformIO do
 runParser' :: Parser r e a -> r -> String -> Result e a
 runParser' p r str = runParser p r (B.pack (charToBytes =<< str))
 
+-- TH parsers
 --------------------------------------------------------------------------------
 
 charToBytes :: Char -> [Word8]
@@ -371,27 +372,38 @@ ensureBytes# (I# len) = Parser \(# eob, _ #) s ->
 
 string :: String -> Q Exp
 string str = do
-  let bytes          = strToBytes str
-      len            = length bytes
-      (leading, w8s) = splitBytes (strToBytes str)
-      scanw8s        = go w8s where
+  let !bytes          = strToBytes str
+      !len            = length bytes
+      !(leading, w8s) = splitBytes (strToBytes str)
+      !leadingLen     = length leading
+      !w8sLen         = length w8s
+      !scanw8s        = go w8s where
                          go (w8:[] ) = [| scan64# w8 |]
                          go (w8:w8s) = [| scan64# w8 >> $(go w8s) |]
                          go []       = [| pure () |]
   case w8s of
-    [] -> [| ensureBytes# len >> $(go leading) |] where
-             go (a:b:c:d:[]) = let w = packBytes [a, b, c, d] in [| scan32# w |]
-             go (a:b:c:d:ws) = let w = packBytes [a, b, c, d] in [| scan32# w >> $(go ws) |]
-             go (a:b:[])     = let w = packBytes [a, b]       in [| scan16# w |]
-             go (a:b:ws)     = let w = packBytes [a, b]       in [| scan16# w >> $(go ws) |]
-             go (a:[])       = [| scan8# a |]
-             go []           = [| pure () |]
+    [] -> case leadingLen of
+            0 -> [| ensureBytes# len >> $(go leading) |]
+            1 -> [| ensureBytes# len >> $(go leading) |]
+            2 -> [| ensureBytes# len >> $(go leading) |]
+            4 -> [| ensureBytes# len >> $(go leading) |]
+            _ -> [| ensureBytes# len >> try $(go leading) |]
+          where
+            go (a:b:c:d:[]) = let !w = packBytes [a, b, c, d] in [| scan32# w |]
+            go (a:b:c:d:ws) = let !w = packBytes [a, b, c, d] in [| scan32# w >> $(go ws) |]
+            go (a:b:[])     = let !w = packBytes [a, b]       in [| scan16# w |]
+            go (a:b:ws)     = let !w = packBytes [a, b]       in [| scan16# w >> $(go ws) |]
+            go (a:[])       = [| scan8# a |]
+            go []           = [| pure () |]
     _  -> case leading of
-      []  -> [| ensureBytes# len >> $scanw8s |]
-      [a] -> [| ensureBytes# len >> scan8# a >> $scanw8s |]
-      ws  -> let w = packBytes ws
-                 l = length ws
-             in [| ensureBytes# len >> scanPartial64# l w >> $scanw8s |]
+
+      [] | w8sLen == 1 -> [| ensureBytes# len >> $scanw8s     |]
+         | otherwise   -> [| ensureBytes# len >> try $scanw8s |]
+
+      [a] -> [| ensureBytes# len >> try (scan8# a >> $scanw8s) |]
+      ws  -> let !w = packBytes ws
+                 !l = length ws
+             in [| ensureBytes# len >> try (scanPartial64# l w >> $scanw8s) |]
 
 char :: Char -> Q Exp
 char c = string [c]
