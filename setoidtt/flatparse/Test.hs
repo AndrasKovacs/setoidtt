@@ -1,17 +1,19 @@
+{-# language TupleSections #-}
 {-# options_ghc -Wno-unused-imports #-}
 
 module Test where
 
+import qualified Data.ByteString.Char8 as B
 import FlatParse
 import Data.Bits
 import Data.Word
 import Data.List
 import Language.Haskell.TH
-import Language.Haskell.TH.Syntax
+import Data.Char
 
-import qualified Data.ByteString.Char8 as B
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as M
+import GHC.Exts
 
--- string "thisisalongkeyword"
-
--- inp = B.replicate 8192 'a' <> "bb"
--- ws = many_ ($(someChar ' ') <|> $(someChar '\n'))
+test =
+  $(wordSet ["while", "if", "then", "else", "let", "in", "do", "letrec"])

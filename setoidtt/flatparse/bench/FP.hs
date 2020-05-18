@@ -3,7 +3,7 @@ module FP (runSexp, runLongws, runNumcsv) where
 
 import FlatParse
 
-ws      = many_ ($(char ' ') <|> $(char '\n'))
+ws      = many_ ($(char ' ') <!> $(char '\n'))
 open    = $(char '(') >> ws
 close   = $(char ')') >> ws
 ident   = some_ (satisfyA isLatinLetter) >> ws

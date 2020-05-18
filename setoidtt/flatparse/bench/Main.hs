@@ -42,4 +42,5 @@ main = defaultMain [
     bench "megaparsec" $ whnf Megaparsec.runNumcsv numcsvInp,
     bench "parsec"     $ whnf Parsec.runNumcsv     numcsvInp
     ]
+
   ]
