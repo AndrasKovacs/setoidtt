@@ -6,6 +6,7 @@ import Gauge
 import qualified Data.ByteString.Char8 as B
 
 import qualified FP
+import qualified FPI
 import qualified Attoparsec
 import qualified Megaparsec
 import qualified Parsec
@@ -24,6 +25,7 @@ main :: IO ()
 main = defaultMain [
   bgroup "sexp" [
     bench "flatparse"  $ whnf FP.runSexp         sexpInp,
+    bench "flatparsei" $ whnf FPI.runSexp        sexpInp,
     bench "attoparsec" $ whnf Attoparsec.runSexp sexpInp,
     bench "megaparsec" $ whnf Megaparsec.runSexp sexpInp,
     bench "parsec"     $ whnf Parsec.runSexp     sexpInp
@@ -31,16 +33,17 @@ main = defaultMain [
 
   bgroup "long keyword" [
     bench "flatparse"  $ whnf FP.runLongws         longwsInp,
+    bench "flatparsei" $ whnf FPI.runLongws        longwsInp,
     bench "attoparsec" $ whnf Attoparsec.runLongws longwsInp,
     bench "megaparsec" $ whnf Megaparsec.runLongws longwsInp,
     bench "parsec"     $ whnf Parsec.runLongws     longwsInp
-    ],
+  ],
 
   bgroup "numeral csv" [
+    bench "flatparsei" $ whnf FPI.runNumcsv        numcsvInp,
     bench "flatparse"  $ whnf FP.runNumcsv         numcsvInp,
     bench "attoparsec" $ whnf Attoparsec.runNumcsv numcsvInp,
     bench "megaparsec" $ whnf Megaparsec.runNumcsv numcsvInp,
     bench "parsec"     $ whnf Parsec.runNumcsv     numcsvInp
-    ]
-
   ]
+ ]

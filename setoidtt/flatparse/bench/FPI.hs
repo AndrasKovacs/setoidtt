@@ -1,12 +1,18 @@
 
-module FP where
+module FPI where
 
-import FlatParse
+import FlatParseIndent
 
 ws      = manyTok_ ($(char ' ') <!> $(char '\n'))
 open    = $(char '(') >> ws
 close   = $(char ')') >> ws
-ident   = someTok_ (satisfyA isLatinLetter) >> ws
+
+ident   = do
+  i <- ask
+  j <- get
+  someTok_ (satisfyA isLatinLetter) >> ws
+  if i == j then pure () else empty
+
 sexp    = br open (some_ sexp >> close) ident
 src     = sexp >> eof
 runSexp = runParser src

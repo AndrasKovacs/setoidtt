@@ -15,6 +15,7 @@
 *.ptb
 *.bbl
 comment.cut
+target/
 
 *.hi
 *.o
