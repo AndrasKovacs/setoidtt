@@ -34,7 +34,7 @@ Core theory:
 That's it. In the actual implementation, a few additional convenient primitives are built in, which are nevertheless derivable in the above core theory:
 
 - `coe` for `Prop`, an overloading of `coe` as `Eq {Prop} A B → A → B`.
-- Symmetry transitivity and congruence for `Eq`.
+- Symmetry, transitivity and congruence for `Eq`.
 
 Implementation features:
 
