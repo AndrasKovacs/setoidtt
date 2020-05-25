@@ -1,5 +1,5 @@
 # setoidtt-proto
-Prototype implementation for a variant of setoid type theory. This repository currently contains a stack package in [proto](proto), whose source code is forked from [fcif](https://github.com/AndrasKovacs/icfp20sub/tree/master/fcif).
+Prototype implementation for a variant of setoid type theory. This repository currently contains a stack package, whose source code is forked from [fcif](https://github.com/AndrasKovacs/icfp20sub/tree/master/fcif).
 
 The goal of the current `setoidtt` is to figure out various details in design choices, type inference, evaluation and ergonomics. Thus it lacks many features and it only operates on a file containing a single expression. Its pretty printing and error messages are also very rough.
 
