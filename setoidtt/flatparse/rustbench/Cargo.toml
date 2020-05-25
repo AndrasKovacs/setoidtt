@@ -8,3 +8,8 @@ edition = "2018"
 
 [dependencies]
 nom = "5"
+bencher = "0.1.5"
+
+[[bench]]
+name = "bench"
+harness = false

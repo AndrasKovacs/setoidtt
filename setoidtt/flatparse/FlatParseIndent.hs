@@ -168,26 +168,32 @@ anyChar = Parser \e i s j -> case eqAddr# e s of
   _  -> case derefChar8# s of
     c1 -> case c1 `leChar#` '\x7F'# of
       1# -> OK# (C# c1) (plusAddr# s 1#) j
-      _  -> case indexCharOffAddr# s 1# of
-        c2 -> case c1 `leChar#` '\xDF'# of
-          1# ->
-            let resc = ((ord# c1 -# 0xC0#) `uncheckedIShiftL#` 6#) `orI#`
-                        (ord# c2 -# 0x80#)
-            in OK# (C# (chr# resc)) (plusAddr# s 2#) j
-          _ -> case indexCharOffAddr# s 2# of
-            c3 -> case c1 `leChar#` '\xEF'# of
-              1# ->
-                let resc = ((ord# c1 -# 0xE0#) `uncheckedIShiftL#` 12#) `orI#`
-                           ((ord# c2 -# 0x80#) `uncheckedIShiftL#`  6#) `orI#`
-                            (ord# c3 -# 0x80#)
-                in OK# (C# (chr# resc)) (plusAddr# s 3#) j
-              _ -> case indexCharOffAddr# s 3# of
-                c4 ->
-                  let resc = ((ord# c1 -# 0xF0#) `uncheckedIShiftL#` 18#) `orI#`
-                             ((ord# c2 -# 0x80#) `uncheckedIShiftL#` 12#) `orI#`
-                             ((ord# c3 -# 0x80#) `uncheckedIShiftL#`  6#) `orI#`
-                              (ord# c4 -# 0x80#)
-                  in OK# (C# (chr# resc)) (plusAddr# s 4#) j
+      _  -> case eqAddr# e (plusAddr# s 1#) of
+        1# -> Err# Default s
+        _  -> case indexCharOffAddr# s 1# of
+          c2 -> case c1 `leChar#` '\xDF'# of
+            1# ->
+              let resc = ((ord# c1 -# 0xC0#) `uncheckedIShiftL#` 6#) `orI#`
+                          (ord# c2 -# 0x80#)
+              in OK# (C# (chr# resc)) (plusAddr# s 2#) j
+            _ -> case eqAddr# e (plusAddr# s 2#) of
+              1# -> Err# Default s
+              _  -> case indexCharOffAddr# s 2# of
+                c3 -> case c1 `leChar#` '\xEF'# of
+                  1# ->
+                    let resc = ((ord# c1 -# 0xE0#) `uncheckedIShiftL#` 12#) `orI#`
+                               ((ord# c2 -# 0x80#) `uncheckedIShiftL#`  6#) `orI#`
+                                (ord# c3 -# 0x80#)
+                    in OK# (C# (chr# resc)) (plusAddr# s 3#) j
+                  _ -> case eqAddr# e (plusAddr# s 3#) of
+                    1# -> Err# Default s
+                    _  -> case indexCharOffAddr# s 3# of
+                      c4 ->
+                        let resc = ((ord# c1 -# 0xF0#) `uncheckedIShiftL#` 18#) `orI#`
+                                   ((ord# c2 -# 0x80#) `uncheckedIShiftL#` 12#) `orI#`
+                                   ((ord# c3 -# 0x80#) `uncheckedIShiftL#`  6#) `orI#`
+                                    (ord# c4 -# 0x80#)
+                        in OK# (C# (chr# resc)) (plusAddr# s 4#) j
 {-# inline anyChar #-}
 
 -- | Skip any `Char`.
@@ -197,11 +203,16 @@ anyChar_ = Parser \e i s j -> case eqAddr# e s of
   _  -> case derefChar8# s of
     c1 -> case c1 `leChar#` '\x7F'# of
       1# -> OK# () (plusAddr# s 1#) j
-      _  -> case c1 `leChar#` '\xDF'# of
-          1# -> OK# () (plusAddr# s 2#) j
-          _  -> case c1 `leChar#` '\xEF'# of
-              1# -> OK# () (plusAddr# s 3#) j
-              _ ->  OK# () (plusAddr# s 4#) j
+      _  ->
+        let s' =
+              case c1 `leChar#` '\xDF'# of
+                1# -> plusAddr# s 2#
+                _  -> case c1 `leChar#` '\xEF'# of
+                    1# -> plusAddr# s 3#
+                    _ ->  plusAddr# s 4#
+        in case leAddr# s' e of
+             1# -> OK# () s' j
+             _  -> Err# Default s
 {-# inline anyChar_ #-}
 
 -- | Parser a `Char` for which a predicate holds.
@@ -312,6 +323,10 @@ asShortText p = fmap (\(_ ,s) -> spanToShortText s) (spanned p)
 getPos :: Parser e Pos
 getPos = Parser \e i s j -> OK# (Pos s) s j
 {-# inline getPos #-}
+
+setPos :: Pos -> Parser e ()
+setPos (Pos s) = Parser \e i _ j -> OK# () s j
+{-# inline setPos #-}
 
 data PosInfo = PosInfo {
   _lineNum :: !Int,

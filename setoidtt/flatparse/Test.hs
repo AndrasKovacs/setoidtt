@@ -4,7 +4,7 @@
 module Test where
 
 import qualified Data.ByteString.Char8 as B
-import FlatParseIndent
+import FlatParse
 import Data.Bits
 import Data.Word
 import Data.List
@@ -14,6 +14,7 @@ import Data.Char
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
 import GHC.Exts
+import GHC.Word
 
 
 foo = $(string "foobar")

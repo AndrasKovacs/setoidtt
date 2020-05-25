@@ -6,9 +6,9 @@ import qualified Data.ByteString.Short.Internal as SB
 import qualified Data.ByteString.Unsafe as B
 import qualified Data.Text.Short as T
 import qualified Data.Text.Short.Unsafe as T
-import qualified Data.Map.Strict as M
+-- import qualified Data.Map.Strict as M
 
-import Data.Map (Map)
+-- import Data.Map (Map)
 import Data.Bits
 import Data.Char (ord)
 import Data.Foldable
@@ -151,33 +151,45 @@ anyCharA_ :: Parser e ()
 anyCharA_ = () <$ anyCharA
 {-# inline anyCharA_ #-}
 
--- | Parse any `Char`.
+-- | Get byte length of code point from the first byte.
+getUTF8Len# :: Word# -> Int#
+getUTF8Len# w = word2Int# (clz8# (not# w))
+{-# inline getUTF8Len# #-}
+
+-- | Parse any `Char`. This parser fails if the input is empty or no valid UTF-8
+-- code point can be read from the input.
 anyChar :: Parser e Char
 anyChar = Parser \eob buf -> case eqAddr# eob buf of
   1# -> Err# Default buf
   _  -> case derefChar8# buf of
     c1 -> case c1 `leChar#` '\x7F'# of
       1# -> OK# (C# c1) (plusAddr# buf 1#)
-      _  -> case indexCharOffAddr# buf 1# of
-        c2 -> case c1 `leChar#` '\xDF'# of
-          1# ->
-            let resc = ((ord# c1 -# 0xC0#) `uncheckedIShiftL#` 6#) `orI#`
-                        (ord# c2 -# 0x80#)
-            in OK# (C# (chr# resc)) (plusAddr# buf 2#)
-          _ -> case indexCharOffAddr# buf 2# of
-            c3 -> case c1 `leChar#` '\xEF'# of
-              1# ->
-                let resc = ((ord# c1 -# 0xE0#) `uncheckedIShiftL#` 12#) `orI#`
-                           ((ord# c2 -# 0x80#) `uncheckedIShiftL#`  6#) `orI#`
-                            (ord# c3 -# 0x80#)
-                in OK# (C# (chr# resc)) (plusAddr# buf 3#)
-              _ -> case indexCharOffAddr# buf 3# of
-                c4 ->
-                  let resc = ((ord# c1 -# 0xF0#) `uncheckedIShiftL#` 18#) `orI#`
-                             ((ord# c2 -# 0x80#) `uncheckedIShiftL#` 12#) `orI#`
-                             ((ord# c3 -# 0x80#) `uncheckedIShiftL#`  6#) `orI#`
-                              (ord# c4 -# 0x80#)
-                  in OK# (C# (chr# resc)) (plusAddr# buf 4#)
+      _  -> case eqAddr# eob (plusAddr# buf 1#) of
+        1# -> Err# Default buf
+        _ -> case indexCharOffAddr# buf 1# of
+          c2 -> case c1 `leChar#` '\xDF'# of
+            1# ->
+              let resc = ((ord# c1 -# 0xC0#) `uncheckedIShiftL#` 6#) `orI#`
+                          (ord# c2 -# 0x80#)
+              in OK# (C# (chr# resc)) (plusAddr# buf 2#)
+            _ -> case eqAddr# eob (plusAddr# buf 2#) of
+              1# -> Err# Default buf
+              _  -> case indexCharOffAddr# buf 2# of
+                c3 -> case c1 `leChar#` '\xEF'# of
+                  1# ->
+                    let resc = ((ord# c1 -# 0xE0#) `uncheckedIShiftL#` 12#) `orI#`
+                               ((ord# c2 -# 0x80#) `uncheckedIShiftL#`  6#) `orI#`
+                                (ord# c3 -# 0x80#)
+                    in OK# (C# (chr# resc)) (plusAddr# buf 3#)
+                  _ -> case eqAddr# eob (plusAddr# buf 3#) of
+                    1# -> Err# Default buf
+                    _  -> case indexCharOffAddr# buf 3# of
+                      c4 ->
+                        let resc = ((ord# c1 -# 0xF0#) `uncheckedIShiftL#` 18#) `orI#`
+                                   ((ord# c2 -# 0x80#) `uncheckedIShiftL#` 12#) `orI#`
+                                   ((ord# c3 -# 0x80#) `uncheckedIShiftL#`  6#) `orI#`
+                                    (ord# c4 -# 0x80#)
+                        in OK# (C# (chr# resc)) (plusAddr# buf 4#)
 {-# inline anyChar #-}
 
 -- | Skip any `Char`.
@@ -187,11 +199,16 @@ anyChar_ = Parser \eob buf -> case eqAddr# eob buf of
   _  -> case derefChar8# buf of
     c1 -> case c1 `leChar#` '\x7F'# of
       1# -> OK# () (plusAddr# buf 1#)
-      _  -> case c1 `leChar#` '\xDF'# of
-          1# -> OK# () (plusAddr# buf 2#)
-          _  -> case c1 `leChar#` '\xEF'# of
-              1# -> OK# () (plusAddr# buf 3#)
-              _ ->  OK# () (plusAddr# buf 4#)
+      _  ->
+        let buf' =
+              case c1 `leChar#` '\xDF'# of
+                1# -> plusAddr# buf 2#
+                _  -> case c1 `leChar#` '\xEF'# of
+                    1# -> plusAddr# buf 3#
+                    _ ->  plusAddr# buf 4#
+        in case leAddr# buf' eob of
+             1# -> OK# () buf'
+             _  -> Err# Default buf
 {-# inline anyChar_ #-}
 
 -- | Parser a `Char` for which a predicate holds.
@@ -302,6 +319,10 @@ asShortText p = fmap (\(_ ,s) -> spanToShortText s) (spanned p)
 getPos :: Parser e Pos
 getPos = Parser \eob s -> OK# (Pos s) s
 {-# inline getPos #-}
+
+setPos :: Pos -> Parser e ()
+setPos (Pos s) = Parser \r _ -> OK# () s
+{-# inline setPos #-}
 
 data PosInfo = PosInfo {
   _lineNum :: !Int,
@@ -430,7 +451,7 @@ scanPartial64# (I# len) (W# w) = Parser \r s ->
 
 ensureBytes# :: Int -> Parser e ()
 ensureBytes# (I# len) = Parser \eob s ->
-  case len <=# minusAddr# eob s of
+  case len  <=# minusAddr# eob s of
     1# -> OK# () s
     _  -> Err# Default s
 {-# inline ensureBytes# #-}
