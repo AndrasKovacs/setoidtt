@@ -13,13 +13,16 @@ dependencies:
 - template-haskell
 - text-short
 - microlens-platform
+- ghc-prim
 
 default-extensions:
   - BangPatterns
   - BlockArguments
   - DerivingVia
+  - ExplicitNamespaces
   - FlexibleInstances
   - FunctionalDependencies
+  - GADTs
   - KindSignatures
   - LambdaCase
   - MagicHash
@@ -28,8 +31,10 @@ default-extensions:
   - PatternSynonyms
   - QuasiQuotes
   - RankNTypes
+  - RoleAnnotations
   - ScopedTypeVariables
   - TemplateHaskell
+  - TupleSections
   - TypeApplications
   - UnboxedTuples
   - ViewPatterns
@@ -44,6 +49,8 @@ ghc-options:
   - -O2
   - -fllvm
   - -ddump-simpl
+  # - -ddump-opt-cmm
+  # - -ddump-asm
   - -dsuppress-all
   - -dno-suppress-type-signatures
   - -ddump-to-file

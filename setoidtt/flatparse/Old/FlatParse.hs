@@ -1,14 +1,14 @@
 
-module FlatParseIndent where
+module Old.FlatParse where
 
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Short.Internal as SB
 import qualified Data.ByteString.Unsafe as B
 import qualified Data.Text.Short as T
 import qualified Data.Text.Short.Unsafe as T
-import qualified Data.Map.Strict as M
+-- import qualified Data.Map.Strict as M
 
-import Data.Map (Map)
+-- import Data.Map (Map)
 import Data.Bits
 import Data.Char (ord)
 import Data.Foldable
@@ -23,84 +23,75 @@ import System.IO.Unsafe
 data Error e = Default | Custom e
   deriving Show
 
-type Res# e a = (# (# a, Addr#, Int# #) | (# Error e, Addr# #) #)
+type Res# e a = (# (# a, Addr# #) | (# Error e, Addr# #) #)
 
-pattern OK# :: a -> Addr# -> Int# -> Res# e a
-pattern OK# a s j = (# (# a, s, j #) | #)
+pattern OK# :: a -> Addr# -> Res# e a
+pattern OK# a s = (# (# a, s #) | #)
 
 pattern Err# :: Error e -> Addr# -> Res# e a
 pattern Err# e s = (# | (# e, s #) #)
 {-# complete OK#, Err# #-}
 
-newtype Parser e a = Parser {runParser# :: Addr# -> Int# -> Addr# -> Int# -> Res# e a}
+newtype Parser e a = Parser {runParser# :: Addr# -> Addr# -> Res# e a}
 
 instance Functor (Parser e) where
-  fmap f (Parser g) = Parser \e i s j -> case g e i s j of
-    OK# a s j  -> let !b = f a in OK# b s j
+  fmap f (Parser g) = Parser \r s -> case g r s of
+    OK# a s  -> let !b = f a in OK# b s
     Err# e s -> Err# e s
   {-# inline fmap #-}
 
-  (<$) a' (Parser g) = Parser \e i s j -> case g e i s j of
-    OK# a s j -> OK# a' s j
-    Err# e s  -> Err# e s
+  (<$) a' (Parser g) = Parser \r s -> case g r s of
+    OK# a s  -> OK# a' s
+    Err# e s -> Err# e s
   {-# inline (<$) #-}
 
 err :: e -> Parser e a
-err e = Parser \_ i s j -> Err# (Custom e) s
+err e = Parser \r s -> Err# (Custom e) s
 {-# inline err #-}
 
 empty :: Parser e a
-empty = Parser \e i s j -> Err# Default s
+empty = Parser \r s -> Err# Default s
 {-# inline empty #-}
 
 instance Applicative (Parser e) where
-  pure a = Parser \e i s j -> OK# a s j
+  pure a = Parser \r s -> OK# a s
   {-# inline pure #-}
-  Parser ff <*> Parser fa = Parser \e i s j -> case ff e i s j of
+  Parser ff <*> Parser fa = Parser \r s -> case ff r s of
     Err# e s -> Err# e s
-    OK# f s j -> case fa e i s j of
-      Err# e s  -> Err# e s
-      OK# a s j -> OK# (f a) s j
+    OK# f s -> case fa r s of
+      Err# e s -> Err# e s
+      OK# a s  -> OK# (f a) s
   {-# inline (<*>) #-}
-  Parser fa <* Parser fb = Parser \e i s j -> case fa e i s j of
-    Err# e s  -> Err# e s
-    OK# a s j -> case fb e i s j of
-      Err# e s  -> Err# e s
-      OK# b s j -> OK# a s j
+  Parser fa <* Parser fb = Parser \r s -> case fa r s of
+    Err# e s -> Err# e s
+    OK# a s -> case fb r s of
+      Err# e s -> Err# e s
+      OK# b s -> OK# a s
   {-# inline (<*) #-}
-  Parser fa *> Parser fb = Parser \e i s j -> case fa e i s j of
-    Err# e s  -> Err# e s
-    OK# a s j -> fb e i s j
+  Parser fa *> Parser fb = Parser \r s -> case fa r s of
+    Err# e s -> Err# e s
+    OK# a s  -> fb r s
   {-# inline (*>) #-}
 
 instance Monad (Parser e) where
   return = pure
   {-# inline return #-}
-  Parser fa >>= f = Parser \e i s j -> case fa e i s j of
-    Err# e s  -> Err# e s
-    OK# a s j -> runParser# (f a) e i s j
+  Parser fa >>= f = Parser \r s -> case fa r s of
+    Err# e s -> Err# e s
+    OK# a s  -> runParser# (f a) r s
   {-# inline (>>=) #-}
-  Parser fa >> Parser fb = Parser \e i s j -> case fa e i s j of
-    Err# e s  -> Err# e s
-    OK# a s j -> fb e i s j
+  Parser fa >> Parser fb = Parser \r s -> case fa r s of
+    Err# e s -> Err# e s
+    OK# a s  -> fb r s
   {-# inline (>>) #-}
-
-ask :: Parser e Int
-ask = Parser \e i s j -> OK# (I# i) s j
-{-# inline ask #-}
-
-local :: (Int -> Int) -> Parser e a -> Parser e a
-local f (Parser fa) = Parser \e i s j -> case f (I# i) of
-  I# i -> fa e i s j
-{-# inline local #-}
 
 derefChar8# :: Addr# -> Char#
 derefChar8# addr = indexCharOffAddr# addr 0#
 {-# inline derefChar8# #-}
 
 eof :: Parser e ()
-eof = Parser \e i s j -> case eqAddr# e s of
-  1# -> OK# () s j
+eof = Parser \eob s -> case eqAddr# eob s of
+  1# -> OK# () s
   _  -> Err# Default s
 {-# inline eof #-}
 
@@ -120,9 +111,9 @@ isGreekLetter c = ('Α' <= c && c <= 'Ω') || ('α' <= c && c <= 'ω')
 --   fails, regardless of how much input the first parser consumed.
 infixr 6 <!>
 (<!>) :: Parser e a -> Parser e a -> Parser e a
-(<!>) (Parser f) (Parser g) = Parser \e i s j ->
-  case f e i s j of
-    Err# _ _ -> g e i s j
+(<!>) (Parser f) (Parser g) = Parser \r s ->
+  case f r s of
+    Err# e _ -> g r s
     x        -> x
 {-# inline (<!>) #-}
 
@@ -130,29 +121,29 @@ infixr 6 <!>
 --   if the first one fails without having consumed input.
 infixr 6 <|>
 (<|>) :: Parser e a -> Parser e a -> Parser e a
-(<|>) (Parser f) (Parser g) = Parser \e i s j ->
-  case f e i s j of
-    Err# err s' -> case eqAddr# s s' of
-                     1# -> g e i s j
-                     _  -> Err# err s'
+(<|>) (Parser f) (Parser g) = Parser \r s ->
+  case f r s of
+    Err# e s' -> case eqAddr# s s' of
+                   1# -> g r s
+                   _  -> Err# e s'
     x         -> x
 {-# inline (<|>) #-}
 
 -- | Reset the input position if the given parser fails.
 try :: Parser e a -> Parser e a
-try (Parser f) = Parser \e i s j -> case f e i s j of
-  Err# err _ -> Err# err s
-  x          -> x
+try (Parser f) = Parser \r s -> case f r s of
+  Err# e _ -> Err# e s
+  x        -> x
 {-# inline try #-}
 
 -- | Parse any `Char` in the ASCII range.
 anyCharA :: Parser e Char
-anyCharA = Parser \e i s j -> case eqAddr# e s of
-  1# -> Err# Default s
-  _  -> case derefChar8# s of
+anyCharA = Parser \eob buf -> case eqAddr# eob buf of
+  1# -> Err# Default buf
+  _  -> case derefChar8# buf of
     c1 -> case c1 `leChar#` '\x7F'# of
-      1# -> OK# (C# c1) (plusAddr# s 1#) j
-      _  -> Err# Default s
+      1# -> OK# (C# c1) (plusAddr# buf 1#)
+      _  -> Err# Default buf
 {-# inline anyCharA #-}
 
 -- | Skip any `Char` in the ASCII range.
@@ -160,86 +151,91 @@ anyCharA_ :: Parser e ()
 anyCharA_ = () <$ anyCharA
 {-# inline anyCharA_ #-}
 
--- | Parse any `Char`.
---   Assumes that input is UTF8!
+-- | Get byte length of code point from the first byte.
+getUTF8Len# :: Word# -> Int#
+getUTF8Len# w = word2Int# (clz8# (not# w))
+{-# inline getUTF8Len# #-}
+
+-- | Parse any `Char`. This parser fails if the input is empty or no valid UTF-8
+-- code point can be read from the input.
 anyChar :: Parser e Char
-anyChar = Parser \e i s j -> case eqAddr# e s of
-  1# -> Err# Default s
-  _  -> case derefChar8# s of
+anyChar = Parser \eob buf -> case eqAddr# eob buf of
+  1# -> Err# Default buf
+  _  -> case derefChar8# buf of
     c1 -> case c1 `leChar#` '\x7F'# of
-      1# -> OK# (C# c1) (plusAddr# s 1#) j
-      _  -> case eqAddr# e (plusAddr# s 1#) of
-        1# -> Err# Default s
-        _  -> case indexCharOffAddr# s 1# of
+      1# -> OK# (C# c1) (plusAddr# buf 1#)
+      _  -> case eqAddr# eob (plusAddr# buf 1#) of
+        1# -> Err# Default buf
+        _ -> case indexCharOffAddr# buf 1# of
           c2 -> case c1 `leChar#` '\xDF'# of
             1# ->
               let resc = ((ord# c1 -# 0xC0#) `uncheckedIShiftL#` 6#) `orI#`
                           (ord# c2 -# 0x80#)
-              in OK# (C# (chr# resc)) (plusAddr# s 2#) j
-            _ -> case eqAddr# e (plusAddr# s 2#) of
-              1# -> Err# Default s
-              _  -> case indexCharOffAddr# s 2# of
+              in OK# (C# (chr# resc)) (plusAddr# buf 2#)
+            _ -> case eqAddr# eob (plusAddr# buf 2#) of
+              1# -> Err# Default buf
+              _  -> case indexCharOffAddr# buf 2# of
                 c3 -> case c1 `leChar#` '\xEF'# of
                   1# ->
                     let resc = ((ord# c1 -# 0xE0#) `uncheckedIShiftL#` 12#) `orI#`
                                ((ord# c2 -# 0x80#) `uncheckedIShiftL#`  6#) `orI#`
                                 (ord# c3 -# 0x80#)
-                    in OK# (C# (chr# resc)) (plusAddr# s 3#) j
-                  _ -> case eqAddr# e (plusAddr# s 3#) of
-                    1# -> Err# Default s
-                    _  -> case indexCharOffAddr# s 3# of
+                    in OK# (C# (chr# resc)) (plusAddr# buf 3#)
+                  _ -> case eqAddr# eob (plusAddr# buf 3#) of
+                    1# -> Err# Default buf
+                    _  -> case indexCharOffAddr# buf 3# of
                       c4 ->
                         let resc = ((ord# c1 -# 0xF0#) `uncheckedIShiftL#` 18#) `orI#`
                                    ((ord# c2 -# 0x80#) `uncheckedIShiftL#` 12#) `orI#`
                                    ((ord# c3 -# 0x80#) `uncheckedIShiftL#`  6#) `orI#`
                                     (ord# c4 -# 0x80#)
-                        in OK# (C# (chr# resc)) (plusAddr# s 4#) j
+                        in OK# (C# (chr# resc)) (plusAddr# buf 4#)
 {-# inline anyChar #-}
 
 -- | Skip any `Char`.
 anyChar_ :: Parser e ()
-anyChar_ = Parser \e i s j -> case eqAddr# e s of
-  1# -> Err# Default s
-  _  -> case derefChar8# s of
+anyChar_ = Parser \eob buf -> case eqAddr# eob buf of
+  1# -> Err# Default buf
+  _  -> case derefChar8# buf of
     c1 -> case c1 `leChar#` '\x7F'# of
-      1# -> OK# () (plusAddr# s 1#) j
+      1# -> OK# () (plusAddr# buf 1#)
       _  ->
-        let s' =
+        let buf' =
               case c1 `leChar#` '\xDF'# of
-                1# -> plusAddr# s 2#
+                1# -> plusAddr# buf 2#
                 _  -> case c1 `leChar#` '\xEF'# of
-                    1# -> plusAddr# s 3#
-                    _ ->  plusAddr# s 4#
-        in case leAddr# s' e of
-             1# -> OK# () s' j
-             _  -> Err# Default s
+                    1# -> plusAddr# buf 3#
+                    _ ->  plusAddr# buf 4#
+        in case leAddr# buf' eob of
+             1# -> OK# () buf'
+             _  -> Err# Default buf
 {-# inline anyChar_ #-}
 
 -- | Parser a `Char` for which a predicate holds.
 satisfy :: (Char -> Bool) -> Parser e Char
-satisfy f = Parser \e i s j -> case runParser# anyChar e i s j of
-  OK# c s j | f c -> OK# c s j
-  OK# c _ _       -> Err# Default s
-  Err# e s        -> Err# e s
+satisfy f = Parser \r s -> case runParser# anyChar r s of
+  OK# c s | f c -> OK# c s
+  OK# c _       -> Err# Default s
+  Err# e s      -> Err# e s
 {-#  inline satisfy #-}
 
 -- | Parse an ASCII `Char` for which a predicate holds.
 satisfyA :: (Char -> Bool) -> Parser e Char
-satisfyA f = Parser \e i s j -> case runParser# anyCharA e i s j of
-  OK# c s j | f c -> OK# c s j
-  OK# c _ _       -> Err# Default s
-  Err# e s        -> Err# e s
+satisfyA f = Parser \r s -> case runParser# anyCharA r s of
+  OK# c s | f c -> OK# c s
+  OK# c _       -> Err# Default s
+  Err# e s      -> Err# e s
 {-#  inline satisfyA #-}
 
 -- | Skip a parser zero or more times. This fails if the given parser fails with
 --   having consumed input.
 many_ :: Parser e a -> Parser e ()
 many_ (Parser f) = go where
-  go = Parser \e i s j -> case f e i s j of
+  go = Parser \r s -> case f r s of
     Err# e s' -> case eqAddr# s s' of
-                   1# -> OK# () s j
+                   1# -> OK# () s
                    _  -> Err# e s'
-    OK# a s j -> runParser# go e i s j
+    OK# a s   -> runParser# go r s
 {-# inline many_ #-}
 
 manyBr_ :: Parser e a -> Parser e b -> Parser e ()
@@ -249,9 +245,9 @@ manyBr_ pa pb = go where
 
 manyTok_ :: Parser e a -> Parser e ()
 manyTok_ (Parser f) = go where
-  go = Parser \e i s j -> case f e i s j of
-    Err# _ _  -> OK# () s j
-    OK# a s j -> runParser# go e i s j
+  go = Parser \r s -> case f r s of
+    Err# _ _ -> OK# () s
+    OK# a s  -> runParser# go r s
 {-# inline manyTok_ #-}
 
 -- | Skip a parser one or more times. This fails if the given parser fails with
@@ -286,7 +282,7 @@ chainr f elem end = go where
 {-# inline chainr #-}
 
 silent :: Parser e a -> Parser e a
-silent pa = Parser \e i s j -> case runParser# pa e i s j of
+silent pa = Parser \r s -> case runParser# pa r s of
   Err# e s -> Err# Default s
   x        -> x
 {-# inline silent #-}
@@ -301,9 +297,9 @@ data Span = Span !Pos !Pos
   deriving Eq
 
 spanned :: Parser e a -> Parser e (a, Span)
-spanned (Parser f) = Parser \e i s j -> case f e i s j of
-  Err# e s    -> Err# e s
-  OK# a s' j' -> OK# (a, Span (Pos s) (Pos s')) s' j'
+spanned (Parser f) = Parser \r s -> case f r s of
+  Err# e s  -> Err# e s
+  OK# a s'  -> OK# (a, Span (Pos s) (Pos s')) s'
 {-# inline spanned #-}
 
 spanToShortText :: Span -> T.ShortText
@@ -321,11 +317,11 @@ asShortText p = fmap (\(_ ,s) -> spanToShortText s) (spanned p)
 {-# inline asShortText #-}
 
 getPos :: Parser e Pos
-getPos = Parser \e i s j -> OK# (Pos s) s j
+getPos = Parser \eob s -> OK# (Pos s) s
 {-# inline getPos #-}
 
 setPos :: Pos -> Parser e ()
-setPos (Pos s) = Parser \e i _ j -> OK# () s j
+setPos (Pos s) = Parser \r _ -> OK# () s
 {-# inline setPos #-}
 
 data PosInfo = PosInfo {
@@ -340,14 +336,12 @@ posInfo :: B.ByteString -> [Pos] -> [PosInfo]
 posInfo = error "TODO"
 
 -- | Run a parser in a given span. The span behaves as the new beginning and end
---   of the input buffer. The `Int` parameter is the current indentation level
---   at the beginning of the spane. When the parser finishes, the original
---   external state is restored.
-inSpan :: Int -> Span -> Parser e a -> Parser e a
-inSpan (I# j) (Span (Pos start) (Pos end)) (Parser f) =
-  Parser \e' i s' j' -> case f end i start j of
-    OK# a _ _  -> OK# a s' j'
-    Err# err _ -> Err# err s'
+--   of the input buffer. Restore the original state after the parser finishes.
+inSpan :: Span -> Parser e a -> Parser e a
+inSpan (Span (Pos start) (Pos end)) (Parser f) =
+  Parser \oldend oldstart -> case f end start of
+    OK# a _  -> OK# a oldstart
+    Err# e _ -> Err# e oldstart
 {-# inline inSpan #-}
 
 data Result e a = OK a B.ByteString | Err (Error e) B.ByteString
@@ -358,11 +352,11 @@ runParser (Parser f) b = unsafeDupablePerformIO do
   B.unsafeUseAsCString b \(Ptr buf) -> do
     let !(I# len) = B.length b
     let end = plusAddr# buf len
-    case f end 0# buf 0# of
+    case f end buf of
       Err# e s  -> do
         let offset = minusAddr# s buf
         pure (Err e (B.drop (I# offset) b))
-      OK# a s j -> do
+      OK# a s   -> do
         let offset = minusAddr# s buf
         pure (OK a (B.drop (I# offset) b))
 
@@ -370,23 +364,10 @@ testParser :: Parser e a -> String -> Result e a
 testParser pa s = runParser pa (B.pack (concatMap charToBytes s))
 
 br :: Parser e a -> Parser e b -> Parser e b -> Parser e b
-br pa pt pf = Parser \e i s j -> case runParser# pa e i s j of
-  OK# _ s j -> runParser# pt e i s j
-  Err# _ _  -> runParser# pf e i s j
+br pa pt pf = Parser \r s -> case runParser# pa r s of
+  OK# _ s  -> runParser# pt r s
+  Err# _ _ -> runParser# pf r s
 {-# inline br #-}
-
-get :: Parser e Int
-get = Parser \e i s j -> OK# (I# j) s j
-{-# inline get #-}
-
-put :: Int -> Parser e ()
-put (I# j) = Parser \e i s _ -> OK# () s j
-{-# inline put #-}
-
-modify :: (Int -> Int) -> Parser e ()
-modify f = Parser \e i s j -> case f (I# j) of
-  I# j -> OK# () s j
-{-# inline modify #-}
 
 -- char and string
 --------------------------------------------------------------------------------
@@ -424,58 +405,63 @@ splitBytes ws = case quotRem (length ws) 8 of
                            packBytes as : chunk8s bs
 
 scanAny8# :: Parser e Word8
-scanAny8# = Parser \e i s j -> OK# (W8# (indexWord8OffAddr# s 0#)) (plusAddr# s 1#) j
+scanAny8# = Parser \r s -> OK# (W8# (indexWord8OffAddr# s 0#)) (plusAddr# s 1#)
 {-# inline scanAny8# #-}
 
 scan8# :: Word -> Parser e ()
-scan8# (W# c) = Parser \e i s j ->
+scan8# (W# c) = Parser \r s ->
   case indexWord8OffAddr# s 0# of
     c' -> case eqWord# c c' of
-      1# -> OK# () (plusAddr# s 1#) j
+      1# -> OK# () (plusAddr# s 1#)
       _  -> Err# Default s
 {-# inline scan8# #-}
 
 scan16# :: Word -> Parser e ()
-scan16# (W# c) = Parser \e i s j ->
+scan16# (W# c) = Parser \r s ->
   case indexWord16OffAddr# s 0# of
     c' -> case eqWord# c c' of
-      1# -> OK# () (plusAddr# s 2#) j
+      1# -> OK# () (plusAddr# s 2#)
       _  -> Err# Default s
 {-# inline scan16# #-}
 
 scan32# :: Word -> Parser e ()
-scan32# (W# c) = Parser \e i s j ->
+scan32# (W# c) = Parser \r s ->
   case indexWord32OffAddr# s 0# of
     c' -> case eqWord# c c' of
-      1# -> OK# () (plusAddr# s 4#) j
+      1# -> OK# () (plusAddr# s 4#)
       _  -> Err# Default s
 {-# inline scan32# #-}
 
 scan64# :: Word -> Parser e ()
-scan64# (W# c) = Parser \e i s j ->
+scan64# (W# c) = Parser \r s ->
   case indexWord64OffAddr# s 0# of
     c' -> case eqWord# c c' of
-      1# -> OK# () (plusAddr# s 8#) j
+      1# -> OK# () (plusAddr# s 8#)
       _  -> Err# Default s
 {-# inline scan64# #-}
 
 scanPartial64# :: Int -> Word -> Parser e ()
-scanPartial64# (I# len) (W# w) = Parser \e i s j ->
+scanPartial64# (I# len) (W# w) = Parser \r s ->
   case indexWordOffAddr# s 0# of
     w' -> case uncheckedIShiftL# (8# -# len) 3# of
       sh -> case uncheckedShiftL# w' sh of
         w' -> case uncheckedShiftRL# w' sh of
           w' -> case eqWord# w w' of
-            1# -> OK# () (plusAddr# s len) j
+            1# -> OK# () (plusAddr# s len)
             _  -> Err# Default s
 {-# inline scanPartial64# #-}
 
 ensureBytes# :: Int -> Parser e ()
-ensureBytes# (I# len) = Parser \e i s j ->
-  case len <=# minusAddr# e s of
-    1# -> OK# () s j
+ensureBytes# (I# len) = Parser \eob s ->
+  case len  <=# minusAddr# eob s of
+    1# -> OK# () s
     _  -> Err# Default s
 {-# inline ensureBytes# #-}
+
+setBack# :: Int -> Parser e ()
+setBack# (I# i) = Parser \eob s ->
+  OK# () (plusAddr# s (negateInt# i))
+{-# inline setBack# #-}
 
 scanBytes# :: Bool -> [Word8] -> Q Exp
 scanBytes# isToken bytes = do
@@ -501,14 +487,15 @@ scanBytes# isToken bytes = do
 
       [] | w8sLen /= 1 && isToken -> [| try $scanw8s |]
          | otherwise              -> [| $scanw8s     |]
-
-      [a] | isToken   -> [| try (scan8# a >> $scanw8s) |]
-          | otherwise -> [| scan8# a >> $scanw8s |]
-
       ws  -> let !w = packBytes ws
                  !l = length ws
-             in if isToken then [| try (scanPartial64# l w >> $scanw8s) |]
-                           else [| scanPartial64# l w >> $scanw8s |]
+                 !op = case l of
+                   1 -> [| scan8#  w |]
+                   2 -> [| scan16# w |]
+                   4 -> [| scan32# w |]
+                   _ -> [| scanPartial64# l w |]
+             in if isToken then [| try ($op >> $scanw8s) |]
+                           else [| $op >> $scanw8s |]
 
 string :: String -> Q Exp
 string str = do
@@ -518,102 +505,3 @@ string str = do
 
 char :: Char -> Q Exp
 char c = string [c]
-
--- Word sets
---------------------------------------------------------------------------------
-
-data Trie a = Branch !Bool !a !(Map Word8 (Trie a))
-  deriving Show
-
-nilTrie :: Trie ()
-nilTrie = Branch False () mempty
-
-insert :: [Word8] -> Trie () -> Trie ()
-insert []     (Branch _ d ts) = Branch True d ts
-insert (c:cs) (Branch b d ts) =
-  Branch b d (M.alter (Just . maybe (insert cs nilTrie) (insert cs)) c ts)
-
-fromList :: [String] -> Trie ()
-fromList = foldl' (\t s -> insert (charToBytes =<< s) t) nilTrie
-
-mindepths :: Trie () -> Trie Int
-mindepths (Branch b _ ts) =
-  if M.null ts then
-    Branch b 0 mempty
-  else
-    let ts' = M.map mindepths ts in
-    Branch b (minimum (M.map (\(Branch b d _) -> if b then 1 else d + 1) ts'))
-           ts'
-
-data Trie' = Branch' !Bool !Int !(Map Word8 Trie')
-           | Path !Bool !Int ![Word8] !Trie'
-  deriving Show
-
-pathify :: Trie Int -> Trie'
-pathify (Branch b d ts) = case M.toList ts of
-  []       -> Branch' b d mempty
-  [(w, t)] -> case pathify t of
-           Path False _ ws t -> Path b d (w:ws) t
-           t                 -> Path b d [w] t
-  _   -> Branch' b d (M.map pathify ts)
-
-genTrie :: Trie' -> Q Exp
-genTrie = go 0 where
-
-  go :: Int -> Trie' -> Q Exp
-  go !res (Branch' b d ts) | M.null ts =
-    if res == 0 then
-      (if b then [| eof |] else [| empty |])
-    else
-      error "impossible"
-
-  go res (Path True d ws t) =
-    let l = length ws in
-    if res < l then
-      let !res' = d - res in
-      [| eof <!> (ensureBytes# res' >> $(scanBytes# False ws) >> $(go (d-l) t)) |]
-    else
-      [| eof <!> ($(scanBytes# False ws) >> $(go (res - l) t)) |]
-
-  go res (Path False d ws t) =
-    let l = length ws in
-    if res < l then
-      let !res' = d - res in
-      [| ensureBytes# res' >> $(scanBytes# False ws) >> $(go (d-l) t) |]
-    else
-      [| $(scanBytes# False ws) >> $(go (res - l) t) |]
-
-  go res (Branch' True d ts) =
-    if res < 1 then
-      [| eof <!> (ensureBytes# d >> $(branch d ts)) |]
-    else
-      [| eof <!> $(branch res ts) |]
-
-  go res (Branch' False d ts) =
-    if res < 1 then
-      [| ensureBytes# d >> $(branch d ts) |]
-    else
-      branch res ts
-
-  branch :: Int -> Map Word8 Trie' -> Q Exp
-  branch res ts = do
-    next <- (traverse . traverse) (go (res - 1)) (M.toList ts)
-    pure $
-      DoE [
-        BindS (VarP (mkName "c")) (VarE 'scanAny8#),
-        NoBindS (CaseE (VarE (mkName "c"))
-           (map (\(w, t) ->
-                   Match (LitP (IntegerL (fromIntegral w)))
-                         (NormalB t)
-                         [])
-                next
-            ++ [Match WildP (NormalB (VarE 'empty)) []]))
-        ]
-
-wordSet :: [String] -> Q Exp
-wordSet = genTrie . pathify . mindepths . FlatParseIndent.fromList
-
---------------------------------------------------------------------------------
-
--- -- match :: Q Exp -> Q Exp
--- -- match _ = [| () |]

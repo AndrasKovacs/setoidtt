@@ -1,7 +1,7 @@
 
 module FPI where
 
-import FlatParseIndent
+import Old.FlatParseIndent
 
 ws      = manyTok_ ($(char ' ') <!> $(char '\n'))
 open    = $(char '(') >> ws

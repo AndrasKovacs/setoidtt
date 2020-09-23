@@ -32,3 +32,7 @@ numeral   = skipSome (satisfy8 \c -> '0' <= c && c <= '9') >> ws
 comma     = single (fromIntegral (ord ',')) >> ws
 numcsv    = numeral >> skipSome (comma >> numeral) >> eof
 runNumcsv = runParser numcsv ""
+
+-- instance ShowErrorComponent () where
+--   showErrorComponent = show
+--   errorComponentLen _ = 1

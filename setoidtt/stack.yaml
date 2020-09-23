@@ -7,3 +7,7 @@ packages:
 extra-deps:
 - ./primdata
 - ./dynamic-array
+- ./flatparse
+
+# ghc-options:
+#     "$everything": -split-sections
