@@ -26,7 +26,7 @@ new (I# i) a = IO (\s -> case newArray# i a s of
     (# s, arr #) -> (# s, Array arr #))
 
 empty :: Array a
-empty = Array (runRW# $ \s -> case newArray# 0# undefElem s of
+empty = Array (runRW# \s -> case newArray# 0# undefElem s of
   (# s, arr #) -> arr)
 {-# noinline empty #-}
 
@@ -35,19 +35,19 @@ read (Array arr) (I# i) = IO (readArray# arr i)
 {-# inline read #-}
 
 write :: forall a.  Array a -> Int -> a -> IO ()
-write (Array arr) (I# i) a = IO $ \s ->
+write (Array arr) (I# i) a = IO \s ->
   case writeArray# arr i a s of
     s -> (# s, () #)
 {-# inline write #-}
 
 modify :: forall a.  Array a -> Int -> (a -> a) -> IO ()
-modify (Array arr) (I# i) f = IO $ \s -> case readArray# arr i s of
+modify (Array arr) (I# i) f = IO \s -> case readArray# arr i s of
   (# s, a #) -> case writeArray# arr i (f a) s of
     s -> (# s, () #)
 {-# inline modify #-}
 
 modify' :: forall a.  Array a -> Int -> (a -> a) -> IO ()
-modify' (Array arr) (I# i) f = IO $ \s -> case readArray# arr i s of
+modify' (Array arr) (I# i) f = IO \s -> case readArray# arr i s of
   (# s, a #) -> let !v = f a in case writeArray# arr i v s of
     s -> (# s, () #)
 {-# inline modify' #-}
@@ -57,7 +57,7 @@ size (Array arr) = I# (sizeofMutableArray# arr)
 {-# inline size #-}
 
 thawSlice :: LI.Array a -> Int -> Int -> IO (Array a)
-thawSlice (LI.Array arr) (I# start) (I# len) = IO $ \s ->
+thawSlice (LI.Array arr) (I# start) (I# len) = IO \s ->
   case thawArray# arr start len s of
     (# s, marr #) -> (# s, Array marr #)
 {-# inline thawSlice #-}
@@ -67,7 +67,7 @@ thaw arr = thawSlice arr 0 (LI.size arr)
 {-# inline thaw #-}
 
 copySlice :: forall a. Array a -> Int -> Array a -> Int -> Int -> IO ()
-copySlice (Array src) (I# i) (Array dst) (I# j) (I# len) = IO $ \s ->
+copySlice (Array src) (I# i) (Array dst) (I# j) (I# len) = IO \s ->
   case copyMutableArray# src i dst j len s of
     s -> (# s, () #)
 {-# inline copySlice #-}
@@ -77,12 +77,12 @@ sizedThaw size arr = thawSlice arr 0 size
 {-# inline sizedThaw #-}
 
 unsafeFreeze :: Array a -> IO (LI.Array a)
-unsafeFreeze (Array marr) = IO $ \s -> case unsafeFreezeArray# marr s of
+unsafeFreeze (Array marr) = IO \s -> case unsafeFreezeArray# marr s of
   (# s, arr #) -> (# s, LI.Array arr #)
 {-# inline unsafeFreeze #-}
 
 freezeSlice :: Array a -> Int -> Int -> IO (LI.Array a)
-freezeSlice (Array marr) (I# start) (I# len) = IO $ \s ->
+freezeSlice (Array marr) (I# start) (I# len) = IO \s ->
   case freezeArray# marr start len s of
     (# s, arr #) -> (# s, (LI.Array arr) #)
 {-# inline freezeSlice #-}

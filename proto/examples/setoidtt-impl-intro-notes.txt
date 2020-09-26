@@ -1,0 +1,171 @@
+
+{-
+
+QIIT, setoid TT, type inference / performance
+- demo implementations
+- practical implementation (platform for Your Ideas)
+
+-- short term goals (a couple of weeks), longer terms goals
+--    (infinite amount of work can be done)
+
+
+Motivation: (short term goals)
+  - System for *set*-level mathematics & programming (no HoTT)
+      - much better ergonomic & expressiveness if we're only focusing on set-level math
+      -             (cubical type theory) improves on std MLTT
+      -             even better is possible, if we are only focusing on sets (setoid-TT)
+      -             less general than cubical TT, but easier to use
+      -             (for *normal* math and programming, it's sufficient)
+      -             (Lean: push for large-scale formalization of *normal* math
+      -                    they only use set-level type theory!)
+      -              Lean doesn't have setoid features!
+
+  - Target group: - people who want to formalize normal math
+                  - people who want to formalize metatheory of TT/PL
+		    - setoid TT helps, QIIT, equality reflection, metaprogramming algebraic signatures
+		    - (also e.g. Carette et al.
+		          https://wiki.hh.se/wg211/images/c/cb/WG211_M19_Carette.pdf in Agda)
+
+                    (longer-term)
+	              (defining what a Monoid is ---> get for free the type of Monoid-homomorphisms)
+		                                 ---> get for the category of monoids)
+
+  - Efficiency
+
+  - (longer term goal) : add PL features / code generation
+    - (not too difficult to outsource (pretty easy to write codegen for example))
+    - (... I have lots of PL feature ideas (staging, memory layouts, type classes))
+
+  - previous work observational type theory: https://github.com/bobatkey/sott
+    - (non-practical)
+
+
+- Question about codegen and performance?
+
+  - We could have a system, with *slower* evaluation than in Coq, but much better performance
+  - Type checking with machine code evaluation for conversion checking: works
+  -                it's a huge amount of work to do it
+  -                interpreter in GHC: already in the ~5-10x performance ballpark
+
+
+  - In Coq: I have a function f : Unit -> Unit -> Unit -> Unit .... -> Unit   (N-times)
+  -         I have a term : f () () () () ..... ()               complexity of checking in N?
+                                                                 (quadratic in N)
+
+  - Jason Gross (PhD thesis on Coq performance)
+
+  - (length-indexed Vector):  cons True (cons True ...... nil)   (N-times) (quadratic in Agda & Coq)
+
+  - (in Agda: initiality conjecture: https://github.com/guillaumebrunerie/initiality)
+  -           HoTTest seminar: requires 24 Gb to type check
+
+
+- How to achieve performance:
+
+  - principled approach (based Thierry Coquand's algorithm ~95)
+  - boost: non-determenistic evaluation (nbe)   (originally: glued evaluation)
+                                                (better version: Olle Fredriksson)
+           multiple evaluation strategies for different goals during checking
+	      - check whether two terms are equal (full-blown evaluation)
+	      - genereting terms which are as small as possible (avoids unfolding)
+	        (serialize a term)
+	        (display a term for the user)
+		(fill a hole in source by inference)
+
+           non-deterministic choice between different evaluation strategies
+
+              eval :: Tm -> Val
+	      eval (TopLvlDef x) = Choice (eval (unfold x)) x    -- lazy choice
+
+              conversionCheck :: Val -> Val -> Bool
+	      conversionCheck (Choice v _) v' = conversionCheck v v'
+
+              readBack :: Val -> Tm
+	      readBack (Choice _ x) = TopLvlDef x
+
+          injectivity analysis + "forcing" analysis
+
+          Example: list type: List : Set -> Set
+	                      cons : {A : Set} -> A -> List A -> List A
+
+              check conversion of (cons {A} x xs) (cons {A'} x' xs')?    (of type List A)
+	           - (conversion checking only works on value of the same type)
+		   - don't have to compare A and A'!
+		   - Agda: any parameter to an inductive type is skipped during conversion (erased)
+
+          To analyse *everything* for this kind "forcing" in conversion checking
+	    1. Is a definition injective up to definitional equality?
+	        (f : Nat -> Nat
+		 f x = suc (suc (suc x)))    (f x ≡ f y) → x ≡ y
+            2. Which arguments are completely determined by types?
+
+          ( No benchmark yet !)
+
+
+Concrete feature set on short term:
+
+  - basic setoidtt (as in proto (Pi, Sigma, Set, SProp, funext, propext, computation for coe))
+
+  - basic performance features:
+    - non-det eval
+    - injectivity/forcing analysis
+    - fast supporting libraries (parsing, serialization)
+
+  - modules (without params!)
+            (Agda: modules with parameters, nested modules, namespace op: import with renaming,
+	           qualified imports, but no *first-class* modules (reasearch topic in ML-like langs))
+  - basic cmdline interaction
+
+Modules:
+
+  - trade-off between evaluation efficiency and "flexibility" of module system
+  - Type checking involves arbitrary code execution
+  -    (in normal PLs, if we execute code: we are executing a linked single executable)
+  -     single address space of every function (array of top-level definitions)
+
+  - Idea: at all times, we have a single top-level address space
+  -  module loading: relocation of a position-indepedent (de Bruijn indices) code into address space
+  -  evaluator: every top-level lookup is just an array indexing
+        (this is *not* the case in Agda and Coq)
+
+Modules vs type classes:
+  - module is record + extra features (namespacing, configuration)
+  - type class : is a code generator (a program in a restricted logic programming language
+  -                                   which generates code)
+
+Module params:
+
+  - Simple way: create a new copy for every instantiation
+    (conjecture: this is OK)
+    (caching: in general I avoid caching/hash-consing like it's the plague)
+        what are we caching:
+	   - normal forms?          (problem: game over)
+	   - small representations? (problem: caching is imprecise)
+
+  - Is it possible in realistic code to have really large parameters for modules?
+     - Yes.
+     - Metatheory of type theory: (parametrizing a module with a model of some type theory)
+
+  - (BENCHMARK!)
+
+  module Foo (A : Bar) where
+
+    def1 : Nat
+    def1 = ...
+
+    def2 : Nat
+    def2 = ...
+
+  Strategy 1 (new copy) (A becomes defined in the new copy)
+
+  import Foo barExp
+
+  A = barExp
+  def1 : Nat
+  def1 = ... [still points to A]
+  def2 : Nat
+  def2 = ... [still points to A]
+
+  Stratgy 2 (abstract over A everywhere)
+
+-}

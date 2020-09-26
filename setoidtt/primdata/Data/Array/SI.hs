@@ -42,7 +42,7 @@ instance Show a => Show (Array a) where
   {-# inline show #-}
 
 new# :: Int# -> a -> SmallArray# a
-new# n a = runRW# $ \s -> case newSmallArray# n a s of
+new# n a = runRW# \s -> case newSmallArray# n a s of
     (# s, marr #) -> case unsafeFreezeSmallArray# marr s of
       (# _, arr #) -> arr
 {-# inline new# #-}
@@ -89,7 +89,7 @@ clone (Array arr) (I# i) (I# s) = Array (clone# arr i s)
 {-# inline clone #-}
 
 sizedUpdate# :: Int# -> SmallArray# a -> Int# -> a -> SmallArray# a
-sizedUpdate# size arr i a = runRW# $ \s ->
+sizedUpdate# size arr i a = runRW# \s ->
     case thawSmallArray# arr 0# size s of
         (# s, marr #) -> case writeSmallArray# marr i a s of
             s -> case unsafeFreezeSmallArray# marr s of
@@ -154,7 +154,7 @@ sizedMap# size f = \arr ->
               (# a #) -> case writeSmallArray# marr i (f a) s of
                 s -> go (i +# 1#) marr size s
             _  -> s
-    in runRW# $ \s ->
+    in runRW# \s ->
         case newSmallArray# size undefElem s of
             (# s, marr #) -> case go 0# marr size s of
                 s -> case unsafeFreezeSmallArray# marr s of
@@ -177,7 +177,7 @@ sizedMap'# size f = \arr ->
               (# a #) -> let !b = f a in case writeSmallArray# marr i b s of
                 s -> go (i +# 1#) marr size s
             _  -> s
-    in runRW# $ \s ->
+    in runRW# \s ->
         case newSmallArray# size undefElem s of
             (# s, marr #) -> case go 0# marr size s of
                 s -> case unsafeFreezeSmallArray# marr s of
@@ -225,7 +225,7 @@ rfoldl' f z = \(Array arr) -> go (sizeofSmallArray# arr -# 1#) z arr where
 
 fromList :: [a] -> Array a
 fromList xs = case length xs of
-  I# size -> Array (runRW# $ \s ->
+  I# size -> Array (runRW# \s ->
      case newSmallArray# size undefElem s of
         (# s, marr #) -> go xs 0# s where
             go (x:xs) i s = case writeSmallArray# marr i x s of s -> go xs (i +# 1#) s

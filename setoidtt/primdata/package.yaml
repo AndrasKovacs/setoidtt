@@ -11,6 +11,7 @@ dependencies:
 default-extensions:
 - AllowAmbiguousTypes
 - BangPatterns
+- BlockArguments
 - CPP
 - DataKinds
 - FlexibleInstances

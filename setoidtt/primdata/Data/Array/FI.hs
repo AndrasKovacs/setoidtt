@@ -25,7 +25,7 @@ instance (Flat a, Show a) => Show (Array a) where
   {-# inline show #-}
 
 new# :: forall a. Flat a => Int# -> ByteArray#
-new# n = runRW# $ \s -> case newByteArray# (n *# Data.Flat.size# @a proxy#) s of
+new# n = runRW# \s -> case newByteArray# (n *# Data.Flat.size# @a proxy#) s of
     (# s, marr #) -> case unsafeFreezeByteArray# marr s of
       (# _, arr #) -> arr
 {-# inline new# #-}
@@ -35,7 +35,7 @@ new (I# n) = Array (new# @a n)
 {-# inline new #-}
 
 empty :: Array a
-empty = Array (runRW# $ \s -> case newByteArray# 0# s of
+empty = Array (runRW# \s -> case newByteArray# 0# s of
     (# s, marr #) -> case unsafeFreezeByteArray# marr s of
       (# _, arr #) -> arr)
 {-# noinline empty #-}
@@ -65,7 +65,7 @@ sizedMap# size f = \arr ->
             1# -> case writeByteArray# marr i (f ((!#) @a arr i)) s of
                 s -> go (i +# 1#) marr size s
             _  -> s
-    in runRW# $ \s ->
+    in runRW# \s ->
         case newByteArray# (size *# (Data.Flat.size# @a proxy#)) s of
             (# s, marr #) -> case go 0# marr size s of
                 s -> case unsafeFreezeByteArray# marr s of
@@ -110,7 +110,7 @@ rfoldl' f = \z (Array arr) -> go (Data.Array.FI.size# @a arr -# 1#) z arr where
 
 fromList :: forall a. Flat a => [a] -> Array a
 fromList xs = case length xs of
-  I# len -> Array (runRW# $ \s ->
+  I# len -> Array (runRW# \s ->
     case newByteArray# (Data.Flat.size# @a proxy# *# len) s of
       (# s, marr #) -> go xs 0# s where
         go (x:xs) i s = case Data.Flat.writeByteArray# marr i x s of

@@ -24,13 +24,13 @@ instance (Unlifted a, Show a) => Show (Array a) where
 
 new :: forall a. Unlifted a => Int -> a -> Array a
 new (I# i) a = case to# a of
-  a -> Array (runRW# $ \s -> case newUnlifted# i a s of
+  a -> Array (runRW# \s -> case newUnlifted# i a s of
          (# s, marr #) -> case unsafeFreezeArrayArray# marr s of
            (# s, arr #) -> arr)
 {-# inline new #-}
 
 empty :: Array a
-empty = Array (runRW# $ \s -> case newArrayArray# 0# s of
+empty = Array (runRW# \s -> case newArrayArray# 0# s of
          (# s, marr #) -> case unsafeFreezeArrayArray# marr s of
            (# s, arr #) -> arr)
 {-# noinline empty #-}
@@ -48,7 +48,7 @@ size (Array arr) = I# (sizeofArrayArray# arr)
 --   `Int` arguments are: offset, slice length.
 clone :: Unlifted a => Array a -> Int -> Int -> Array a
 clone (Array arr) (I# i) (I# l) =
-  Array (runRW# $ \s -> case newArrayArray# l s of
+  Array (runRW# \s -> case newArrayArray# l s of
      (# s, marr #) -> case copyArrayArray# arr i marr 0# l s of
        s -> case unsafeFreezeArrayArray# marr s of
          (# s, arr #) -> arr)
@@ -76,7 +76,7 @@ foldl' f z = \(Array arr) -> go 0# (sizeofArrayArray# arr) z arr  where
 
 fromList :: forall a. Unlifted a => [a] -> Array a
 fromList xs = case length xs of
-  I# size -> Array (runRW# $ \s ->
+  I# size -> Array (runRW# \s ->
      case newArrayArray# size s of
         (# s, marr #) -> go xs 0# s where
             go (x:xs) i s = case writeUnlifted# marr i (to# x) s of s -> go xs (i +# 1#) s

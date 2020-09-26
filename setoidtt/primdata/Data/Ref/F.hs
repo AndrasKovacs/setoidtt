@@ -30,7 +30,7 @@ defaultRef =
 {-# specialize noinline defaultRef :: Ref Double #-}
 
 new :: forall a. Flat a => a -> IO (Ref a)
-new a = IO $ \s -> case newByteArray# (F.size# @a proxy#) s of
+new a = IO \s -> case newByteArray# (F.size# @a proxy#) s of
   (# s, arr #) -> case F.writeByteArray# @a arr 0# a s of
     s -> (# s, Ref arr #)
 {-# inline new #-}
