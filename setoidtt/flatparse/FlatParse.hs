@@ -9,7 +9,6 @@ module FlatParse (
   , local
   , spanned
   , inSpan
-
   , err
   , empty
   , eof
@@ -18,6 +17,8 @@ module FlatParse (
   , isGreekLetter
   , (<|>)
   , try
+  , cut
+  , optional
   , anyCharA
   , anyCharA_
   , anyChar
@@ -25,11 +26,15 @@ module FlatParse (
   , satisfy
   , satisfyA
   , satisfyA_
+  , many
   , many_
   , br
+  , some
   , some_
   , chainl
   , chainr
+  , takeString
+  , traceRest
   , Pos
   , Span(..)
   , getPos
@@ -41,7 +46,6 @@ module FlatParse (
   , char
   , switch
   , switch'
-
   , scanAny8#
   , scan8#
   , scan16#
@@ -131,7 +135,7 @@ ask = Parser \r eob s n -> OK# r s n
 {-# inline ask #-}
 
 local :: (r' -> r) -> Parser r e a -> Parser r' e a
-local f (Parser g) = Parser \r eob s n -> g (f r) eob s n
+local f (Parser g) = Parser \r eob s n -> let!r' = f r in g r' eob s n
 {-# inline local #-}
 
 instance Applicative (Parser r e) where
@@ -205,6 +209,17 @@ try (Parser f) = Parser \r eob s n -> case f r eob s n of
   Err# _ -> Fail#
   x      -> x
 {-# inline try #-}
+
+-- | Convert a parsing failure into an error
+cut :: Parser r e a -> e -> Parser r e a
+cut (Parser f) e = Parser \r eob s n -> case f r eob s n of
+  Fail# -> Err# e
+  x     -> x
+{-# inline cut #-}
+
+optional :: Parser r e a -> Parser r e (Maybe a)
+optional p = (Just <$> p) <|> pure Nothing
+{-# inline optional #-}
 
 -- | Parse any `Char` in the ASCII range.
 anyCharA :: Parser r e Char
@@ -305,6 +320,8 @@ many_ (Parser f) = go where
     Err# e    -> Err# e
 {-# inline many_ #-}
 
+-- | Branch on a parser: if the first argument fails, continue with the second,
+--   else with the third.
 br :: Parser r e a -> Parser r e b -> Parser r e b -> Parser r e b
 br pa pt pf = Parser \r eob s n -> case runParser# pa r eob s n of
   OK# _ s n -> runParser# pt r eob s n
@@ -317,6 +334,15 @@ br pa pt pf = Parser \r eob s n -> case runParser# pa r eob s n of
 some_ :: Parser r e a -> Parser r e ()
 some_ pa = pa >> many_ pa
 {-# inline some_ #-}
+
+many :: Parser r e a -> Parser r e [a]
+many p = go where
+  go = ((:) <$> p <*> go) <|> pure []
+{-# inline many #-}
+
+some :: Parser r e a -> Parser r e [a]
+some p = (:) <$> p <*> many p
+{-# inline some #-}
 
 chainl :: (b -> a -> b) -> Parser r e b -> Parser r e a -> Parser r e b
 chainl f start elem = start >>= go where
@@ -336,6 +362,10 @@ instance Eq Pos where
 
 instance Show Pos where
   show _ = "<pos>"
+
+getEnd :: Parser r e Pos
+getEnd = Parser \r eob s n -> OK# (Pos eob) s n
+{-# inline getEnd #-}
 
 getPos :: Parser r e Pos
 getPos = Parser \r eob s n -> OK# (Pos s) s n
@@ -366,6 +396,13 @@ inSpan (Span (Pos s) (Pos eob)) (Parser f) = Parser \r eob' s' n' ->
 -- | Take the rest of the input as a `String`.
 takeString :: Parser r e String
 takeString = ((:) <$> anyChar <*> takeString) <|> pure []
+
+-- | Get the rest of the input as a `String`, but restore parsing state.
+--   This can be useful for debugging.
+traceRest :: Parser r e String
+traceRest = do
+  span <- Span <$> getPos <*> getEnd
+  inSpan span takeString
 
 instance Show Span where
   show span = case runParser (inSpan span takeString) () 0 "" of

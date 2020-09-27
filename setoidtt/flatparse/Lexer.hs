@@ -39,6 +39,7 @@ lineComment =
   br anyChar_ (modify (+1) >> lineComment) $
   pure ()
 
+-- TODO: nested multiline comments
 multilineComment :: Parser ()
 multilineComment = $(FlatParse.switch [| case _ of
   "\n" -> put 0 >> multilineComment
@@ -58,13 +59,17 @@ nonIndented :: Parser a -> Parser a
 nonIndented = indentedAt 0
 {-# inline nonIndented #-}
 
-lexeme :: Parser a -> Parser a
-lexeme p = do
+checkIndent :: Parser ()
+checkIndent = do
   lvl <- ask
   currentLvl <- get
   if currentLvl < lvl
     then err indentError
-    else p <* ws
+    else pure ()
+{-# inline checkIndent #-}
+
+lexeme :: Parser a -> Parser a
+lexeme p = checkIndent *> p <* ws
 {-# inline lexeme #-}
 
 char :: Char -> Q Exp

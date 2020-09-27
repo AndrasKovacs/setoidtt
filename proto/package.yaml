@@ -47,6 +47,10 @@ ghc-options:
 - -Wno-partial-type-signatures
 - -Wno-type-defaults
 - -Wno-missing-pattern-synonym-signatures
+- -ddump-simpl
+- -dsuppress-all
+- -dno-suppress-type-signatures
+- -ddump-to-file
 
 dependencies:
 - base >= 4.7 && < 5
