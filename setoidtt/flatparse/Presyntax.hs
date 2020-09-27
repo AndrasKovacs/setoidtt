@@ -11,9 +11,9 @@ data Icit
   | Expl
   deriving Show
 
-data LamInfo
-  = LamUnnamed Icit
-  | LamNamed Span
+data ArgInfo
+  = NoName Icit
+  | Named Span
   deriving Show
 
 data Bind
@@ -29,8 +29,8 @@ data Tm
   | Let Pos Span (Maybe Tm) Tm Tm
 
   | Pi Pos Bind Icit Tm Tm
-  | App Tm Tm LamInfo
-  | Lam Pos Bind LamInfo Tm
+  | App Tm Tm ArgInfo
+  | Lam Pos Bind ArgInfo Tm
 
   | Sg Pos Bind Tm Tm
   | Pair Tm Tm

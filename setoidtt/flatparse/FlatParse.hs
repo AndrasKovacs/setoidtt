@@ -1,60 +1,70 @@
 
 module FlatParse (
-    type Parser
+    type Parser(..)
+  , pattern OK#
+  , pattern Fail#
+  , pattern Err#
 
-  , get
-  , put
-  , modify
-  , ask
-  , local
-  , spanned
-  , inSpan
-  , err
-  , empty
-  , eof
-  , isDigit
-  , isLatinLetter
-  , isGreekLetter
   , (<|>)
-  , try
-  , cut
-  , optional
+  , FlatParse.lines
+  , Pos(..)
+  , Result(..)
+  , Span(..)
+  , anyChar
   , anyCharA
   , anyCharA_
-  , anyChar
   , anyChar_
+  , ask
+  , br
+  , chainl
+  , chainr
+  , char
+  , cut
+  , empty
+  , ensureBytes#
+  , eof
+  , err
+  , get
+  , getPos
+  , inSpan
+  , isDigit
+  , isGreekLetter
+  , isLatinLetter
+  , local
+  , many
+  , many_
+  , mkPos
+  , modify
+  , optional
+  , posInfo
+  , put
+  , packUTF8
+  , runParser
   , satisfy
   , satisfyA
   , satisfyA_
-  , many
-  , many_
-  , br
-  , some
-  , some_
-  , chainl
-  , chainr
-  , takeString
-  , traceRest
-  , Pos
-  , Span(..)
-  , getPos
-  , setPos
-  , Result(..)
-  , runParser
-  , testParser
-  , string
-  , char
-  , switch
-  , switch'
-  , scanAny8#
-  , scan8#
   , scan16#
   , scan32#
   , scan64#
-  , scanPartial64#
-  , ensureBytes#
-  , setBack#
+  , scan8#
+  , scanAny8#
   , scanBytes#
+  , scanPartial64#
+  , setBack#
+  , setPos
+  , some
+  , some_
+  , spanned
+  , string
+  , switch
+  , switch'
+  , takeLine
+  , takeString
+  , testParser
+  , testStrParser
+  , traceRest
+  , try
+  , validPos
 
   ) where
 
@@ -360,6 +370,10 @@ instance Eq Pos where
   Pos p == Pos p' = isTrue# (eqAddr# p p')
   {-# inline (==) #-}
 
+instance Ord Pos where
+  Pos p <= Pos p' = isTrue# (leAddr# p p')
+  {-# inline (<=) #-}
+
 instance Show Pos where
   show _ = "<pos>"
 
@@ -404,9 +418,10 @@ traceRest = do
   span <- Span <$> getPos <*> getEnd
   inSpan span takeString
 
+-- This is highly unsafe.
 instance Show Span where
   show span = case runParser (inSpan span takeString) () 0 "" of
-    OK str _ _ -> str
+    OK str _ _ -> show str
     _          -> error "impossible"
 
 data Result e a =
@@ -414,6 +429,12 @@ data Result e a =
   | Fail
   | Err !e
   deriving Show
+
+instance Functor (Result e) where
+  fmap f (OK a n s) = let !b = f a in OK b n s
+  fmap f Fail = Fail
+  fmap f (Err e) = Err e
+  {-# inline fmap #-}
 
 runParser :: Parser r e a -> r -> Int -> B.ByteString -> Result e a
 runParser (Parser f) r (I# n) b = unsafeDupablePerformIO do
@@ -430,8 +451,67 @@ runParser (Parser f) r (I# n) b = unsafeDupablePerformIO do
         pure Fail
 {-# noinline runParser #-}
 
-testParser :: Parser r e a -> r -> Int -> String -> Result e a
-testParser pa r n s = runParser pa r n (B.pack (concatMap charToBytes s))
+testParser :: Parser r e a -> r -> Int -> B.ByteString -> Result e a
+testParser pa r n s = runParser pa r n s
+
+packUTF8 :: String -> B.ByteString
+packUTF8 = B.pack . concatMap charToBytes
+
+testStrParser :: Parser r e a -> r -> Int -> String -> Result e a
+testStrParser pa r n s = runParser pa r n (packUTF8 s)
+
+takeLine :: Parser r e String
+takeLine = (do
+  c <- anyChar
+  case c of
+    '\n' -> pure ""
+    _    -> (c:) <$> takeLine) <|> pure ""
+
+lines :: B.ByteString -> [String]
+lines str =
+  let go = ([] <$ eof) <|> ((:) <$> takeLine <*> go)
+  in case runParser go () 0 str of
+    OK ls _ _ -> ls
+    _         -> error "impossible"
+
+validPos :: B.ByteString -> Pos -> Bool
+validPos str pos =
+  let go = do
+        start <- getPos
+        end   <- getEnd
+        pure (start <= pos && pos <= end)
+  in case runParser go () 0 str of
+    OK b _ _ -> b
+    _        -> error "impossible"
+{-# inline validPos #-}
+
+-- | Get the corresponding line and column number for a `Pos`.
+posInfo :: B.ByteString -> Pos -> (Int, Int)
+posInfo str pos | validPos str pos =
+  let go !line !col = (do
+        c <- anyChar
+        if c == '\n' then go (line + 1) 0
+                     else go line (col + 1)) <|> pure (line, col)
+      wrap = do
+        start <- getPos
+        inSpan (Span start pos) (go 0 0)
+
+  in case runParser wrap () 0 str of
+    OK res _ _ -> res
+    _          -> error "impossible"
+posInfo _ _ = error "posInfo: invalid position"
+
+-- | Create a `Pos` from a line and column number.
+mkPos :: B.ByteString -> (Int, Int) -> Pos
+mkPos str (line', col') =
+  let go line col | line == line' && col == col' = getPos
+      go line col = (do
+        c <- anyChar
+        if c == '\n' then go (line + 1) 0
+                     else go line (col + 1)) <|> error "mkPos: invalid position"
+  in case runParser (go 0 0) () 0 str of
+    OK res _ _ -> res
+    _          -> error "impossible"
 
 
 -- char and string

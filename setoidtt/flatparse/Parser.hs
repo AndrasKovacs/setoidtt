@@ -9,14 +9,12 @@ import Language.Haskell.TH
 
 import Data.Foldable
 import qualified Data.ByteString as B
-import FlatParse hiding (Parser, runParser, testParser, string, char, switch)
+import FlatParse hiding (Parser, runParser, testParser, string, char, switch, cut, err)
 import qualified FlatParse
 import Data.Char
 
 import Presyntax
 import Lexer
-
-import Debug.Trace
 
 --------------------------------------------------------------------------------
 
@@ -194,20 +192,20 @@ pProjExp = do
 
 goApp :: Tm -> Parser Tm
 goApp t = br pBraceL
-  (do optional (pIdent <* pEq) >>= \case
+  (do optional (pIdent <* pAssign) >>= \case
         Nothing -> do
           u <- pPairExp
           pBraceR `cut` "expected \"}\" in implicit application"
-          pure $ App t u (LamUnnamed Impl)
+          goApp (App t u (NoName Impl))
         Just x  -> do
           u <- pPairExp
           pBraceR `cut` "expected \"}\" in implicit application"
-          pure $ App t u (LamNamed x))
+          goApp (App t u (Named x)))
   (do optional pAtomicExp >>= \case
         Nothing -> pure t
         Just u  -> do
           u <- goProj u
-          pure $ App t u (LamUnnamed Expl))
+          goApp (App t u (NoName Expl)))
 
 pAppExp :: Parser Tm
 pAppExp = do
@@ -303,33 +301,33 @@ pLam' = do
   pos <- getPos
   $(switch [| case _ of
        "{" -> pBind >>= \case
-         DontBind -> Lam pos DontBind (LamUnnamed Impl) <$> pLam'
+         DontBind -> Lam pos DontBind (NoName Impl) <$> pLam'
          Bind x   -> br pAssign
            (do y <- pIdent `cut` "expected an identifier"
                pBraceR `cut` "expected \"}\""
-               Lam pos (Bind y) (LamNamed x) <$> pLam')
+               Lam pos (Bind y) (Named x) <$> pLam')
            (do pBraceR `cut` "expected \"}\""
-               Lam pos (Bind x) (LamUnnamed Impl) <$> pLam')
+               Lam pos (Bind x) (NoName Impl) <$> pLam')
        "." -> do
          pLamLetExp
        _ -> do
          x <- pBind `cut` "expected a binder or \".\""
-         Lam pos x (LamUnnamed Expl) <$> pLam'
+         Lam pos x (NoName Expl) <$> pLam'
        |])
 
 pLam :: Pos -> Parser Tm
 pLam pos = $(switch [| case _ of
   "{" -> pBind >>= \case
-    DontBind -> Lam pos DontBind (LamUnnamed Impl) <$> pLam'
+    DontBind -> Lam pos DontBind (NoName Impl) <$> pLam'
     Bind x  -> br pAssign
       (do y <- pIdent `cut` "expected an identifier"
           pBraceR `cut` "expected \"}\""
-          Lam pos (Bind y) (LamNamed x) <$> pLam')
+          Lam pos (Bind y) (Named x) <$> pLam')
       (do pBraceR `cut` "expected \"}\""
-          Lam pos (Bind x) (LamUnnamed Impl) <$> pLam')
+          Lam pos (Bind x) (NoName Impl) <$> pLam')
   _ -> do
     x <- pBind `cut` "expected a binder"
-    Lam pos x (LamUnnamed Expl) <$> pLam' |])
+    Lam pos x (NoName Expl) <$> pLam' |])
 
 pLet :: Pos -> Parser Tm
 pLet pos = do
