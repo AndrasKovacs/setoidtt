@@ -1,42 +1,63 @@
 
-TODO
-  primdata:
-  - add tests
-  - include array-primops
 
-  dynamic-array:
-  - add tests
-  - use cmm primop for array resizing
+1. String and name handling
+--------------------------------------------------------------------------------
 
-Design
-  Closures:
-    - higher-order closures, because of fast & easy primops and eq/coe
-        computation rules
-    - later:
-       - benchmark first-order closures
-       - attempt HOAS native codegen
+A `Pos` is a byte offset into an implicit ByteString, a `Span` is a pair of
+`Pos`s. In parsing, it's more efficient to only store these, since it's obvious
+which ByteString we're operating on. During elaboration, spans are converted to
+bona fide ByteStrings. ByteStrings are used for scope indexing and module
+hierarchy indexing.
 
-  Linking/loading:
-    - on first load:
-      - walk all transitive dependency modules, see if they're changed
-      - compute size of dependencies
-      - create
+In a serialized module, we deep-copy all ByteStrings for internally bound names,
+and also for all external (imported) names. I doubt that it makes a whole lot of
+difference to hash-cons names. After all, names are only stored at points of
+binding, and also once for each external name used in a module.
 
-  Parsing:
-    - Megaparsec with src spans, no operators
+In deserialization, we can simply take ByteString slices of the ByteString being
+deserialized, to read names. So we avoid allocating new strings for each name,
+we just slice the binary file.
 
-    - later: CUSTOM parser:
-      - operate on Addr# of utf8 bytearray
-      - avoid decoding to Char if possible
-        - whitespace/newline/comment control characters are all ASCII
-          bytes
-	- symbols/keywords scannable with non-decoding templated code
-	- isAlpha/isLetter etc are implemented as foreign ccall jumping
-	  into big table of character categories; can we do better in some
-	  cases? Can we generate perfect hash function for isLetter etc?
-      - get inspiration from
-          https://github.com/ekmett/codex/blob/master/parsnip/src/Text/Parsnip/
-	  Internal/Parser.hs
+From bytestring-0.11.0.0, the representation is quite good: a ByteString only
+has a single word top-level overhead compared to Span. So we don't bother
+storing spans after elaboration.
+
+- TODO: newtype wrap ByteString to implement better Hashable and Eq instances.
+  The current instances call out to C code, but for short strings it's obviously
+  better to use inlined Haskell.
+
+What about names which are generated during elaboration, and do not come from
+any source file? We don't want to generate lots of ByteStrings.
+
+Sometimes, these names are just "x" etc. Since de-shadowing happens only during
+printing, we can simply share a single "x" ByteString for cases like this. In
+other cases, we only invent a name during printing, e.g. for metas, so there's
+no need to store strings for these.
+
+- QUESTION: what about using ByteString in parsing? I.e. can we build strings
+  instead of spans? A string has a) a finalizer b) a start address c) a length.
+  A parser keeps track of the current address and the end address. So we can get
+  rather easily a string from a span, if we additionally keep around the
+  finalizer in the Reader. This could be convenient. But it feels wasteful
+  copying the finalizer all over the presyntax.
+
+- QUESTION: what about ghc-style FastString:
+
+   https://hackage.haskell.org/package/ghc-8.10.1/docs/FastString.html
+
+  I say we're doing the wrong thing if we need O(1) string comparison! Scope
+  checking in elaboration converts every name into an index, the name of an
+  index is only ever relevant for printing. The memory consumption of all
+  identifiers is also practically irrelevant, since almost every string slices a
+  source file or an interface file, which are loaded anyway.
+
+  What about PtrString? (in the same module) This could make sense as an unsafe
+  version of Span, but it feels like a big safety & memory management hassle for
+  negligible efficiency.
+
+  In general, an elaborator doesn't massage or compare strings a lot! The point
+  of scope checking is to process each string *once*, then forget about them
+  altogether, until pretty printing.
 
 
-
+--------------------------------------------------------------------------------

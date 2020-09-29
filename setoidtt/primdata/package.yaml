@@ -27,33 +27,20 @@ default-extensions:
 - UnboxedTuples
 
 ghc-options:
-  - -rtsopts
   - -Wall
   - -Wno-missing-signatures
   - -Wno-name-shadowing
   - -Wno-unused-do-bind
   - -Wno-unused-matches
   - -Wno-partial-type-signatures
+  - -O2
+  - -fllvm
   # - -ddump-simpl
   # - -dsuppress-all
   # - -dno-suppress-type-signatures
   # - -ddump-to-file
-  - -O2
-  - -fllvm
 
 library:
   source-dirs: .
   dependencies:
     - ghc-prim
-
-tests:
-  test:
-    source-dirs:
-      - test
-    main: Main.hs
-    dependencies:
-      - primdata
-      - QuickCheck
-      - tasty
-      - tasty-quickcheck
-      - ghc-prim

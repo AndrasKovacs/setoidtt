@@ -11,9 +11,9 @@ dependencies:
 - containers
 - mtl
 - template-haskell
-- text-short
 - microlens-platform
 - ghc-prim
+- text-short
 
 default-extensions:
   - BangPatterns
@@ -52,7 +52,6 @@ ghc-options:
   # - -dsuppress-all
   # - -dno-suppress-type-signatures
   # - -ddump-to-file
-
   # - -ddump-opt-cmm
   # - -ddump-asm
 

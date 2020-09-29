@@ -55,18 +55,17 @@ ghc-options:
 - -Wno-missing-pattern-synonym-signatures
 
 dependencies:
-- base >= 4.7 && < 5
+- base
 - bytestring
 - containers
 - dynamic-array
+- flatparse
+- gauge
 - ghc-prim
 - primdata
-- text-short
+- template-haskell
 - time
 - unordered-containers
-- gauge
-- megaparsec
-- text
 
 source-dirs:
   - src
@@ -75,14 +74,15 @@ library:
   ghc-options:
     - -O2
     - -fllvm
-    - -ddump-simpl
-    - -dsuppress-all
-    - -dno-suppress-type-signatures
-    - -ddump-to-file
+    # - -ddump-simpl
+    # - -dsuppress-all
+    # - -dno-suppress-type-signatures
+    # - -ddump-to-file
 
-executable:
-  main: Main.hs
-  ghc-options:
-    - -O2
-    - -fllvm
-    - -rtsopts
+executables:
+  setoidtt:
+    main: Main.hs
+    ghc-options:
+      - -O2
+      - -fllvm
+      - -rtsopts

@@ -1,4 +1,3 @@
-{-# language Strict #-}
 
 module Lexer where
 
@@ -18,11 +17,11 @@ runParser p = FlatParse.runParser p 0 0
 
 showError :: String -> B.ByteString -> ParseError -> String
 showError path str (ParseError pos msg) = let
-  (l, c) = posInfo str pos
-  lnum   = show l
-  lpad   = map (const ' ') lnum
-  lines  = FlatParse.lines str
-  line   = (lines !! l)
+  (!l, !c) = posLineCol str pos
+  lnum     = show l
+  lpad     = map (const ' ') lnum
+  lines    = linesUTF8 str
+  line     = (lines !! l)
   in   path ++ ":" ++ show l ++ ":" ++ show c ++ ":" ++ "\n"
     ++ lpad ++ " |\n"
     ++ lnum ++ " | " ++ line ++ "\n"
@@ -37,15 +36,16 @@ testParser p str = let
          OK a _ _ -> print a
          Fail     -> putStrLn "parser failure"
          Err e    -> putStrLn (showError "(stdin)" bstr e)
+{-# noinline testParser #-}
 
 cut :: Parser a -> String -> Parser a
 cut (FlatParse.Parser f) msg = FlatParse.Parser \r eob s n -> case f r eob s n of
-  Fail# -> Err# (ParseError (Pos s) msg)
+  Fail# -> Err# (ParseError (addr2Pos# eob s) msg)
   x     -> x
 {-# inline cut #-}
 
 err :: String -> Parser a
-err msg = FlatParse.Parser \r eob s n -> Err# (ParseError (Pos s) msg)
+err msg = FlatParse.Parser \r eob s n -> Err# (ParseError (addr2Pos# eob s) msg)
 {-# inline err #-}
 
 -- OPTIMIZATION TODO:
@@ -98,6 +98,13 @@ checkIndent = do
     then err indentError
     else pure ()
 {-# inline checkIndent #-}
+
+indent :: Parser a -> (a -> Parser b) -> Parser b
+indent ref p = do
+  lvl <- ask
+  a <- ref
+  local (const (lvl + 1)) (p a)
+{-# inline indent #-}
 
 lexeme :: Parser a -> Parser a
 lexeme p = checkIndent *> p <* ws

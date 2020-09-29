@@ -8,7 +8,6 @@ import Data.Word
 
 newtype Prefix = Prefix Int
 
-
 instance Show Prefix where
   show = undefined
 

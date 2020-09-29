@@ -1,18 +1,12 @@
-{-# options_ghc -Wno-unused-imports #-}
-{-# language Strict #-}
 
-module Parser (pPairExp) where
+module Parser (pTm, pSrc) where
 
 import Data.Char
-
-import Language.Haskell.TH
-
 import Data.Foldable
-import qualified Data.ByteString as B
 import FlatParse hiding (Parser, runParser, testParser, string, char, switch, cut, err)
 import qualified FlatParse
-import Data.Char
 
+import Common
 import Presyntax
 import Lexer
 
@@ -150,7 +144,7 @@ pAtomicExp = do
   checkIndent
   start <- getPos
   $(FlatParse.switch [| case _ of
-      "(" -> ws *> pPairExp <* pParR `cut` "expected a \")\" in parenthesized expression"
+      "(" -> ws *> pTm <* pParR `cut` "expected a \")\" in parenthesized expression"
       "_" -> do {end <- getPos; Hole (Span start end) <$ ws}
       _   -> do
         res <- spanned pRawIdent \_ span -> inSpan span $(FlatParse.switch [| case _ of
@@ -185,7 +179,7 @@ goProj t = br pDot
 
 pProjExp :: Parser Tm
 pProjExp = do
-  t <- pAtomicExp `cut` "expected an atomic expression"
+  t <- pAtomicExp `cut` "parse error"
   goProj t
 
 --------------------------------------------------------------------------------
@@ -194,11 +188,11 @@ goApp :: Tm -> Parser Tm
 goApp t = br pBraceL
   (do optional (pIdent <* pAssign) >>= \case
         Nothing -> do
-          u <- pPairExp
+          u <- pTm
           pBraceR `cut` "expected \"}\" in implicit application"
           goApp (App t u (NoName Impl))
         Just x  -> do
-          u <- pPairExp
+          u <- pTm
           pBraceR `cut` "expected \"}\" in implicit application"
           goApp (App t u (Named x)))
   (do optional pAtomicExp >>= \case
@@ -228,7 +222,7 @@ pSigmaExp = do
   optional (pParL *> pBind <* pColon) >>= \case
 
     Just x -> do
-      a <- pPairExp
+      a <- pTm
       pParR           `cut` "expected \")\" in sigma binder"
       pTimes          `cut` "expected \"×\" or \"*\" after binder in sigma type expression"
       b <- pSigmaExp
@@ -248,7 +242,7 @@ pExplPiBinder :: Parser ([Bind], Tm, Icit)
 pExplPiBinder = do
   binders <- some pBind
   pColon
-  a <- pPairExp
+  a <- pTm
   pParR `cut` "expected \")\" in implicit argument binder"
   pure (binders, a, Expl)
 
@@ -256,7 +250,7 @@ pImplPiBinder :: Parser ([Bind], Tm, Icit)
 pImplPiBinder =
     spanned (some pBind) \binders span -> do
       br pColon
-        ((binders,,Impl) <$> (pPairExp <* braceClose))
+        ((binders,,Impl) <$> (pTm <* braceClose))
         ((binders, Hole span, Impl) <$ braceClose)
   where
     braceClose = pBraceR  `cut` "expected \"}\" in implicit argument binder"
@@ -295,7 +289,7 @@ pPiExp = do
 
 --------------------------------------------------------------------------------
 
-
+-- TODO: reduce duplication, perhaps with some higher-order combinator
 pLam' :: Parser Tm
 pLam' = do
   pos <- getPos
@@ -334,14 +328,14 @@ pLet pos = do
   x <- pIdent `cut` "expected an identifier"
   $(switch [| case _ of
     ":=" -> do
-      t <- pPairExp
+      t <- pTm
       pIn `cut` "expected \"in\" in let-expression"
       u <- pLamLetExp
       pure $ Let pos x Nothing t u
     ":"  -> do
-      a <- pPairExp
+      a <- pTm
       pAssign `cut` "expected \":=\" in let-expression"
-      t <- pPairExp
+      t <- pTm
       pIn `cut` "expected \"in\" in let-expression"
       u <- pLamLetExp
       pure $ Let pos x (Just a) t u
@@ -358,9 +352,25 @@ pLamLetExp = do
 
 --------------------------------------------------------------------------------
 
-pPairExp :: Parser Tm
-pPairExp = do
+pTm :: Parser Tm
+pTm = do
   t <- pLamLetExp
-  br pComma (Pair t <$> pPairExp) (pure t)
+  br pComma (Pair t <$> pTm) (pure t)
 
 --------------------------------------------------------------------------------
+
+pTopLevel :: Parser TopLevel
+pTopLevel = nonIndented $ local (const 1) $ (do
+  x <- pIdent `cut` "expected an identifier in top-level binding"
+  $(switch [| case _ of
+    ":=" -> Define x Nothing <$> pTm <*> pTopLevel
+    ":"  -> do a <- pTm
+               br pAssign
+                 (Define x (Just a) <$> pTm <*> pTopLevel)
+                 (Postulate x a <$> pTopLevel)
+    _    -> err "expected \":\" or \":=\" in top-level binding"
+    |]))
+  <|> ((eof `cut` "expected end of file") >> pure Nil)
+
+pSrc :: Parser TopLevel
+pSrc = ws *> pTopLevel

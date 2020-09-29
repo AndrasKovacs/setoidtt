@@ -1,5 +1,5 @@
 
-resolver: lts-15.9
+resolver: nightly-2020-09-28
 
 packages:
 - .
@@ -9,5 +9,5 @@ extra-deps:
 - ./dynamic-array
 - ./flatparse
 
-# ghc-options:
-#     "$everything": -split-sections
+ghc-options:
+    "$everything": -split-sections

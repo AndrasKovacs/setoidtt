@@ -1,24 +1,25 @@
 
 module Common (
-  -- module Common,
-  -- module Data.Coerce
+    module Common
+  , FlatParse.Span(..)
   ) where
 
--- -- import Text.Megaparsec
--- import Data.Coerce
+import FlatParse
 
--- type Name = String
+data Icit
+  = Impl
+  | Expl
+  deriving Show
 
--- data Icit = Expl | Impl
---   deriving (Eq, Show)
+data ArgInfo
+  = NoName Icit
+  | Named Span
+  deriving Show
 
--- data NameOrIcit = NOName {-# unpack #-} Name | NOImpl | NOExpl
---   deriving Show
+data Bind
+  = Bind Span
+  | DontBind
 
--- newtype NoShow a = NoShow a
-
--- instance Show (NoShow a) where
---   show _ = ""
-
--- newtype SrcPos = SrcPos SourcePos
---   deriving Show via NoShow SourcePos
+instance Show Bind where
+  show (Bind x) = show x
+  show DontBind = "_"

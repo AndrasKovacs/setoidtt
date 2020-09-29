@@ -18,7 +18,6 @@ catch :: forall a. IO a -> (Ex -> IO a) -> IO a
 catch (IO io) f = IO (catch# io (\e -> case f e of IO f -> f))
 {-# inline catch #-}
 
-
 -- | This is a dirty hack which ensures that our monomorphized `catch` can also
 --   catch every standard `Control.Exception` exception potentially thrown by
 --   external library code or standard throwing operations such as incomplete

@@ -6,10 +6,11 @@ module FlatParse (
   , pattern Err#
 
   , (<|>)
-  , FlatParse.lines
+  , linesUTF8
   , Pos(..)
   , Result(..)
   , Span(..)
+  , addr2Pos#
   , anyChar
   , anyCharA
   , anyCharA_
@@ -36,9 +37,10 @@ module FlatParse (
   , mkPos
   , modify
   , optional
-  , posInfo
-  , put
   , packUTF8
+  , pos2Addr#
+  , posLineCol
+  , put
   , runParser
   , satisfy
   , satisfyA
@@ -55,6 +57,7 @@ module FlatParse (
   , some
   , some_
   , spanned
+  , span2ByteString
   , string
   , switch
   , switch'
@@ -364,45 +367,57 @@ chainr f elem end = go where
   go = (f <$> elem <*> go) <|> end
 {-# inline chainr #-}
 
-data Pos = Pos Addr#
-
-instance Eq Pos where
-  Pos p == Pos p' = isTrue# (eqAddr# p p')
-  {-# inline (==) #-}
+-- | Byte offset counted backwards from the end of the buffer.
+newtype Pos = Pos Int deriving (Eq, Show)
 
 instance Ord Pos where
-  Pos p <= Pos p' = isTrue# (leAddr# p p')
+  Pos p <= Pos p' = p' <= p
+  Pos p <  Pos p' = p' <  p
+  Pos p >  Pos p' = p' >  p
+  Pos p >= Pos p' = p' >= p
   {-# inline (<=) #-}
-
-instance Show Pos where
-  show _ = "<pos>"
+  {-# inline (<) #-}
+  {-# inline (>) #-}
+  {-# inline (>=) #-}
 
 getEnd :: Parser r e Pos
-getEnd = Parser \r eob s n -> OK# (Pos eob) s n
+getEnd = Parser \r eob s n -> OK# (Pos 0) s n
 {-# inline getEnd #-}
 
+addr2Pos# :: Addr# -> Addr# -> Pos
+addr2Pos# eob s = Pos (I# (minusAddr# eob s))
+{-# inline addr2Pos# #-}
+
+pos2Addr# :: Addr# -> Pos -> Addr#
+pos2Addr# eob (Pos (I# s)) = unsafeCoerce# (minusAddr# eob (unsafeCoerce# s))
+{-# inline pos2Addr# #-}
+
 getPos :: Parser r e Pos
-getPos = Parser \r eob s n -> OK# (Pos s) s n
+getPos = Parser \r eob s n -> OK# (addr2Pos# eob s) s n
 {-# inline getPos #-}
 
 setPos :: Pos -> Parser r e ()
-setPos (Pos s) = Parser \r eob _ n -> OK# () s n
+setPos s = Parser \r eob _ n -> OK# () (pos2Addr# eob s) n
 {-# inline setPos #-}
 
-data Span = Span !Pos !Pos
+data Span = Span Pos Pos deriving (Eq, Show)
 
+-- | Bind the result together with the span of the result.
 spanned :: Parser r e a -> (a -> Span -> Parser r e b) -> Parser r e b
 spanned (Parser f) g = Parser \r eob s n -> case f r eob s n of
-  OK# a s' n -> runParser# (g a (Span (Pos s) (Pos s'))) r eob s' n
+  OK# a s' n -> runParser# (g a (Span (addr2Pos# eob s) (addr2Pos# eob s'))) r eob s' n
   x          -> unsafeCoerce# x
 {-# inline spanned #-}
 
--- | Run a parser in a given input span. The state of the input and the
---   `Int` state is restored after the parser finished, so `inSpan` does not
---   consume input and has no side effect.
+-- | Run a parser in a given input span. The state of the input and the `Int`
+--   state is restored after the parser finished, so `inSpan` does not consume
+--   input and has no side effect.
+--   Warning: this operation may crash if the given span points outside the current parsing
+--   buffer. The validity of the span is not checked! It's always safe to use `inSpan` if
+--   the span comes from a previous `spanned` usage.
 inSpan :: Span -> Parser r e a -> Parser r e a
-inSpan (Span (Pos s) (Pos eob)) (Parser f) = Parser \r eob' s' n' ->
-  case f r eob s n' of
+inSpan (Span s eob) (Parser f) = Parser \r eob' s' n' ->
+  case f r (pos2Addr# eob' eob) (pos2Addr# eob' s) n' of
     OK# a _ _ -> OK# a s' n'
     x         -> unsafeCoerce# x
 {-# inline inSpan #-}
@@ -417,12 +432,6 @@ traceRest :: Parser r e String
 traceRest = do
   span <- Span <$> getPos <*> getEnd
   inSpan span takeString
-
--- This is highly unsafe.
-instance Show Span where
-  show span = case runParser (inSpan span takeString) () 0 "" of
-    OK str _ _ -> show str
-    _          -> error "impossible"
 
 data Result e a =
     OK a Int !(B.ByteString)
@@ -467,13 +476,15 @@ takeLine = (do
     '\n' -> pure ""
     _    -> (c:) <$> takeLine) <|> pure ""
 
-lines :: B.ByteString -> [String]
-lines str =
+-- | Break an UTF8-coded `ByteString` to lines. Throws an error on invalid input.
+linesUTF8 :: B.ByteString -> [String]
+linesUTF8 str =
   let go = ([] <$ eof) <|> ((:) <$> takeLine <*> go)
   in case runParser go () 0 str of
     OK ls _ _ -> ls
-    _         -> error "impossible"
+    _         -> error "linesUTF8: invalid input"
 
+-- | Check whether a `Pos` points into a `ByteString`.
 validPos :: B.ByteString -> Pos -> Bool
 validPos str pos =
   let go = do
@@ -486,8 +497,8 @@ validPos str pos =
 {-# inline validPos #-}
 
 -- | Get the corresponding line and column number for a `Pos`.
-posInfo :: B.ByteString -> Pos -> (Int, Int)
-posInfo str pos | validPos str pos =
+posLineCol :: B.ByteString -> Pos -> (Int, Int)
+posLineCol str pos | validPos str pos =
   let go !line !col = (do
         c <- anyChar
         if c == '\n' then go (line + 1) 0
@@ -499,9 +510,10 @@ posInfo str pos | validPos str pos =
   in case runParser wrap () 0 str of
     OK res _ _ -> res
     _          -> error "impossible"
-posInfo _ _ = error "posInfo: invalid position"
+posLineCol _ _ = error "posInfo: invalid position"
 
--- | Create a `Pos` from a line and column number.
+-- | Create a `Pos` from a line and column number. Throws an error on out-of-bounds
+--   line and column numbers.
 mkPos :: B.ByteString -> (Int, Int) -> Pos
 mkPos str (line', col') =
   let go line col | line == line' && col == col' = getPos
@@ -513,6 +525,13 @@ mkPos str (line', col') =
     OK res _ _ -> res
     _          -> error "impossible"
 
+-- | Create a `ByteString` from a `Span`. The first argument is the buffer the
+--   `Span` points into. Always returns an empty `ByteString` if the span is
+--   invalid.
+span2ByteString :: B.ByteString -> Span -> B.ByteString
+span2ByteString bstr (Span (Pos n) (Pos n')) =
+  B.take (n - n') (B.drop (B.length bstr - n) bstr)
+{-# inline span2ByteString #-}
 
 -- char and string
 --------------------------------------------------------------------------------
@@ -647,7 +666,6 @@ char c = string [c]
 --------------------------------------------------------------------------------
 
 data Trie a = Branch !a !(Map Word8 (Trie a))
-  deriving Show
 
 type Rule = Maybe Int
 
@@ -683,7 +701,6 @@ mindepths (Branch rule ts) =
 data Trie' a
   = Branch' !a !(Map Word8 (Trie' a))
   | Path !a ![Word8] !(Trie' a)
-  deriving Show
 
 -- | Compress linear paths.
 pathify :: Trie (Rule, Int) -> Trie' (Rule, Int)
