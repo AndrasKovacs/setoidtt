@@ -1,10 +1,12 @@
 
-module Parser (pTm, pSrc) where
+module Parser (pTm, pSrc, parseFile, Result(..)) where
 
+import Control.Monad
 import Data.Char
 import Data.Foldable
 import FlatParse hiding (Parser, runParser, testParser, string, char, switch, cut, err)
 import qualified FlatParse
+import qualified Data.ByteString as B
 
 import Common
 import Presyntax
@@ -22,7 +24,7 @@ Precedences from strongest to weakest:
   - lam/let                (right assoc)
   - pairs                  (right assoc)
 
-Context-free grammar
+Context-free grammar (disregarding indentation!)
 
   builtin     = "Set" | "Prop"
               | "refl" | "sym" | "trans" | "coe" | "ap"
@@ -30,23 +32,33 @@ Context-free grammar
               | "⊥" | "exfalso"
 
   identifier  = <non-empty string of alphanumeric characters, starting with a letter>
+  binder      = identifier | "_"
   arrow       = "->" | "→"
-  pibinder    = "{" (identifier)+ : pair "}" | "(" (identifier)+ : pair ")" | "{" (identifier)+ "}"
+  pibinder    = "{" (binder)+ : term "}" | "(" (binder)+ : term ")" | "{" (binder)+ "}"
   lambda      = "λ" | "\"
   times       = "×" | "*"
-  lambinder   = identifier | "{" identifier "}" | "{" identifier "=" identifier "}"
+  lambinder   = binder | "{" binder "}" | "{" identifier "=" identifier "}"
 
-  atom        = builtin | identifier | "_" | "(" pair ")" |
+  atom        = builtin | identifier | "_" | "(" term ")" |
   projection  = atom | projection ".₁" | projection ".₂" | projection "." identifier
-  application = projection | application projection | application "{" pair "}" | application "{" identifier "=" pair "}"
+  application = projection | application projection | application "{" term "}" | application "{" identifier "=" term "}"
   equality    = application | application "=" application
-  sigma       = equality | equality "×" sigma | "(" identifier : pair ")" "×" sigma
+  sigma       = equality | equality "×" sigma | "(" binder : term ")" "×" sigma
   pi          = sigma | sigma arrow pi | (pibinder)+ arrow pi
   lamLet      = pi | lambda (lambinder)+ "." lamLet
                 | "let" identifier ":=" pair "in" lamLet
                 | "let" identifier ":" pair ":=" pair in lamLet
   pair        = lamLet | lamLet "," pair
   term        = pair
+
+  topDef      = identifier ":" term ":=" term | identifier ":=" term
+  postulate   = identifier ":" term
+  program     = "" | topDef program | postulate program
+
+Indentation:
+  - every topDef or postulate identifier must be non-indented
+  - every topDef or postulate type/definition must be indented (cannot have a lexeme at column 0)
+  - top-level entries are delimited by indentation in implementation
 
 -}
 
@@ -359,18 +371,41 @@ pTm = do
 
 --------------------------------------------------------------------------------
 
+topIndentErr :: Parser a
+topIndentErr = err "top-level definitions should be non-indented"
+
 pTopLevel :: Parser TopLevel
-pTopLevel = nonIndented $ local (const 1) $ (do
-  x <- pIdent `cut` "expected an identifier in top-level binding"
-  $(switch [| case _ of
-    ":=" -> Define x Nothing <$> pTm <*> pTopLevel
-    ":"  -> do a <- pTm
-               br pAssign
-                 (Define x (Just a) <$> pTm <*> pTopLevel)
-                 (Postulate x a <$> pTopLevel)
-    _    -> err "expected \":\" or \":=\" in top-level binding"
-    |]))
-  <|> ((eof `cut` "expected end of file") >> pure Nil)
+pTopLevel =
+  -- top entry
+      (do lvl <- get
+          pos <- getPos
+          x   <- pIdent <* modify (+1)
+          when (lvl /= 0) (setPos pos >> topIndentErr)
+          local (const 1)
+            $(switch [| case _ of
+              ":=" -> Define x Nothing <$> pTm <*> local (const 0) pTopLevel
+              ":"  -> do a <- pTm
+                         br pAssign
+                           (Define x (Just a) <$> pTm <*> local (const 0) pTopLevel)
+                           (Postulate x a <$> local (const 0) pTopLevel)
+              _    -> err "expected \":\" or \":=\" in top-level binding" |]))
+
+  -- end of file
+  <|> (do pos <- getPos
+          $(switch [| case _ of
+             ":=" -> setPos pos >> topIndentErr
+             ":"  -> setPos pos >> topIndentErr
+             _    -> (eof `cut` "expected end of file") >> pure Nil |]))
 
 pSrc :: Parser TopLevel
 pSrc = ws *> pTopLevel
+
+--------------------------------------------------------------------------------
+
+parseFile :: FilePath -> IO TopLevel
+parseFile path = do
+  src <- B.readFile path
+  case runParser pSrc src of
+    OK a _ _ -> pure a
+    Fail     -> error "impossible"
+    Err e    -> putStrLn (showError path src e) >> error "parse error"

@@ -21,12 +21,15 @@ showError path str (ParseError pos msg) = let
   lnum     = show l
   lpad     = map (const ' ') lnum
   lines    = linesUTF8 str
-  line     = (lines !! l)
-  in   path ++ ":" ++ show l ++ ":" ++ show c ++ ":" ++ "\n"
-    ++ lpad ++ " |\n"
-    ++ lnum ++ " | " ++ line ++ "\n"
-    ++ lpad ++ " | " ++ replicate c ' ' ++ "^\n"
-    ++ msg
+  in case lines of
+    [] -> "empty input"
+    _  ->
+      let line = (lines !! l)
+      in   path ++ ":" ++ show l ++ ":" ++ show c ++ ":" ++ "\n"
+        ++ lpad ++ " |\n"
+        ++ lnum ++ " | " ++ line ++ "\n"
+        ++ lpad ++ " | " ++ replicate c ' ' ++ "^\n"
+        ++ msg
 {-# noinline showError #-}
 
 testParser :: Show a => Parser a -> String -> IO ()
@@ -75,36 +78,14 @@ multilineComment = $(FlatParse.switch [| case _ of
   "-}" -> modify (+2) >> ws
   _    -> br anyChar_ (modify (+1) >> multilineComment) $ pure () |])
 
-indentError :: String
-indentError = "indentation error"
-
-indentedAt :: Int -> Parser a -> Parser a
-indentedAt level p = do
-  actual <- get
-  pos    <- getPos
-  if actual == level then p else err indentError
-{-# inline indentedAt #-}
-
-nonIndented :: Parser a -> Parser a
-nonIndented = indentedAt 0
-{-# inline nonIndented #-}
-
 checkIndent :: Parser ()
 checkIndent = do
   lvl <- ask
-  pos <- getPos
   currentLvl <- get
   if currentLvl < lvl
-    then err indentError
+    then empty
     else pure ()
 {-# inline checkIndent #-}
-
-indent :: Parser a -> (a -> Parser b) -> Parser b
-indent ref p = do
-  lvl <- ask
-  a <- ref
-  local (const (lvl + 1)) (p a)
-{-# inline indent #-}
 
 lexeme :: Parser a -> Parser a
 lexeme p = checkIndent *> p <* ws
@@ -118,9 +99,5 @@ string str = [| lexeme $(FlatParse.string str) |]
 
 switch :: Q Exp -> Q Exp
 switch exp = [| do
-  lvl <- ask
-  currentLvl <- get
-  pos <- getPos
-  if currentLvl < lvl
-    then err indentError
-    else $(FlatParse.switch' (Just [| ws |]) exp) |]
+  checkIndent
+  $(FlatParse.switch' (Just [| ws |]) exp) |]

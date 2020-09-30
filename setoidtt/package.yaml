@@ -60,28 +60,41 @@ dependencies:
 - containers
 - dynamic-array
 - flatparse
-- gauge
 - ghc-prim
 - primdata
 - template-haskell
 - time
 - unordered-containers
+- directory
 
 source-dirs:
   - src
 
-library:
-  ghc-options:
-    - -O2
-    - -fllvm
-    # - -ddump-simpl
-    # - -dsuppress-all
-    # - -dno-suppress-type-signatures
-    # - -ddump-to-file
+data-files: bench/parse01.stt
+
+# library:
+#   ghc-options:
+#     - -O2
+#     - -fllvm
+#     # - -ddump-simpl
+#     # - -dsuppress-all
+#     # - -dno-suppress-type-signatures
+#     # - -ddump-to-file
 
 executables:
   setoidtt:
     main: Main.hs
+    ghc-options:
+      - -O2
+      - -fllvm
+      - -rtsopts
+
+  setoidtt-bench:
+    source-dirs: bench
+    main: Bench.hs
+    dependencies:
+      - gauge
+      - flatparse
     ghc-options:
       - -O2
       - -fllvm
