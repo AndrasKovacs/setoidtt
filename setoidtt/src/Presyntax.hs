@@ -3,8 +3,16 @@
 
 module Presyntax where
 
-import Common
+import Common hiding (Set)
 import FlatParse
+
+data Bind
+  = Bind Span
+  | DontBind
+
+instance Show Bind where
+  show (Bind x) = show x
+  show DontBind = "_"
 
 data TopLevel
   = Nil

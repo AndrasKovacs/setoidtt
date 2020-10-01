@@ -21,6 +21,7 @@ default-extensions:
 - FlexibleInstances
 - FunctionalDependencies
 - GADTs
+- GeneralizedNewtypeDeriving
 - InstanceSigs
 - LambdaCase
 - MagicHash
@@ -70,16 +71,14 @@ dependencies:
 source-dirs:
   - src
 
-data-files: bench/parse01.stt
+data-files:
+  - bench/parse01.stt
 
-# library:
-#   ghc-options:
-#     - -O2
-#     - -fllvm
-#     # - -ddump-simpl
-#     # - -dsuppress-all
-#     # - -dno-suppress-type-signatures
-#     # - -ddump-to-file
+ghc-options:
+  - -ddump-simpl
+  - -dsuppress-all
+  - -dno-suppress-type-signatures
+  - -ddump-to-file
 
 executables:
   setoidtt:

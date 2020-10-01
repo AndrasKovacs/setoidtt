@@ -37,6 +37,7 @@ module FlatParse (
   , mkPos
   , modify
   , optional
+  , optioned
   , packUTF8
   , pos2Addr#
   , posLineCol
@@ -45,6 +46,7 @@ module FlatParse (
   , satisfy
   , satisfyA
   , satisfyA_
+  , satisfy'
   , scan16#
   , scan32#
   , scan64#
@@ -234,6 +236,14 @@ optional :: Parser r e a -> Parser r e (Maybe a)
 optional p = (Just <$> p) <|> pure Nothing
 {-# inline optional #-}
 
+-- | CPS'd version of `optional` to get rid of the `Maybe` allocation.
+optioned :: Parser r e a -> (a -> Parser r e b) -> Parser r e b -> Parser r e b
+optioned (Parser f) just (Parser nothing) = Parser \r eob s n -> case f r eob s n of
+  OK# a s n -> runParser# (just a) r eob s n
+  Fail#     -> nothing r eob s n
+  Err# e    -> Err# e
+{-# inline optioned #-}
+
 -- | Parse any `Char` in the ASCII range.
 anyCharA :: Parser r e Char
 anyCharA = Parser \r eob buf n -> case eqAddr# eob buf of
@@ -323,6 +333,47 @@ satisfyA_ :: (Char -> Bool) -> Parser r e ()
 satisfyA_ f = () <$ satisfyA f
 {-# inline satisfyA_ #-}
 
+satisfy' :: (Char -> Bool) -> (Char -> Bool) -> (Char -> Bool) -> (Char -> Bool) -> Parser r e Char
+satisfy' f1 f2 f3 f4 = Parser \r eob buf n -> case eqAddr# eob buf of
+  1# -> Fail#
+  _  -> case derefChar8# buf of
+    c1 -> case c1 `leChar#` '\x7F'# of
+      1# | f1 (C# c1) -> OK# (C# c1) (plusAddr# buf 1#) n
+         | otherwise  -> Fail#
+      _  -> case eqAddr# eob (plusAddr# buf 1#) of
+        1# -> Fail#
+        _ -> case indexCharOffAddr# buf 1# of
+          c2 -> case c1 `leChar#` '\xDF'# of
+            1# ->
+              let resc = C# (chr# (((ord# c1 -# 0xC0#) `uncheckedIShiftL#` 6#) `orI#`
+                                   (ord# c2 -# 0x80#)))
+              in case f2 resc of
+                   True -> OK# resc (plusAddr# buf 2#) n
+                   _    -> Fail#
+            _ -> case eqAddr# eob (plusAddr# buf 2#) of
+              1# -> Fail#
+              _  -> case indexCharOffAddr# buf 2# of
+                c3 -> case c1 `leChar#` '\xEF'# of
+                  1# ->
+                    let resc = C# (chr# (((ord# c1 -# 0xE0#) `uncheckedIShiftL#` 12#) `orI#`
+                                         ((ord# c2 -# 0x80#) `uncheckedIShiftL#`  6#) `orI#`
+                                         (ord# c3 -# 0x80#)))
+                    in case f3 resc of
+                         True -> OK# resc (plusAddr# buf 3#) n
+                         _    -> Fail#
+                  _ -> case eqAddr# eob (plusAddr# buf 3#) of
+                    1# -> Fail#
+                    _  -> case indexCharOffAddr# buf 3# of
+                      c4 ->
+                        let resc = C# (chr# (((ord# c1 -# 0xF0#) `uncheckedIShiftL#` 18#) `orI#`
+                                             ((ord# c2 -# 0x80#) `uncheckedIShiftL#` 12#) `orI#`
+                                             ((ord# c3 -# 0x80#) `uncheckedIShiftL#`  6#) `orI#`
+                                              (ord# c4 -# 0x80#)))
+                        in case f4 resc of
+                             True -> OK# resc (plusAddr# buf 4#) n
+                             _    -> Fail#
+{-# inline satisfy' #-}
+
 -- | Skip a parser zero or more times. This fails if the given parser fails with
 --   having consumed input.
 many_ :: Parser r e a -> Parser r e ()
@@ -400,7 +451,7 @@ setPos :: Pos -> Parser r e ()
 setPos s = Parser \r eob _ n -> OK# () (pos2Addr# eob s) n
 {-# inline setPos #-}
 
-data Span = Span Pos Pos deriving (Eq, Show)
+data Span = Span !Pos !Pos deriving (Eq, Show)
 
 -- | Bind the result together with the span of the result.
 spanned :: Parser r e a -> (a -> Span -> Parser r e b) -> Parser r e b
@@ -683,7 +734,7 @@ insert rule = go where
     Branch rule' (M.alter (Just . maybe (go cs nilTrie) (go cs)) c ts)
 
 fromList :: [(Int, String)] -> Trie Rule
-fromList = foldl' (\t (r, s) -> insert r (charToBytes =<< s) t) nilTrie
+fromList = foldl' (\t (!r, !s) -> insert r (charToBytes =<< s) t) nilTrie
 
 -- | Decorate a trie with the minimum lengths of non-empty paths. This
 --   is used later to place `ensureBytes#`.
@@ -727,7 +778,7 @@ fallbacks = go Nothing 0  where
 ensureBytes :: Trie' (Rule, Int, Int) -> Trie' (Rule, Int, Maybe Int)
 ensureBytes = go 0 where
   go :: Int -> Trie' (Rule, Int, Int) -> Trie' (Rule, Int, Maybe Int)
-  go res = \case
+  go !res = \case
     Branch' (r, n, d) ts
       | M.null ts -> Branch' (r, n, Nothing) mempty
       |  res < 1  -> Branch' (r, n, Just d ) (go (d   - 1) <$> ts)
@@ -759,8 +810,8 @@ genTrie (rules, t) = do
         Branch' (r, n, alloc) ts
           | M.null ts -> pure $ VarE $ fst $ branches M.! r
           | otherwise -> do
-              next         <- (traverse . traverse) go (M.toList ts)
-              defaultCase  <- fallback r (n + 1)
+              !next         <- (traverse . traverse) go (M.toList ts)
+              !defaultCase  <- fallback r (n + 1)
 
               let cases = DoE $
                     [BindS (VarP (mkName "c")) (VarE 'scanAny8#),
@@ -789,11 +840,11 @@ parseSwitch :: Q Exp -> Q ([(String, Exp)], Maybe Exp)
 parseSwitch exp = exp >>= \case
   CaseE (UnboundVarE _) []    -> error "switch: empty clause list"
   CaseE (UnboundVarE _) cases -> do
-    (cases, last) <- pure (init cases, last cases)
-    cases <- forM cases \case
+    (!cases, !last) <- pure (init cases, last cases)
+    !cases <- forM cases \case
       Match (LitP (StringL str)) (NormalB rhs) [] -> pure (str, rhs)
       _ -> error "switch: expected a match clause on a string literal"
-    (cases, last) <- case last of
+    (!cases, !last) <- case last of
       Match (LitP (StringL str)) (NormalB rhs) [] -> pure (cases ++ [(str, rhs)], Nothing)
       Match WildP                (NormalB rhs) [] -> pure (cases, Just rhs)
       _ -> error "switch: expected a match clause on a string literal or a wildcard"
@@ -804,22 +855,23 @@ genSwitchTrie' :: Maybe Exp -> [(String, Exp)] -> Maybe Exp
               -> (Map (Maybe Int) Exp, Trie' (Rule, Int, Maybe Int))
 genSwitchTrie' postAction cases fallback =
 
-  let (branches, strings) = unzip do
-        (i, (str, rhs)) <- zip [0..] cases
+  let (!branches, !strings) = unzip do
+        (!i, (!str, !rhs)) <- zip [0..] cases
         case postAction of
-          Nothing   -> pure ((Just i, rhs), (i, str))
-          Just post -> pure ((Just i, (VarE '(>>)) `AppE` post `AppE` rhs), (i, str))
+          Nothing    -> pure ((Just i, rhs), (i, str))
+          Just !post -> pure ((Just i, (VarE '(>>)) `AppE` post `AppE` rhs), (i, str))
 
-  in ( M.fromList ((Nothing, maybe (VarE 'empty) id fallback) : branches)
-     , compileTrie strings)
+      !m    =  M.fromList ((Nothing, maybe (VarE 'empty) id fallback) : branches)
+      !trie = compileTrie strings
+  in (m , trie)
 
 -- | Switch expression with an optional first argument for performing a post-processing
 --   action after every successful branch matching.
 switch' :: Maybe (Q Exp) -> Q Exp -> Q Exp
 switch' postAction exp = do
-  postAction <- sequence postAction
-  (cases, fallback) <- parseSwitch exp
-  genTrie (genSwitchTrie' postAction cases fallback)
+  !postAction <- sequence postAction
+  (!cases, !fallback) <- parseSwitch exp
+  genTrie $! genSwitchTrie' postAction cases fallback
 
 switch :: Q Exp -> Q Exp
 switch = switch' Nothing

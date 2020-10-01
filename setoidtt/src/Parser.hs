@@ -8,7 +8,7 @@ import FlatParse hiding (Parser, runParser, testParser, string, char, switch, cu
 import qualified FlatParse
 import qualified Data.ByteString as B
 
-import Common
+import Common hiding (Set)
 import Presyntax
 import Lexer
 
@@ -65,28 +65,36 @@ Indentation:
 --------------------------------------------------------------------------------
 
 identStartChar :: Parser ()
-identStartChar = satisfyA_ isLatinLetter <|> do
-  c <- anyChar
-  if c == ' ' || c == '('  || c == ')' then
-    empty
-  else if isGreekLetter c then
-    pure ()
-  else if isLetter c then
-    pure ()
-  else
-    empty
+identStartChar =
+  () <$ satisfy' isLatinLetter isGreekLetter isLetter isLetter
 
 identChar :: Parser ()
-identChar = satisfyA_ (\c -> isLatinLetter c || FlatParse.isDigit c) <|> do
-  c <- anyChar
-  if c == ' ' || c == '('  || c == ')' then
-    empty
-  else if isGreekLetter c then
-    pure ()
-  else if isAlphaNum c then
-    pure ()
-  else
-    empty
+identChar =
+  () <$ satisfy' (\c -> isLatinLetter c || FlatParse.isDigit c) isGreekLetter isAlphaNum isAlphaNum
+
+-- identStartChar :: Parser ()
+-- identStartChar = satisfyA_ isLatinLetter <|> do
+--   c <- anyChar
+--   if c == ' ' || c == '('  || c == ')' then
+--     empty
+--   else if isGreekLetter c then
+--     pure ()
+--   else if isLetter c then
+--     pure ()
+--   else
+--     empty
+
+-- identChar :: Parser ()
+-- identChar = satisfyA_ (\c -> isLatinLetter c || FlatParse.isDigit c) <|> do
+--   c <- anyChar
+--   if c == ' ' || c == '('  || c == ')' then
+--     empty
+--   else if isGreekLetter c then
+--     pure ()
+--   else if isAlphaNum c then
+--     pure ()
+--   else
+--     empty
 
 pRawIdent :: Parser ()
 pRawIdent = identStartChar >> many_ identChar
@@ -108,6 +116,7 @@ pKeyword = $(FlatParse.switch [| case _ of
   "tt"      -> pure ()
   "⊥"       -> pure ()
   "exfalso" -> pure () |])
+
 
 -- OPTIMIZE TODO: try alternate "fast-path" identifier parsing
 pIdent :: Parser Span
@@ -198,20 +207,20 @@ pProjExp = do
 
 goApp :: Tm -> Parser Tm
 goApp t = br pBraceL
-  (do optional (pIdent <* pAssign) >>= \case
-        Nothing -> do
-          u <- pTm
-          pBraceR `cut` "expected \"}\" in implicit application"
-          goApp (App t u (NoName Impl))
-        Just x  -> do
+  (do optioned (pIdent <* pAssign)
+        (\x -> do
           u <- pTm
           pBraceR `cut` "expected \"}\" in implicit application"
           goApp (App t u (Named x)))
-  (do optional pAtomicExp >>= \case
-        Nothing -> pure t
-        Just u  -> do
+        (do
+          u <- pTm
+          pBraceR `cut` "expected \"}\" in implicit application"
+          goApp (App t u (NoName Impl))))
+  (do optioned pAtomicExp
+        (\u -> do
           u <- goProj u
           goApp (App t u (NoName Expl)))
+        (pure t))
 
 pAppExp :: Parser Tm
 pAppExp = do
@@ -219,6 +228,7 @@ pAppExp = do
   goApp t
 
 --------------------------------------------------------------------------------
+
 
 -- TODO: prefix (=) as well!
 pEqExp :: Parser Tm
@@ -231,24 +241,24 @@ pEqExp = do
 pSigmaExp :: Parser Tm
 pSigmaExp = do
   pos <- getPos
-  optional (pParL *> pBind <* pColon) >>= \case
-
-    Just x -> do
+  optioned (pParL *> pBind <* pColon)
+    (\x -> do
       a <- pTm
       pParR           `cut` "expected \")\" in sigma binder"
       pTimes          `cut` "expected \"×\" or \"*\" after binder in sigma type expression"
       b <- pSigmaExp
-      pure $ Sg pos x a b
-
-    Nothing -> do
+      pure $ Sg pos x a b)
+    (do
       t <- pEqExp
-      br pTimes (Sg pos DontBind t <$> pSigmaExp) (pure t)
+      br pTimes (Sg pos DontBind t <$> pSigmaExp) (pure t))
 
 --------------------------------------------------------------------------------
 
 -- OPTIMIZE TODO: eliminate the intermediate list and structures, use instead CPS.
 -- FIXME: the "spanned" in pImplPiBinder is wonky because it includes the trailing whitespace
 --        (the optimized solution with precise lookahead should also return the correct span)
+
+
 
 pExplPiBinder :: Parser ([Bind], Tm, Icit)
 pExplPiBinder = do
@@ -276,28 +286,26 @@ pPiBinder = $(switch [| case _ of
 pPiExp :: Parser Tm
 pPiExp = do
   pos <- getPos
-  optional (some pPiBinder) >>= \case
-
-    -- pi/sigma ambiguity resolution
-    Just [([x], a, Expl)] -> $(switch [| case _ of
-      "->" -> Pi pos x Expl a <$> pPiExp
-      "→"  -> Pi pos x Expl a <$> pPiExp
-      "*"  -> Sg pos x a <$> pSigmaExp
-      "×"  -> Sg pos x a <$> pSigmaExp
-      _    -> err "expected \"->\", \"→\", \"×\" or \"*\" after binder" |])
-
-    Just binders -> do
-      pArrow        `cut` "expected \"->\" or \"→\" in function type"
-      b <- pPiExp
-      pure $!
-        foldr' (\(xs, a, i) t -> foldr' (\x b -> Pi pos x i a b) t xs)
-               b binders
-
-    Nothing -> do
+  optioned (some pPiBinder)
+    (\case
+        -- pi/sigma ambiguity resolution
+        [([x], a, Expl)] -> $(switch [| case _ of
+          "->" -> Pi pos x Expl a <$> pPiExp
+          "→"  -> Pi pos x Expl a <$> pPiExp
+          "*"  -> Sg pos x a <$> pSigmaExp
+          "×"  -> Sg pos x a <$> pSigmaExp
+          _    -> err "expected \"->\", \"→\", \"×\" or \"*\" after binder" |])
+        binders -> do
+          pArrow        `cut` "expected \"->\" or \"→\" in function type"
+          b <- pPiExp
+          pure $!
+            foldr' (\(xs, a, i) t -> foldr' (\x b -> Pi pos x i a b) t xs)
+                   b binders)
+    (do
       t <- pSigmaExp
       br pArrow
         (Pi pos DontBind Expl t <$> pPiExp)
-        (pure t)
+        (pure t))
 
 --------------------------------------------------------------------------------
 
@@ -409,3 +417,5 @@ parseFile path = do
     OK a _ _ -> pure a
     Fail     -> error "impossible"
     Err e    -> putStrLn (showError path src e) >> error "parse error"
+
+-- 75,884,864 alloc
