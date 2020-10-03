@@ -5,12 +5,16 @@ module Common (
   ) where
 
 import qualified Data.ByteString as B
-import qualified Data.IntSet as IS
 import Data.String
+import GHC.Stack
 
 import FlatParse
 
 --------------------------------------------------------------------------------
+
+impossible :: HasCallStack => a
+impossible = error "impossible"
+{-# inline impossible #-}
 
 data Icit
   = Impl
@@ -19,7 +23,7 @@ data Icit
 
 data ArgInfo
   = NoName Icit
-  | Named Span
+  | Named {-# unpack #-} Span
   deriving Show
 
 newtype Ix = Ix Int
@@ -34,7 +38,5 @@ newtype Name = Name B.ByteString
 newtype Meta = Meta Int
   deriving (Eq, Ord, Show, Num) via Int
 
-data U
-  = Set
-  | UMax IS.IntSet   -- ^ Maximum of a set of universe metas. Empty set = Prop.
-  deriving Show
+newtype UMeta = UMeta Int
+  deriving (Eq, Ord, Show, Num) via Int

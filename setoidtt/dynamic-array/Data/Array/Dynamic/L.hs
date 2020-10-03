@@ -10,6 +10,7 @@ module Data.Array.Dynamic.L  (
   , unsafeRead
   , unsafeWrite
   , write
+  , modify'
   , unsafeLast
   , Data.Array.Dynamic.L.last
   , isEmpty
@@ -56,9 +57,10 @@ unsafeRead (Array r) i = do
 read :: Array a -> Int -> IO a
 read (Array r) i = do
   s <- RF.read =<< RUU.readFst r
-  if i < s
-    then unsafeRead (Array r) i
-    else error "Data.Array.Dynamic.read: out of bounds"
+  if 0 <= i && i < s then
+    unsafeRead (Array r) i
+  else
+    error "Data.Array.Dynamic.read: out of bounds"
 {-# inline read #-}
 
 unsafeWrite :: Array a -> Int -> a -> IO ()
@@ -70,10 +72,21 @@ unsafeWrite (Array r) i a = do
 write :: Array a -> Int -> a -> IO ()
 write (Array r) i ~a = do
   s <- RF.read =<< RUU.readFst r
-  if i < s
-    then unsafeWrite (Array r) i a
-    else error "Data.Array.Dynamic.write: out of bounds"
+  if 0 <= i && i < s then
+    unsafeWrite (Array r) i a
+  else
+    error "Data.Array.Dynamic.write: out of bounds"
 {-# inline write #-}
+
+modify' :: Array a -> Int -> (a -> a) -> IO ()
+modify' (Array r) i f = do
+  s <- RF.read =<< RUU.readFst r
+  if 0 <= i && i < s then do
+    elems <- RUU.readSnd r
+    LM.modify' elems i f
+  else
+    error "Data.Array.Dynamic.write: out of bounds"
+{-# inline modify' #-}
 
 push :: Array a -> a -> IO ()
 push (Array r) ~a = do

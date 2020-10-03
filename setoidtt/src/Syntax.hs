@@ -1,13 +1,37 @@
 
 module Syntax where
 
+import qualified Data.IntSet as IS
 import Common
 
 type Ty = Tm
 
+data U
+  = Set
+  | UMax IS.IntSet   -- ^ Maximum of a set of universe metas. Empty set = Prop.
+  deriving Show
+
+pattern Prop :: U
+pattern Prop <- ((\case UMax xs -> IS.null xs; _ -> False) -> True) where
+  Prop = UMax mempty
+
+instance Semigroup U where
+  UMax as <> UMax bs = UMax (as <> bs)
+  _       <> _       = Set
+  {-# inline (<>) #-}
+
+instance Monoid U where
+  mempty = Prop
+  {-# inline mempty #-}
+
+pattern UVar :: UMeta -> U
+pattern UVar x <- ((\case UMax xs -> IS.toList xs;_ -> []) -> [UMeta -> x]) where
+  UVar (UMeta x) = UMax (IS.singleton x)
+
 data Tm
   = LocalVar Ix
-  | TopVar Lvl
+  | TopDef Lvl
+  | Postulate Lvl
   | MetaVar Meta
   | Let Name Ty U Tm Tm
 
@@ -21,14 +45,18 @@ data Tm
   | ProjField Tm Name Int U
   | Pair Tm U Tm U
 
-  | U U
-  | Top            -- ^
-  | Tt             -- ^ Tt : Top
-  | Bot            -- ^
+  | U U            -- ^ U u : Set
+  | Top            -- ^ Top : Prop
+  | Tt             -- ^ Tt  : Top
+  | Bot            -- ^ Bot : Prop
+
+  -- TODO: all of these should be fully applied, eta-expanded in elaboration
+  -- clearly being fully applied is the most common, and it's way more compact & faster
+  -- to store that way
   | Eq             -- ^ {A : Set} → A → A → Prop
   | Coe            -- ^ {A B : Set} → Eq {Set} A B → A → B
   | Refl           -- ^ {A : Set}(x : A) → Eq x x
   | Sym            -- ^ {A : Set}{x y : A} → Eq x y → Eq y x
   | Trans          -- ^ {A : Set}{x y z : A} → Eq x y → Eq y z → Eq x z
   | Ap             -- ^ {A B : Set}(f : A → B){x y : A} → Eq x y → Eq (f x) (f y)
-  | Exfalso U      -- ^ {A : Set U i} → Bot → A
+  | Exfalso U      -- ^ {A : U i} → Bot → A

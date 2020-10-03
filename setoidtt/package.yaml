@@ -74,11 +74,11 @@ source-dirs:
 data-files:
   - bench/parse01.stt
 
-ghc-options:
-  - -ddump-simpl
-  - -dsuppress-all
-  - -dno-suppress-type-signatures
-  - -ddump-to-file
+# ghc-options:
+#   - -ddump-simpl
+#   - -dsuppress-all
+#   - -dno-suppress-type-signatures
+#   - -ddump-to-file
 
 executables:
   setoidtt:

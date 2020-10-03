@@ -56,7 +56,7 @@ unsafeRead (Array r) i = do
 read :: Unlifted a => Array a -> Int -> IO a
 read (Array r) i = do
   s <- RF.read =<< RUU.readFst r
-  if i < s
+  if 0 <= i && i < s
     then unsafeRead (Array r) i
     else error "Data.Array.Dynamic.read: out of bounds"
 {-# inline read #-}
@@ -70,7 +70,7 @@ unsafeWrite (Array r) i a = do
 write :: Unlifted a => Array a -> Int -> a -> IO ()
 write (Array r) i ~a = do
   s <- RF.read =<< RUU.readFst r
-  if i < s
+  if 0 <= i && i < s
     then unsafeWrite (Array r) i a
     else error "Data.Array.Dynamic.write: out of bounds"
 {-# inline write #-}

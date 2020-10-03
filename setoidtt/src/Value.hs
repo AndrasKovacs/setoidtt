@@ -2,13 +2,13 @@
 module Value where
 
 import Common
-import qualified Syntax as S
+import Syntax (U(..), Tm, pattern Prop)
 
+import qualified Data.IntSet as IS
 
 {-
 
 Principles:
-
 - Computation can get stuck rigidly, in which case nothing can make it progress, or
   flexibly, which can be progressed by meta solutions.
 
@@ -39,88 +39,100 @@ Principles:
   Conclusion: we should remember exactly one blocking meta.
 -}
 
-data Closure
+data Closure = Closure (# Val -> Val | (# Env, Tm #) #)
 
+pattern CFun f       = Closure (# f | #)
+pattern CClose env t = Closure (# | (# env, t #) #)
+{-# complete CFun, CClose #-}
 
--- | Builtin constants which be eliminated (applied, projected), but the eliminations
---   can never progress.
-data Axiom
-  = ARefl
-  | ASym
-  | ATrans
-  | AExfalso U
+data Env = ENil | EDef Env ~Val
 
--- | Expressions which be eliminated (applied, projected), but the eliminations
---   can never progress.
 data RigidHead
-  = RHLocalVar Lvl
+  = RHBoundVar Lvl
   | RHPostulate Lvl
-  | RHAxiom Axiom
-  | RHCoe Val Val ~Val Val  -- ^ Rigid coercion. We don't know here exactly what blocked
-                            --   coe, but we don't care bc this coe can't ever be forced.
-
-data Spine
-  = SNil
-  | SApp Spine
+  | RHRefl
+  | RHSym
+  | RHAp
+  | RHTrans
+  | RHExfalso U
+  | RHCoe Val Val ~Val Val        -- Rigidly stuck coercion.
 
 data FlexHead
   = FHMeta Meta
-  | FHCoe Meta Val Val ~Val Val
+  | FHUMeta IS.IntSet
+
+data UnfoldHead
+  = UHMeta Meta
+  | UHTopDef Lvl
+
+data Spine
+  = SNil
+
+  | SApp Spine ~Val U Icit
+
+  -- blocked projections
+  | SProj1 Spine U
+  | SProj2 Spine U
+  | SProjField Spine Name Int U
+
+  -- blocked coercions. We split of the full rigid stuck coe into RigidHead, because
+  -- that's not blocked on any single head symbol; rather it's blocked because of the
+  -- rigid failure of regularity check.
+  | SCoeSrc Spine ~Val ~Val ~Val  -- stuck on flex source type
+  | SCoeTgt Val Spine ~Val ~Val   -- stuck on flex target type
+  | SCoeComp Val Val ~Val Spine   -- tgt & src both rigid neutral but body is flex
+  | SCoeRefl Val Val ~Val Val     -- stuck on meta in regularity check (no recursive Spine!)
+
+  -- blocked Eq type
+  | SEqType Spine ~Val ~Val
+  | SEqLhs VTy Spine ~Val
+  | SEqRhs VTy Val Spine
 
 type VTy = Val
-
 data Val
-  = NeRigid RigidHead Spine   -- ^ Elimination which cannot progress.
-  | NeFlex FlexHead Spine     -- ^ Elimination which might progress.
+  -- Rigid stuck values
+  = Rigid RigidHead Spine
 
-  | EqRigid Val Val Val       -- ^ Equality type which cannot compute.
-  | EqFlex Meta Val Val Val   -- ^ Equality type which might compute.
+  -- Flexibly stuck values
+  | Flex FlexHead Spine
 
-  | UnfoldTop Lvl Spine ~Val  -- ^ Lazy non-deterministic unfolding of a top-level definition.
-  | UnfoldEq Val Val Val Val  -- ^ Trace of an Eq computation which reduces to a non-Eq type.
-                              --   "UnfoldEq a t u b" implies that (b = Eq a t u) and
-                              --   b is a canonical type different to Eq.
+  -- Non-deterministic unfoldings
+  | Unfold UnfoldHead Spine ~Val
+  | Eq Val Val ~Val  -- An equality type which computes to a non-Eq type
 
+  -- Canonical values
+  | U U
   | Top
   | Tt
   | Bot
   | Pair ~Val U ~Val U
-  | Sg Name VTy U {-# unpack #-} Closure U
-  | Pi Name Icit ~VTy U {-# unpack #-} Closure
+  | Sg  Name       VTy U {-# unpack #-} Closure U
+  | Pi  Name Icit ~VTy U {-# unpack #-} Closure
   | Lam Name Icit ~VTy U {-# unpack #-} Closure
 
+pattern SAppIS sp t = SApp sp t Set  Impl
+pattern SAppES sp t = SApp sp t Set  Expl
+pattern SAppIP sp t = SApp sp t Prop Impl
+pattern SAppEP sp t = SApp sp t Prop Expl
 
+pattern LamIS x a b = Lam x Impl a Set  (CFun b)
+pattern LamES x a b = Lam x Expl a Set  (CFun b)
+pattern LamIP x a b = Lam x Impl a Prop (CFun b)
+pattern LamEP x a b = Lam x Expl a Prop (CFun b)
 
+pattern PiES x a b = Pi x Expl a Set (CFun b)
 
+pattern VMeta m      = Flex (FHMeta m) SNil
+pattern VSet         = U Set
+pattern VProp        = U Prop
+pattern VRefl a t    = Rigid RHRefl (SNil `SAppIS` a `SAppES` t)
+pattern VSym a x y p = Rigid RHSym (SNil `SAppIS` a `SAppIS` x `SAppIS` y `SAppES` p)
 
--- data Head
---   = HLocalVar Lvl
---   | HTopVar Lvl
---   | HMeta Meta
---   | HAxiom Axiom
---   | HCoe U Val Val ~Val Val
+pattern VTrans a x y z p q =
+  Rigid RHTrans (SNil `SAppIS` a `SAppIS` x `SAppIS` y `SAppIS` z `SAppEP` p `SAppEP` q)
 
--- data Head
---   = HVar Lvl
---   | HMeta MId
---   | HAxiom Axiom
---   | HCoe U Val Val ~Val Val
+pattern VAp a b f x y p =
+  Rigid RHAp (SNil `SAppIS` a `SAppIS` b `SAppES` f `SAppIS` x `SAppIS` y `SAppEP` p)
 
--- data Val
---   = VNe Head Spine
---   | VPi Name Icit ~VTy U (VTy -> VTy)
---   | VLam Name Icit ~VTy U (Val -> Val)
---   | VU U
---   | VTop
---   | VTt
---   | VBot
---   | VEqGlue Val Val Val Val -- ^ (VGlue a t u b) means that b is a type which is definitionally
---                             --   Equal to (Eq a t u).
---                             --   Invariant: b is a canonical type *different* from Eq!
---   | VEq Val Val Val
---   | VSg Name ~Val U (VTy -> VTy) U
---   | VPair ~Val U ~Val U
-
---   | VNat
---   | VZero
---   | VSuc ~Val
+pattern VExfalso u a p =
+  Rigid (RHExfalso u) (SNil `SAppIS` a `SAppEP` p)

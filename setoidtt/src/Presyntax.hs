@@ -3,7 +3,7 @@
 
 module Presyntax where
 
-import Common hiding (Set)
+import Common
 import FlatParse
 
 data Bind

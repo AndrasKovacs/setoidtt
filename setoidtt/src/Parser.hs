@@ -8,7 +8,7 @@ import FlatParse hiding (Parser, runParser, testParser, string, char, switch, cu
 import qualified FlatParse
 import qualified Data.ByteString as B
 
-import Common hiding (Set)
+import Common
 import Presyntax
 import Lexer
 
@@ -72,30 +72,6 @@ identChar :: Parser ()
 identChar =
   () <$ satisfy' (\c -> isLatinLetter c || FlatParse.isDigit c) isGreekLetter isAlphaNum isAlphaNum
 
--- identStartChar :: Parser ()
--- identStartChar = satisfyA_ isLatinLetter <|> do
---   c <- anyChar
---   if c == ' ' || c == '('  || c == ')' then
---     empty
---   else if isGreekLetter c then
---     pure ()
---   else if isLetter c then
---     pure ()
---   else
---     empty
-
--- identChar :: Parser ()
--- identChar = satisfyA_ (\c -> isLatinLetter c || FlatParse.isDigit c) <|> do
---   c <- anyChar
---   if c == ' ' || c == '('  || c == ')' then
---     empty
---   else if isGreekLetter c then
---     pure ()
---   else if isAlphaNum c then
---     pure ()
---   else
---     empty
-
 pRawIdent :: Parser ()
 pRawIdent = identStartChar >> many_ identChar
 
@@ -117,8 +93,6 @@ pKeyword = $(FlatParse.switch [| case _ of
   "⊥"       -> pure ()
   "exfalso" -> pure () |])
 
-
--- OPTIMIZE TODO: try alternate "fast-path" identifier parsing
 pIdent :: Parser Span
 pIdent = lexeme do
   spanned pRawIdent \_ span -> do
@@ -229,7 +203,6 @@ pAppExp = do
 
 --------------------------------------------------------------------------------
 
-
 -- TODO: prefix (=) as well!
 pEqExp :: Parser Tm
 pEqExp = do
@@ -257,8 +230,6 @@ pSigmaExp = do
 -- OPTIMIZE TODO: eliminate the intermediate list and structures, use instead CPS.
 -- FIXME: the "spanned" in pImplPiBinder is wonky because it includes the trailing whitespace
 --        (the optimized solution with precise lookahead should also return the correct span)
-
-
 
 pExplPiBinder :: Parser ([Bind], Tm, Icit)
 pExplPiBinder = do
@@ -417,5 +388,3 @@ parseFile path = do
     OK a _ _ -> pure a
     Fail     -> error "impossible"
     Err e    -> putStrLn (showError path src e) >> error "parse error"
-
--- 75,884,864 alloc
