@@ -19,7 +19,7 @@ impossible = error "impossible"
 data Icit
   = Impl
   | Expl
-  deriving Show
+  deriving (Eq, Show)
 
 data ArgInfo
   = NoName Icit
@@ -34,6 +34,12 @@ newtype Lvl = Lvl Int
 
 newtype Name = Name B.ByteString
   deriving (Eq, Ord, Show, IsString) via B.ByteString
+
+pick :: Name -> Name -> Name
+pick "_" "_" = "x"
+pick "_" x   = x
+pick x   "_" = x
+pick x   y   = x
 
 newtype Meta = Meta Int
   deriving (Eq, Ord, Show, Num) via Int
