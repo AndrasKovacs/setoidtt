@@ -5,10 +5,11 @@ import qualified Data.IntSet as IS
 import Common
 
 type Ty = Tm
+type UMax = IS.IntSet
 
 data U
   = Set
-  | UMax IS.IntSet   -- ^ Maximum of a set of universe metas. Empty set = Prop.
+  | UMax UMax   -- ^ Maximum of a set of universe metas. Empty set = Prop.
   deriving Show
 
 pattern Prop :: U

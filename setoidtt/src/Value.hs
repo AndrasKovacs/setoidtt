@@ -1,9 +1,8 @@
 
 module Value where
 
-import qualified Data.IntSet as IS
 import Common
-import Syntax (U(..), Tm, pattern Prop)
+import Syntax (U(..), Tm, pattern Prop, type UMax)
 
 --------------------------------------------------------------------------------
 
@@ -23,55 +22,22 @@ data RigidHead
   | RHAp
   | RHTrans
   | RHExfalso U
-  | RHCoe Val Val ~Val Val        -- Rigidly stuck coercion.
+  | RHCoe Val Val ~Val Val
 
 data FlexHead
   -- blocking on Meta
   = FHMeta Meta
+  | FHCoeRefl Meta Val Val Val Val
 
-  -- All the different ways of blocking on UMax (rather horrible!)
-  --------------------------------------------------------------------------------
-
-  | FHCoePiUMax1 Name Icit ~VTy IS.IntSet {-# unpack #-} Closure
-                 Name Icit ~VTy U         {-# unpack #-} Closure ~Val ~Val
-  | FHCoePiUMax2 Name Icit ~VTy U         {-# unpack #-} Closure
-                 Name Icit ~VTy IS.IntSet {-# unpack #-} Closure ~Val ~Val
-
-  | FHEqCoeSgUMax11 Name ~VTy IS.IntSet {-# unpack #-} Closure U
-                    Name ~VTy U         {-# unpack #-} Closure U         ~Val ~Val
-  | FHEqCoeSgUMax12 Name ~VTy U         {-# unpack #-} Closure IS.IntSet
-                    Name ~VTy U         {-# unpack #-} Closure U         ~Val ~Val
-  | FHEqCoeSgUMax21 Name ~VTy U         {-# unpack #-} Closure U
-                    Name ~VTy IS.IntSet {-# unpack #-} Closure U         ~Val ~Val
-  | FHEqCoeSgUMax22 Name ~VTy U         {-# unpack #-} Closure U
-                    Name ~VTy U         {-# unpack #-} Closure IS.IntSet ~Val ~Val
-
-  | FHEqUMax IS.IntSet ~Val ~Val
-  | FHEqSgUMax1 Name ~VTy IS.IntSet Closure U
-  | FHEqSgUMax2 Name ~VTy U Closure IS.IntSet
-
-  | FHEqSetUMax1 IS.IntSet U
-  | FHEqSetUMax2 U IS.IntSet
-
-  | FHEqSetPiUMax1 Name Icit ~VTy IS.IntSet {-# unpack #-} Closure
-                   Name Icit ~VTy U         {-# unpack #-} Closure
-  | FHEqSetPiUMax2 Name Icit ~VTy U         {-# unpack #-} Closure
-                   Name Icit ~VTy IS.IntSet {-# unpack #-} Closure
-
-  | FHEqSetSgUMax11 Name ~VTy IS.IntSet {-# unpack #-} Closure U
-                    Name ~VTy U         {-# unpack #-} Closure U
-  | FHEqSetSgUMax12 Name ~VTy U         {-# unpack #-} Closure IS.IntSet
-                    Name ~VTy U         {-# unpack #-} Closure U
-  | FHEqSetSgUMax21 Name ~VTy U         {-# unpack #-} Closure U
-                    Name ~VTy IS.IntSet {-# unpack #-} Closure U
-  | FHEqSetSgUMax22 Name ~VTy U         {-# unpack #-} Closure U
-                    Name ~VTy U         {-# unpack #-} Closure IS.IntSet
+  -- blocking on UMax
+  | FHCoeUMax UMax Val Val ~Val ~Val
+  | FHEqUMax UMax Val Val Val
 
 data UnfoldHead
   = UHMeta Meta
   | UHTopDef Lvl
 
--- All the different ways of blocking on a Val in a nested way.
+-- Blocking on Val in nested ways.
 data Spine
   = SNil
   | SApp Spine ~Val U Icit
@@ -83,7 +49,6 @@ data Spine
   | SCoeSrc Spine ~Val ~Val ~Val
   | SCoeTgt Val Spine ~Val ~Val
   | SCoeComp Val Val ~Val Spine
-  | SCoeRefl Val Val ~Val Val
 
   | SEqType Spine ~Val ~Val
   | SEqSetLhs Spine ~Val
