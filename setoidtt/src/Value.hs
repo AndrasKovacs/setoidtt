@@ -22,11 +22,11 @@ data Env = ENil | EDef Env ~Val
 data RigidHead
   = RHLocalVar Lvl
   | RHPostulate Lvl
-  | RHRefl
-  | RHSym
-  | RHAp
-  | RHTrans
-  | RHExfalso U
+  | RHRefl ~VTy ~Val
+  | RHSym ~Val ~Val ~Val ~Val
+  | RHAp ~Val ~Val ~Val ~Val ~Val ~Val
+  | RHTrans ~Val ~Val ~Val ~Val ~Val ~Val
+  | RHExfalso U ~Val ~Val
   | RHCoe Val Val ~Val Val
 
 data FlexHead
@@ -83,7 +83,7 @@ data Val
 
 --------------------------------------------------------------------------------
 
-pattern VVar x = Rigid (RHLocalVar x) SNil
+-- pattern VVar x = Rigid (RHLocalVar x) SNil
 
 pattern SAppIS sp t <- SApp sp t Set  Impl where
   SAppIS sp ~t = SApp sp t Set  Impl
@@ -110,36 +110,30 @@ pattern PiEP x a b <- Pi x Expl a Prop (CFun b) where
 pattern SgPP x a b <- Sg x a Prop (CFun b) Prop where
   SgPP ~x ~a b = Sg x a Prop (CFun b) Prop
 
-pattern VMeta m      = Flex (FHMeta m) SNil
-pattern VSet         = U Set
-pattern VProp        = U Prop
+pattern VMeta m = Flex (FHMeta m) SNil
+pattern VSet    = U Set
+pattern VProp   = U Prop
+pattern VVar x  = Rigid (RHLocalVar x) SNil
 
-pattern VRefl a t    <- Rigid RHRefl (SNil `SAppIS` a `SAppES` t) where
-  VRefl ~a ~t = Rigid RHRefl (SNil `SAppIS` a `SAppES` t)
+pattern Exfalso u a t <- Rigid (RHExfalso u a t) SNil where
+  Exfalso ~u ~a ~t = Rigid (RHExfalso u a t) SNil
 
-pattern VSym a x y p <- Rigid RHSym (SNil `SAppIS` a `SAppIS` x `SAppIS` y `SAppES` p) where
-  VSym ~a ~x ~y ~p = Rigid RHSym (SNil `SAppIS` a `SAppIS` x `SAppIS` y `SAppES` p)
+pattern Refl a t <- Rigid (RHRefl a t) SNil where
+  Refl ~a ~t = Rigid (RHRefl a t) SNil
 
-pattern VTrans a x y z p q <-
-  Rigid RHTrans (SNil `SAppIS` a `SAppIS` x `SAppIS` y `SAppIS` z `SAppEP` p `SAppEP` q) where
-  VTrans ~a ~x ~y ~z ~p ~q = Rigid RHTrans (SNil `SAppIS` a `SAppIS` x `SAppIS` y `SAppIS` z `SAppEP` p `SAppEP` q)
+pattern Sym a x y p <- Rigid (RHSym a x y p) SNil where
+  Sym ~a ~x ~y ~p = Rigid (RHSym a x y p) SNil
 
-pattern VAp a b f x y p <-
-  Rigid RHAp (SNil `SAppIS` a `SAppIS` b `SAppES` f `SAppIS` x `SAppIS` y `SAppEP` p) where
-  VAp ~a ~b ~f ~x ~y ~p = Rigid RHAp (SNil `SAppIS` a `SAppIS` b `SAppES` f `SAppIS` x `SAppIS` y `SAppEP` p)
+pattern Trans a x y z p q <- Rigid (RHTrans a x y z p q) SNil where
+  Trans ~a ~x ~y ~z ~p ~q = Rigid (RHTrans a x y z p q) SNil
 
-pattern VExfalso u a p <-
-  Rigid (RHExfalso u) (SNil `SAppIS` a `SAppEP` p) where
-  VExfalso ~u ~a ~p = Rigid (RHExfalso u) (SNil `SAppIS` a `SAppEP` p)
-
-uscore :: Name
-uscore = "_"
-{-# noinline uscore #-}
+pattern Ap a b f x y p <- Rigid (RHAp a b f x y p) SNil where
+  Ap ~a ~b ~f ~x ~y ~p = Rigid (RHAp a b f x y p) SNil
 
 vAnd :: Val -> Val -> Val
-vAnd ~a ~b = Sg uscore a Prop (CFun (\ ~_ -> b)) Prop
+vAnd ~a ~b = Sg "_" a Prop (CFun (\ ~_ -> b)) Prop
 {-# inline vAnd #-}
 
 vImpl :: Val -> Val -> Val
-vImpl ~a ~b = PiEP uscore a (\ ~_ -> b)
+vImpl ~a ~b = PiEP "_" a (\ ~_ -> b)
 {-# inline vImpl #-}

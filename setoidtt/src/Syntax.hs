@@ -9,16 +9,18 @@ type UMax = IS.IntSet
 
 data U
   = Set
-  | UMax UMax   -- ^ Maximum of a set of universe metas. Empty set = Prop.
+  | Prop
+  | UMax UMax   -- ^ Maximum of a non-empty set of universe metas.
   deriving (Eq, Show)
 
-pattern Prop :: U
-pattern Prop <- ((\case UMax xs -> IS.null xs; _ -> False) -> True) where
-  Prop = UMax mempty
-
 instance Semigroup U where
-  UMax as <> UMax bs = UMax (as <> bs)
-  _       <> _       = Set
+  u <> u' = case u of
+    Set     -> Set
+    Prop    -> u'
+    UMax xs -> case u' of
+      Set      -> Set
+      Prop     -> UMax xs
+      UMax xs' -> UMax (xs <> xs')
   {-# inline (<>) #-}
 
 instance Monoid U where
@@ -51,13 +53,10 @@ data Tm
   | Tt             -- ^ Tt  : Top
   | Bot            -- ^ Bot : Prop
 
-  -- TODO: all of these should be fully applied, eta-expanded in elaboration
-  -- clearly being fully applied is the most common, and it's way more compact & faster
-  -- to store that way
-  | Eq             -- ^ {A : Set} → A → A → Prop
-  | Coe            -- ^ {A B : Set} → Eq {Set} A B → A → B
-  | Refl           -- ^ {A : Set}(x : A) → Eq x x
-  | Sym            -- ^ {A : Set}{x y : A} → Eq x y → Eq y x
-  | Trans          -- ^ {A : Set}{x y z : A} → Eq x y → Eq y z → Eq x z
-  | Ap             -- ^ {A B : Set}(f : A → B){x y : A} → Eq x y → Eq (f x) (f y)
-  | Exfalso U      -- ^ {A : U i} → Bot → A
+  | Eq Ty Tm Tm              -- ^ {A : Set} → A → A → Prop
+  | Coe Ty Ty Tm Tm          -- ^ {A B : Set} → Eq {Set} A B → A → B
+  | Refl Ty Tm               -- ^ {A : Set}(x : A) → Eq x x
+  | Sym Ty Tm Tm Tm          -- ^ {A : Set}{x y : A} → Eq x y → Eq y x
+  | Trans Ty Tm Tm Tm Tm Tm  -- ^ {A : Set}{x y z : A} → Eq x y → Eq y z → Eq x z
+  | Ap Ty Ty Tm Tm Tm Tm     -- ^ {A B : Set}(f : A → B){x y : A} → Eq x y → Eq (f x) (f y)
+  | Exfalso U Ty Tm          -- ^ {A : U i} → Bot → A

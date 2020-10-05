@@ -40,6 +40,7 @@ pick "_" "_" = "x"
 pick "_" x   = x
 pick x   "_" = x
 pick x   y   = x
+{-# noinline pick #-}
 
 newtype Meta = Meta Int
   deriving (Eq, Ord, Show, Num) via Int
