@@ -59,13 +59,13 @@ vTopDef x = case runIO (readTop x) of
 
 infixl 2 $$
 ($$) :: Closure -> Val -> Val
-($$) cl ~u = case cl of
+($$) cl u = case cl of
   CFun t         -> t u
-  CClose env l t -> let env' = EDef env u in eval env' l t
+  CClose env l t -> eval (EDef env u) l t
 {-# inline ($$) #-}
 
 vApp :: Val -> Val -> U -> Icit -> Val
-vApp t ~u un i = case t of
+vApp t u un i = case t of
   Lam _ _ _ _ t -> t $$ u
   Rigid h sp    -> Rigid  h (SApp sp u un i)
   Flex h sp     -> Flex   h (SApp sp u un i)
@@ -105,18 +105,6 @@ vProjField t ~x n = case t of
 
 data MatchU = MUProp | MUSet | MUDiff | MUUMax IS.IntSet
 
--- -- | Match universes, but don't check equality of neutrals, instead immediately
--- --  flexibly fail on any UMax. We need this kind of comparison in evaluation, because
--- --  computation cannot progress in the presence of UMax.
--- matchU :: U -> U -> MatchU
--- matchU u u' = case (u, u') of
---   (Set      , Set     ) -> MUSet
---   (Prop     , Prop    ) -> MUProp
---   (Set      , Prop    ) -> MUDiff
---   (Prop     , Set     ) -> MUDiff
---   (UMax xs  , _       ) -> MUUMax xs
---   (_        , UMax xs ) -> MUUMax xs
-
 matchUMaxSet :: UMax -> MatchU
 matchUMaxSet xs = case forceUMax xs of
   Set     -> MUSet
@@ -144,6 +132,10 @@ matchUMax xs u = case forceUMax xs of
   UMax xs -> MUUMax xs
 {-# noinline matchUMax #-}
 
+-- | Match universes, but don't check equality of neutrals, instead immediately
+--  flexibly fail on any UMax. We need this kind of comparison in evaluation,
+--  because computation cannot progress in the presence of UMax. The elaborate
+--  implementation serves to reduce code bloat in vEq and vCoe (halves code size!)
 matchU :: U -> U -> MatchU
 matchU u u' = case u of
   Set -> case u' of
@@ -161,39 +153,39 @@ matchU u u' = case u of
 --------------------------------------------------------------------------------
 
 vCoe :: Lvl -> Val -> Val -> Val -> Val -> Val
-vCoe l ~a ~b ~p ~t = case (a, b) of
+vCoe l a b ~p t = case (a, b) of
   (topA@(Pi x i a au b), topB@(Pi x' i' a' au' b'))
     | i /= i'   -> Exfalso Set (Pi x' i' a' au' b') p
     | otherwise -> case matchU au au' of
         MUSet     -> Lam (pick x x') i a' Set $ CFun \ ~a1 ->
-                     let ~p1 = vProj1 p
-                         ~p2 = vProj2 p
-                         ~a0 = vCoe l a' a (Sym VSet a a' p1) a1
+                     let p1 = vProj1 p
+                         p2 = vProj2 p
+                         a0 = vCoe l a' a (Sym VSet a a' p1) a1
                      in vCoe l (b $$ a0) (b' $$ a1) (vApp p2 a0 Set Expl) (vApp t a0 Set i)
         MUProp    -> Lam (pick x x') i a' Prop $ CFun \ ~a1 ->
-                     let ~p1 = vProj1 p
-                         ~p2 = vProj2 p
-                         ~a0 = vCoeP (Sym VProp a a' p1) a1
+                     let p1 = vProj1 p
+                         p2 = vProj2 p
+                         a0 = vCoeP (Sym VProp a a' p1) a1
                      in vCoe l (b $$ a0) (b' $$ a1) (vApp p2 a0 Prop Expl) (vApp t a0 Prop i)
         MUDiff    -> Exfalso Set topB p
         MUUMax au -> Flex (FHCoeUMax au topA topB p t) SNil
 
   (topA@(Sg x a au b bu), topB@(Sg x' a' au' b' bu')) ->
     case (matchU au au', matchU bu bu') of
-      (MUSet, MUSet)   -> let ~p1  = vProj1 t
-                              ~p2  = vProj2 t
-                              ~p1' = vCoe l a a' (vProj1 p) p1
-                              ~p2' = vCoe l (b $$ p1) (b' $$ p1') (vProj2 p) p2
+      (MUSet, MUSet)   -> let p1  = vProj1 t
+                              p2  = vProj2 t
+                              p1' = vCoe l a a' (vProj1 p) p1
+                              p2' = vCoe l (b $$ p1) (b' $$ p1') (vProj2 p) p2
                           in Pair p1' Set p2' Set
-      (MUSet, MUProp)  -> let ~p1  = vProj1 t
-                              ~p2  = vProj2 t
-                              ~p1' = vCoe l a a' (vProj1 p) p1
-                              ~p2' = vCoeP (vProj2 p) p2
+      (MUSet, MUProp)  -> let p1  = vProj1 t
+                              p2  = vProj2 t
+                              p1' = vCoe l a a' (vProj1 p) p1
+                              p2' = vCoeP (vProj2 p) p2
                           in Pair p1' Set p2' Prop
-      (MUProp, MUSet)  -> let ~p1  = vProj1 t
-                              ~p2  = vProj2 t
-                              ~p1' = vCoeP (vProj1 p) p1
-                              ~p2' = vCoe l (b $$ p1) (b' $$ p1') (vProj2 p) p2
+      (MUProp, MUSet)  -> let p1  = vProj1 t
+                              p2  = vProj2 t
+                              p1' = vCoeP (vProj1 p) p1
+                              p2' = vCoe l (b $$ p1) (b' $$ p1') (vProj2 p) p2
                           in Pair p1' Prop p2' Set
       (MUProp, MUProp) -> impossible
       (MUDiff, _)      -> Exfalso Set topB p
@@ -209,7 +201,7 @@ vCoe l ~a ~b ~p ~t = case (a, b) of
 
 -- | Try to compute coercion composition.
 vCoeComp :: Lvl -> Val -> Val -> Val -> Val -> Val
-vCoeComp l ~a ~b ~p t = case t of
+vCoeComp l a b p t = case t of
   Flex h sp                     -> Flex h (SCoeComp a b p sp)
   Unfold h sp t                 -> Unfold h (SCoeComp a b p sp) (vCoeComp l a b p t)
   Rigid (RHCoe a' _ p' t') SNil -> vCoeRefl l a' b (Trans VSet a' a b p' p) t'
@@ -217,7 +209,7 @@ vCoeComp l ~a ~b ~p t = case t of
 
 -- | Try to compute reflexive coercion.
 vCoeRefl :: Lvl -> Val -> Val -> Val -> Val -> Val
-vCoeRefl l ~a ~b ~p ~t = case conv l a b of
+vCoeRefl l a b p t = case conv l a b of
   ConvSame    -> t
   ConvDiff    -> Rigid (RHCoe a b p t) SNil
   ConvMeta x  -> Flex (FHCoeRefl x a b p t) SNil
@@ -225,7 +217,7 @@ vCoeRefl l ~a ~b ~p ~t = case conv l a b of
 
 -- | coeP : {A B : Prop} -> A = B -> A -> B
 vCoeP :: Val -> Val -> Val
-vCoeP p ~t = vApp (vProj1 p) t Prop Expl
+vCoeP p t = vApp (vProj1 p) t Prop Expl
 {-# inline vCoeP #-}
 
 
@@ -233,7 +225,7 @@ vCoeP p ~t = vApp (vProj1 p) t Prop Expl
 --------------------------------------------------------------------------------
 
 vEq :: Lvl -> Val -> Val -> Val -> Val
-vEq l a ~t ~u = case a of
+vEq l a t u = case a of
   U un -> case forceU un of
     Set     -> vEqSet l t u
     Prop    -> vEqProp t u
@@ -245,14 +237,14 @@ vEq l a ~t ~u = case a of
 
   -- equality of Prop fields is automatically skipped
   topA@(Sg x a (forceU -> !au) b (forceU -> !bu)) ->
-    let ~p1t = vProj1 t
-        ~p1u = vProj1 u
-        ~p2t = vProj2 t
-        ~p2u = vProj2 u in
+    let p1t = vProj1 t
+        p1u = vProj1 u
+        p2t = vProj2 t
+        p2u = vProj2 u in
     case (au, bu) of
       (Set, Prop)  -> vEq l a p1t p1u
       (Set, Set )  -> Eq topA t u $
-                        PiEP "p" (vEq l a p1t p1u) \ ~p ->
+                        PiEP NP (vEq l a p1t p1u) \ ~p ->
                         vEq l (b $$ p1u)
                               (vCoe l (b $$ p1t) (b $$ p1u)
                                       (Ap a VSet (Lam x Expl a Set b) p1t p1u p) p2t)
@@ -268,7 +260,7 @@ vEq l a ~t ~u = case a of
   _             -> impossible
 
 vEqProp :: Val -> Val -> Val
-vEqProp ~a ~b = Eq VProp a b (vAnd (vImpl a b) (vImpl b a))
+vEqProp a b = Eq VProp a b (vAnd (vImpl a b) (vImpl b a))
 {-# inline vEqProp #-}
 
 -- | Equality of sets.
@@ -283,9 +275,9 @@ vEqSet l a b = case (a, b) of
   (topA@(Pi x i a au b), topB@(Pi x' i' a' au' b')) ->
     let eq = Eq VSet topA topB in
     case matchU au au' of
-      MUProp      -> eq $ SgPP "p" (vEqProp a a') \ ~p →
+      MUProp      -> eq $ SgPP NP (vEqProp a a') \ ~p →
                      PiEP (pick x x') a \ ~x -> vEqSet l (b $$ x) (b' $$ vCoeP p x)
-      MUSet       -> eq $ SgPP "p" (vEqSet l a a') \ ~p →
+      MUSet       -> eq $ SgPP NP (vEqSet l a a') \ ~p →
                      PiEP (pick x x') a \ ~x -> vEqSet l (b $$ x) (b' $$ vCoe l a a' p x)
       MUDiff      -> eq Bot
       MUUMax au   -> Flex (FHEqUMax au VSet topA topB) SNil
@@ -293,11 +285,11 @@ vEqSet l a b = case (a, b) of
   (topA@(Sg x a au b bu), topB@(Sg x' a' au' b' bu')) ->
     let eq = Eq VSet topA topB in
     case (matchU au au', matchU bu bu') of
-      (MUSet,  MUSet )  -> eq $ SgPP "p" (vEqSet l a a') \ ~p ->
+      (MUSet,  MUSet )  -> eq $ SgPP NP (vEqSet l a a') \ ~p ->
                            PiEP (pick x x') a \ ~x -> vEqSet l (b $$ x) (b' $$ vCoe l a a' p x)
-      (MUSet,  MUProp)  -> eq $ SgPP "p" (vEqSet l a a') \ ~p ->
+      (MUSet,  MUProp)  -> eq $ SgPP NP (vEqSet l a a') \ ~p ->
                            PiEP (pick x x') a \ ~x -> vEqProp (b $$ x) (b' $$ vCoeP p x)
-      (MUProp, MUSet )  -> eq $ SgPP "p" (vEqProp a a') \ ~p ->
+      (MUProp, MUSet )  -> eq $ SgPP NP (vEqProp a a') \ ~p ->
                            PiEP (pick x x') a \ ~x -> vEqSet l (b $$ x) (b' $$ vCoe l a a' p x)
       (MUProp, MUProp)  -> impossible
       (MUDiff, _    )   -> eq Bot
@@ -338,7 +330,7 @@ eval env l = go where
     S.TopDef x          -> vTopDef x
     S.Postulate x       -> Rigid (RHPostulate x) SNil
     S.MetaVar x         -> vMeta x
-    S.Let _ _ _ t u     -> eval (EDef env (go t)) (l + 1) u
+    S.Let _ _ _ t u     -> let t' = go t in eval (EDef env t') (l + 1) u
     S.Pi x i a au b     -> Pi x i (go a) au (CClose env l b)
     S.Sg x a au b bu    -> Sg x (go a) au (CClose env l b) bu
     S.Lam x i a au t    -> Lam x i (go a) au (CClose env l t)
@@ -372,7 +364,7 @@ forceU :: U -> U
 forceU = \case
   UMax xs -> forceUMax xs
   u       -> u
-{-# noinline forceU #-}
+-- {-# noinline forceU #-}
 
 -- | Force both flex and unfolding.
 force :: Lvl -> Val -> Val
@@ -438,14 +430,19 @@ convIO l unfold = go where
   {-# inline force' #-}
 
   goUMax :: UMax -> UMax -> IO ()
-  goUMax xs xs' = unless (forceUMax xs == forceUMax xs') (throwIO (ConvUMax xs))
-  {-# inline goUMax #-}
+  goUMax xs xs' = case (forceUMax xs, forceUMax xs') of
+    (Set     , Set      ) -> pure ()
+    (Prop    , Prop     ) -> pure ()
+    (UMax xs , UMax xs' ) -> unless (xs == xs') (throwIO (ConvUMax xs))
+    (UMax xs , _        ) -> throwIO (ConvUMax xs)
+    (_       , UMax xs' ) -> throwIO (ConvUMax xs')
+    (_       , _        ) -> throwIO ConvDiff
 
   goU :: U -> U -> IO ()
   goU u u' = case (forceU u, forceU u') of
     (Set     , Set      ) -> pure ()
     (Prop    , Prop     ) -> pure ()
-    (UMax xs , UMax xs' ) -> goUMax xs xs'
+    (UMax xs , UMax xs' ) -> unless (xs == xs') (throwIO (ConvUMax xs))
     (UMax xs , _        ) -> throwIO (ConvUMax xs)
     (_       , UMax xs' ) -> throwIO (ConvUMax xs')
     (_       , _        ) -> throwIO ConvDiff
@@ -487,7 +484,7 @@ convIO l unfold = go where
     (RHSym{}         , RHSym{}            ) -> impossible
     (RHAp{}          , RHAp{}             ) -> impossible
     (RHTrans{}       , RHTrans{}          ) -> impossible
-    (RHExfalso u a t , RHExfalso u' a' t' ) -> goU u u'
+    (RHExfalso u a t , RHExfalso u' a' t' ) -> goU u u' >> go a a'
     (RHCoe a b p t   , RHCoe a' b' p' t'  ) -> go a a' >> go b b' >> go t t'
     _                                       -> throwIO ConvDiff
 

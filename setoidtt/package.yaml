@@ -85,15 +85,15 @@ executables:
       # - -fllvm
       - -rtsopts
 
-  # setoidtt-bench:
-  #   source-dirs:
-  #     - src
-  #     - bench
-  #   main: Bench.hs
-  #   dependencies:
-  #     - gauge
-  #     - flatparse
-  #   ghc-options:
-  #     - -O2
-  #     - -fllvm
-  #     - -rtsopts
+  setoidtt-bench:
+    source-dirs:
+      - src
+      - bench
+    main: Bench.hs
+    dependencies:
+      - gauge
+      - flatparse
+    ghc-options:
+      - -O2
+      # - -fllvm
+      - -rtsopts

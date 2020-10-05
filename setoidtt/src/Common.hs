@@ -5,7 +5,6 @@ module Common (
   ) where
 
 import qualified Data.ByteString as B
-import Data.String
 import GHC.Stack
 
 import FlatParse
@@ -32,15 +31,17 @@ newtype Ix = Ix Int
 newtype Lvl = Lvl Int
   deriving (Eq, Ord, Show, Num) via Int
 
-newtype Name = Name B.ByteString
-  deriving (Eq, Ord, Show, IsString) via B.ByteString
+data Name = NP | NNil | NX | NName {-# unpack #-} B.ByteString
+  deriving (Eq, Show)
 
+-- | Pick the more informative name.
 pick :: Name -> Name -> Name
-pick "_" "_" = "x"
-pick "_" x   = x
-pick x   "_" = x
-pick x   y   = x
-{-# noinline pick #-}
+pick x y = case x of
+  NNil -> case y of
+    NNil -> NX
+    y -> y
+  x -> x
+{-# inline pick #-}
 
 newtype Meta = Meta Int
   deriving (Eq, Ord, Show, Num) via Int
