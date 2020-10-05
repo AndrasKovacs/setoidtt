@@ -465,6 +465,7 @@ conversion lvl un l r = (Yes <$ goTop lvl un l r) `catch` pure where
     goBind x a au un t t' =
       let v = VVar lvl in goTop (lvl + 1) un (t v) (t' v)
 
+    -- TODO BUG: add other Spine arg!!
     goProjField :: Spine -> U -> U -> Int -> IO ()
     goProjField _               spu spu' 0 = goU spu spu'
     goProjField (SProj2 sp spu) _   spu' i = goProjField sp spu spu' (i - 1)

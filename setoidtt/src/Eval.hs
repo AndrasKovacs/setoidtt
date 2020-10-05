@@ -1,9 +1,13 @@
 
-module Eval where
+module Eval (
+    ($$), vApp, vProj1, vProj2, vProjField
+  , vCoe, vEq, forceU, conv, force, fforce, vSp, vCoeP, eval
+  ) where
 
 import Control.Monad
 import IO
 import qualified Data.IntSet as IS
+import GHC.Magic
 
 import Common
 import ElabState
@@ -11,6 +15,20 @@ import Syntax (U(..), Tm, pattern Prop, pattern UVar, type UMax)
 import Value
 import qualified Syntax as S
 import Exceptions
+
+-- Core inspection:
+--   - inlined forceU is large code bloat
+--     IDEA: manually fuse forceU and matchU, try to make it small
+--   - IS.foldl' is big but not too bad
+--   - ByteString is pain in the ass, "pick" and literals suck; use custom inductive Name type instead
+--     (right now the ByteString fields are made lazy to stop the inlined literal madness!)
+--   - pattern synonyms are completely strict constructors with Strict unless we write out the constructing direction manually
+--   - eval floats out all closures before the case split! It's shitty as hell. GHC.Magic does not prevent this.
+--   - fno-full-laziness is a shitshow
+--   - Unboxed sums have mandatory lazy lifted fields! We also can't unpack into unboxed sum. Solution: get rid
+--     Unboxed tuples are also lazy in lifted fields.
+--     of unboxed sums for closures. Use instead manually unsafeCoerced and unpacked data type.
+
 
 
 -- Variables
@@ -40,7 +58,7 @@ infixl 2 $$
 ($$) :: Closure -> Val -> Val
 ($$) cl ~u = case cl of
   CFun t         -> t u
-  CClose env l t -> eval (EDef env u) l t
+  CClose env l t -> let env' = EDef env u in eval env' l t
 {-# inline ($$) #-}
 
 vApp :: Val -> Val -> U -> Icit -> Val
@@ -71,7 +89,7 @@ vProj2 t = case t of
   _             -> impossible
 
 vProjField :: Val -> Name -> Int -> Val
-vProjField t x n = case t of
+vProjField t ~x n = case t of
   Pair t tu u uu -> case n of 0 -> t
                               n -> vProjField u x (n - 1)
   Rigid h sp     -> Rigid  h (SProjField sp x n)
@@ -88,7 +106,7 @@ data MatchU = MUProp | MUSet | MUDiff | MUUMax IS.IntSet
 --   flexibly fail on any UMax. We need this kind of comparison in evaluation, because
 --   computation cannot progress in the presence of UMax.
 matchU :: U -> U -> MatchU
-matchU ~u ~u' = case (u, u') of
+matchU u u' = case (u, u') of
   (Set      , Set     ) -> MUSet
   (Prop     , Prop    ) -> MUProp
   (Set      , Prop    ) -> MUDiff
@@ -101,7 +119,7 @@ matchU ~u ~u' = case (u, u') of
 
 vCoe :: Lvl -> Val -> Val -> Val -> Val -> Val
 vCoe l ~a ~b ~p ~t = case (a, b) of
-  (topA@(Pi x i a (forceU -> au) b), topB@(Pi x' i' a' (forceU -> au') b'))
+  (topA@(Pi x i a (forceU -> !au) b), topB@(Pi x' i' a' (forceU -> !au') b'))
     | i /= i'   -> VExfalso Set (Pi x' i' a' au' b') p
     | otherwise -> case matchU au au' of
         MUSet     -> Lam (pick x x') i a' Set $ CFun \ ~a1 ->
@@ -117,8 +135,8 @@ vCoe l ~a ~b ~p ~t = case (a, b) of
         MUDiff    -> VExfalso Set (Pi x' i' a' au' b') p
         MUUMax au -> Flex (FHCoeUMax au topA topB p t) SNil
 
-  (topA@(Sg x a (forceU -> au) b (forceU -> bu)),
-   topB@(Sg x' a' (forceU -> au') b' (forceU -> bu'))) ->
+  (topA@(Sg x a (forceU -> !au) b (forceU -> !bu)),
+   topB@(Sg x' a' (forceU -> !au') b' (forceU -> !bu'))) ->
     case (matchU au au', matchU bu bu') of
       (MUSet, MUSet)   -> let ~p1  = vProj1 t
                               ~p2  = vProj2 t
@@ -184,7 +202,7 @@ vEq l a ~t ~u = case a of
     Pi x Expl a au $ CFun \ ~x -> vEq l (b $$ x) (vApp t x au i) (vApp u x au i)
 
   -- equality of Prop fields is automatically skipped
-  topA@(Sg x a (forceU -> au) b (forceU -> bu)) ->
+  topA@(Sg x a (forceU -> !au) b (forceU -> !bu)) ->
     let ~p1t = vProj1 t
         ~p1u = vProj1 u
         ~p2t = vProj2 t
@@ -214,13 +232,13 @@ vEqProp ~a ~b = Eq VProp a b (vAnd (vImpl a b) (vImpl b a))
 -- | Equality of sets.
 vEqSet :: Lvl -> Val -> Val -> Val
 vEqSet l a b = case (a, b) of
-  (U (forceU -> u), U (forceU -> u')) -> case matchU u u' of
+  (U (forceU -> !u), U (forceU -> !u')) -> case matchU u u' of
     MUProp     -> Eq VSet (U u) (U u') Top
     MUSet      -> Eq VSet (U u) (U u') Top
     MUDiff     -> Eq VSet (U u) (U u') Bot
     MUUMax xs  -> Flex (FHEqUMax xs VSet (U u) (U u')) SNil
 
-  (topA@(Pi x i a (forceU -> au) b), topB@(Pi x' i' a' (forceU -> au') b')) ->
+  (topA@(Pi x i a (forceU -> !au) b), topB@(Pi x' i' a' (forceU -> !au') b')) ->
     let eq = Eq VSet topA topB in
     case matchU au au' of
       MUProp      -> eq $ SgPP "p" (vEqProp a a') \ ~p →
@@ -273,13 +291,13 @@ vSp l ~v = go where
   go (SEqSetRhs t (go -> !u))    = vEqSet l t u
 
 eval :: Env -> Lvl -> Tm -> Val
-eval ~env l = go where
+eval env l = go where
   go = \case
     S.LocalVar x      -> vLocalVar env x
     S.TopDef x        -> vTopDef x
     S.Postulate x     -> Rigid (RHPostulate x) SNil
     S.MetaVar x       -> vMeta x
-    S.Let _ _ _ t u   -> eval (EDef env (go t)) (l + 1) u
+    S.Let _ _ _ t u   -> let env' = EDef env (go t) in eval env' (l + 1) u
     S.Pi x i a au b   -> Pi x i (go a) au (CClose env l b)
     S.Sg x a au b bu  -> Sg x (go a) au (CClose env l b) bu
     S.Lam x i a au t  -> Lam x i (go a) au (CClose env l t)
@@ -292,24 +310,24 @@ eval ~env l = go where
     S.Top             -> Top
     S.Tt              -> Tt
     S.Bot             -> Bot
-    S.Eq              -> LamIS "A" VSet \ ~a -> LamES "x" a \ ~x -> LamES "y" a \ ~y ->
-                         vEq l a x y
-    S.Coe             -> LamIS "A" VSet \ ~a -> LamIS "B" VSet \ ~b ->
+    S.Eq              -> inline (LamIS "A" VSet \ ~a -> LamES "x" a \ ~x -> LamES "y" a \ ~y ->
+                         vEq l a x y)
+    S.Coe             -> inline (LamIS "A" VSet \ ~a -> LamIS "B" VSet \ ~b ->
                          LamEP "p" (vEq l VSet a b) \ ~p -> LamES "t" a \ ~t ->
-                         vCoe l a b p t
-    S.Refl            -> LamIS "A" VSet \ ~a -> LamIS "x" a \ ~x -> VRefl a x
-    S.Sym             -> LamIS "A" VSet \ ~a -> LamIS "x" a \ ~x ->
+                         vCoe l a b p t)
+    S.Refl            -> inline (LamIS "A" VSet \ ~a -> LamIS "x" a \ ~x -> VRefl a x)
+    S.Sym             -> inline (LamIS "A" VSet \ ~a -> LamIS "x" a \ ~x ->
                          LamIS "y" a \ ~y -> LamEP "p" (vEq l a x y) \ ~p ->
-                         VSym a x y p
-    S.Trans           -> LamIS "A" VSet \ ~a -> LamIS "x" a \ ~x ->
+                         VSym a x y p)
+    S.Trans           -> inline (LamIS "A" VSet \ ~a -> LamIS "x" a \ ~x ->
                          LamIS "y" a \ ~y -> LamIS "z" a \ ~z ->
                          LamEP "p" (vEq l a x y) \ ~p -> LamEP "q" (vEq l a y z) \ ~q ->
-                         VTrans a x y z p q
-    S.Ap              -> LamIS "A" VSet \ ~a -> LamIS "B" VSet \ ~b ->
+                         VTrans a x y z p q)
+    S.Ap              -> inline (LamIS "A" VSet \ ~a -> LamIS "B" VSet \ ~b ->
                          LamES "f" (PiES "_" a (const b)) \ ~f -> LamIS "x" a \ ~x ->
                          LamIS "y" a \ ~y -> LamEP "p" (vEq l a x y) \ ~p ->
-                         VAp a b f x y p
-    S.Exfalso u       -> LamIS "A" (U u) \ ~a -> LamEP "p" Bot \ ~t -> VExfalso u a t
+                         VAp a b f x y p)
+    S.Exfalso u       -> inline (LamIS "A" (U u) \ ~a -> LamEP "p" Bot \ ~t -> VExfalso u a t)
 
 
 -- Forcing
@@ -319,6 +337,7 @@ forceUMax :: UMax -> U
 forceUMax xs = IS.foldl' go Prop xs where
   go u x = u <> maybe (UVar (UMeta x)) forceU (runIO (readUMeta (UMeta x)))
   {-# inline go #-}
+{-# noinline forceUMax #-}
 
 forceU :: U -> U
 forceU = \case
@@ -353,11 +372,11 @@ forceFlexHead l h sp = case h of
 -- | Force only flex.
 fforce :: Lvl -> Val -> Val
 fforce l = \case
-  Flex h sp    -> forceFlexHead l h sp
+  Flex h sp    -> fforceFlexHead l h sp
   v            -> v
 
 fforceFlexHead :: Lvl -> FlexHead -> Spine -> Val
-fforceFlexHead l h sp = case h of
+fforceFlexHead l h ~sp = case h of
   FHMeta x -> case runIO (readMeta x) of
     MESolved v -> Unfold (UHMeta x) sp (fforce l $! vSp l v sp)
     _          -> Flex (FHMeta x) sp
@@ -377,7 +396,8 @@ fforceFlexHead l h sp = case h of
 -- Conversion checking
 --------------------------------------------------------------------------------
 
-conv :: Lvl -> Val -> Val -> Ex  -- Conv
+-- | Precondition: values have the same Set type (definitionally)
+conv :: Lvl -> Val -> Val -> Ex
 conv l t u = runIO ((ConvSame <$ convIO l False t u) `catch` pure)
 {-# inline conv #-}
 
@@ -402,11 +422,13 @@ convIO l unfold = go where
     (UMax xs , _        ) -> throwIO (ConvUMax xs)
     (_       , UMax xs' ) -> throwIO (ConvUMax xs')
 
+
   goUH :: UnfoldHead -> UnfoldHead -> IO ()
   goUH h h' = case (h, h') of
     (UHMeta x  , UHMeta x'  ) | x == x' -> pure ()
     (UHTopDef x, UHTopDef x') | x == x' -> pure ()
     _                                   -> throwIO ConvDiff
+  {-# inline goUH #-}
 
   goMeta :: Meta -> Meta -> IO ()
   goMeta x x' = unless (x == x') (throwIO (ConvMeta x))
@@ -466,6 +488,7 @@ convIO l unfold = go where
   goWithU un ~t ~t' = case forceU un of
     Prop -> pure ()
     _    -> go t t'
+  {-# inline goWithU #-}
 
   fhBlocker :: FlexHead -> Ex
   fhBlocker = \case
@@ -473,6 +496,7 @@ convIO l unfold = go where
     FHCoeRefl x _ _ _ _  -> ConvMeta x
     FHCoeUMax xs _ _ _ _ -> ConvUMax xs
     FHEqUMax xs _ _ _    -> ConvUMax xs
+  {-# inline fhBlocker #-}
 
   -- Precondition: values must have the same type (definitionally)
   go :: Val -> Val -> IO ()

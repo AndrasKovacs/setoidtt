@@ -49,7 +49,7 @@ data Spine
 
   | SProj1 Spine
   | SProj2 Spine
-  | SProjField Spine Name Int
+  | SProjField Spine ~Name Int
 
   | SCoeSrc Spine ~Val ~Val ~Val  -- netural source type
   | SCoeTgt Val Spine ~Val ~Val   -- neutral target type
@@ -77,47 +77,69 @@ data Val
   | Tt
   | Bot
   | Pair ~Val U ~Val U
-  | Sg  Name       VTy U {-# unpack #-} Closure U
-  | Pi  Name Icit ~VTy U {-# unpack #-} Closure
-  | Lam Name Icit ~VTy U {-# unpack #-} Closure
+  | Sg  ~Name       VTy U {-# unpack #-} Closure U
+  | Pi  ~Name Icit ~VTy U {-# unpack #-} Closure
+  | Lam ~Name Icit ~VTy U {-# unpack #-} Closure
 
 --------------------------------------------------------------------------------
 
 pattern VVar x = Rigid (RHLocalVar x) SNil
 
-pattern SAppIS sp t = SApp sp t Set  Impl
-pattern SAppES sp t = SApp sp t Set  Expl
-pattern SAppIP sp t = SApp sp t Prop Impl
-pattern SAppEP sp t = SApp sp t Prop Expl
+pattern SAppIS sp t <- SApp sp t Set  Impl where
+  SAppIS sp ~t = SApp sp t Set  Impl
+pattern SAppES sp t <- SApp sp t Set  Expl where
+  SAppES sp ~t = SApp sp t Set  Expl
+pattern SAppIP sp t <- SApp sp t Prop Impl where
+  SAppIP sp ~t = SApp sp t Prop Impl
+pattern SAppEP sp t <- SApp sp t Prop Expl where
+  SAppEP sp ~t = SApp sp t Prop Expl
 
-pattern LamIS x a b = Lam x Impl a Set  (CFun b)
-pattern LamES x a b = Lam x Expl a Set  (CFun b)
-pattern LamIP x a b = Lam x Impl a Prop (CFun b)
-pattern LamEP x a b = Lam x Expl a Prop (CFun b)
+pattern LamIS x a b <- Lam x Impl a Set  (CFun b) where
+  LamIS ~x ~a b = Lam x Impl a Set  (CFun b)
+pattern LamES x a b <- Lam x Expl a Set  (CFun b) where
+  LamES ~x ~a b = Lam x Expl a Set  (CFun b)
+pattern LamIP x a b <- Lam x Impl a Prop (CFun b) where
+  LamIP ~x ~a b = Lam x Impl a Prop (CFun b)
+pattern LamEP x a b <- Lam x Expl a Prop (CFun b) where
+  LamEP ~x ~a b = Lam x Expl a Prop (CFun b)
 
-pattern PiES x a b = Pi x Expl a Set  (CFun b)
-pattern PiEP x a b = Pi x Expl a Prop (CFun b)
-pattern SgPP x a b = Sg x a Prop (CFun b) Prop
+pattern PiES x a b <- Pi x Expl a Set  (CFun b) where
+  PiES ~x ~a b = Pi x Expl a Set  (CFun b)
+pattern PiEP x a b <- Pi x Expl a Prop (CFun b) where
+  PiEP ~x ~a b = Pi x Expl a Prop (CFun b)
+pattern SgPP x a b <- Sg x a Prop (CFun b) Prop where
+  SgPP ~x ~a b = Sg x a Prop (CFun b) Prop
 
 pattern VMeta m      = Flex (FHMeta m) SNil
 pattern VSet         = U Set
 pattern VProp        = U Prop
-pattern VRefl a t    = Rigid RHRefl (SNil `SAppIS` a `SAppES` t)
-pattern VSym a x y p = Rigid RHSym (SNil `SAppIS` a `SAppIS` x `SAppIS` y `SAppES` p)
 
-pattern VTrans a x y z p q =
-  Rigid RHTrans (SNil `SAppIS` a `SAppIS` x `SAppIS` y `SAppIS` z `SAppEP` p `SAppEP` q)
+pattern VRefl a t    <- Rigid RHRefl (SNil `SAppIS` a `SAppES` t) where
+  VRefl ~a ~t = Rigid RHRefl (SNil `SAppIS` a `SAppES` t)
 
-pattern VAp a b f x y p =
-  Rigid RHAp (SNil `SAppIS` a `SAppIS` b `SAppES` f `SAppIS` x `SAppIS` y `SAppEP` p)
+pattern VSym a x y p <- Rigid RHSym (SNil `SAppIS` a `SAppIS` x `SAppIS` y `SAppES` p) where
+  VSym ~a ~x ~y ~p = Rigid RHSym (SNil `SAppIS` a `SAppIS` x `SAppIS` y `SAppES` p)
 
-pattern VExfalso u a p =
-  Rigid (RHExfalso u) (SNil `SAppIS` a `SAppEP` p)
+pattern VTrans a x y z p q <-
+  Rigid RHTrans (SNil `SAppIS` a `SAppIS` x `SAppIS` y `SAppIS` z `SAppEP` p `SAppEP` q) where
+  VTrans ~a ~x ~y ~z ~p ~q = Rigid RHTrans (SNil `SAppIS` a `SAppIS` x `SAppIS` y `SAppIS` z `SAppEP` p `SAppEP` q)
+
+pattern VAp a b f x y p <-
+  Rigid RHAp (SNil `SAppIS` a `SAppIS` b `SAppES` f `SAppIS` x `SAppIS` y `SAppEP` p) where
+  VAp ~a ~b ~f ~x ~y ~p = Rigid RHAp (SNil `SAppIS` a `SAppIS` b `SAppES` f `SAppIS` x `SAppIS` y `SAppEP` p)
+
+pattern VExfalso u a p <-
+  Rigid (RHExfalso u) (SNil `SAppIS` a `SAppEP` p) where
+  VExfalso ~u ~a ~p = Rigid (RHExfalso u) (SNil `SAppIS` a `SAppEP` p)
+
+uscore :: Name
+uscore = "_"
+{-# noinline uscore #-}
 
 vAnd :: Val -> Val -> Val
-vAnd ~a ~b = Sg "_" a Prop (CFun (\ ~_ -> b)) Prop
+vAnd ~a ~b = Sg uscore a Prop (CFun (\ ~_ -> b)) Prop
 {-# inline vAnd #-}
 
 vImpl :: Val -> Val -> Val
-vImpl ~a ~b = PiEP "_" a (\ ~_ -> b)
+vImpl ~a ~b = PiEP uscore a (\ ~_ -> b)
 {-# inline vImpl #-}

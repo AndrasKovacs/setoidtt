@@ -54,6 +54,10 @@ ghc-options:
 - -Wno-partial-type-signatures
 - -Wno-type-defaults
 - -Wno-missing-pattern-synonym-signatures
+- -ddump-simpl
+- -dsuppress-all
+- -dno-suppress-type-signatures
+- -ddump-to-file
 
 dependencies:
 - base
@@ -68,33 +72,28 @@ dependencies:
 - unordered-containers
 - directory
 
-source-dirs:
-  - src
-
 data-files:
   - bench/parse01.stt
 
-# ghc-options:
-#   - -ddump-simpl
-#   - -dsuppress-all
-#   - -dno-suppress-type-signatures
-#   - -ddump-to-file
-
 executables:
   setoidtt:
+    source-dirs:
+      - src
     main: Main.hs
     ghc-options:
       - -O2
-      - -fllvm
+      # - -fllvm
       - -rtsopts
 
-  setoidtt-bench:
-    source-dirs: bench
-    main: Bench.hs
-    dependencies:
-      - gauge
-      - flatparse
-    ghc-options:
-      - -O2
-      - -fllvm
-      - -rtsopts
+  # setoidtt-bench:
+  #   source-dirs:
+  #     - src
+  #     - bench
+  #   main: Bench.hs
+  #   dependencies:
+  #     - gauge
+  #     - flatparse
+  #   ghc-options:
+  #     - -O2
+  #     - -fllvm
+  #     - -rtsopts
