@@ -1,6 +1,6 @@
 
 module Exceptions (
-  Conv(..), type Ex, throwIO, throw, catch, fenceEx
+  Ex(..), throwIO, throw, catch, fenceEx
   ) where
 
 import GHC.Prim
@@ -23,13 +23,11 @@ catch# :: forall a. IO a -> (Ex# -> IO a) -> IO a
 catch# (IO io) f = IO (GHC.Prim.catch# io (\e -> case f e of IO f -> f))
 {-# inline catch# #-}
 
-data Conv
-  = CSame
-  | CDiff
-  | CMeta Meta
-  | CUMax UMax
-
-type Ex = Conv
+data Ex
+  = ConvSame
+  | ConvDiff
+  | ConvMeta Meta
+  | ConvUMax UMax
 
 throwIO :: Ex -> IO a
 throwIO e = throwIO# (Ex# e)

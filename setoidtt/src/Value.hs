@@ -1,21 +1,26 @@
 
 module Value where
 
+import GHC.Types (Int(..))
+import GHC.Prim (Int#)
 import Common
 import Syntax (U(..), Tm, pattern Prop, type UMax)
 
 --------------------------------------------------------------------------------
 
-data Closure = Closure (# Val -> Val | (# Env, Tm #) #)
+-- TODO: optimize layout using direct unboxed tuples.
+data Closure = Closure (# Val -> Val | (# Env, Int#, Tm #) #)
 
-pattern CFun f       = Closure (# f | #)
-pattern CClose env t = Closure (# | (# env, t #) #)
+pattern CFun f = Closure (# f | #)
+
+pattern CClose env l t <- Closure (# | (# env, (\x -> Lvl (I# x)) -> l, t #) #) where
+  CClose env (Lvl (I# l)) t = Closure (# | (# env, l, t #) #)
 {-# complete CFun, CClose #-}
 
 data Env = ENil | EDef Env ~Val
 
 data RigidHead
-  = RHBoundVar Lvl
+  = RHLocalVar Lvl
   | RHPostulate Lvl
   | RHRefl
   | RHSym
@@ -42,13 +47,13 @@ data Spine
   = SNil
   | SApp Spine ~Val U Icit
 
-  | SProj1 Spine U
-  | SProj2 Spine U
-  | SProjField Spine Name Int U
+  | SProj1 Spine
+  | SProj2 Spine
+  | SProjField Spine Name Int
 
-  | SCoeSrc Spine ~Val ~Val ~Val
-  | SCoeTgt Val Spine ~Val ~Val
-  | SCoeComp Val Val ~Val Spine
+  | SCoeSrc Spine ~Val ~Val ~Val  -- netural source type
+  | SCoeTgt Val Spine ~Val ~Val   -- neutral target type
+  | SCoeComp Val Val ~Val Spine   -- composition blocking on neutral coerced value
 
   | SEqType Spine ~Val ~Val
   | SEqSetLhs Spine ~Val
@@ -56,14 +61,15 @@ data Spine
 
 type VTy = Val
 data Val
-  -- Rigid stuck values
+  -- Rigidly stuck values
   = Rigid RigidHead Spine
 
   -- Flexibly stuck values
   | Flex FlexHead Spine
 
-  | Unfold UnfoldHead Spine ~Val -- Non-deterministic unfoldings
-  | Eq Val Val Val ~Val          -- An equality type which computes to a non-Eq type
+  -- Non-deterministic values
+  | Unfold UnfoldHead Spine ~Val -- unfolding choice (top/meta)
+  | Eq Val Val Val ~Val          -- Eq computation to non-Eq type
 
   -- Canonical values
   | U U
@@ -76,6 +82,8 @@ data Val
   | Lam Name Icit ~VTy U {-# unpack #-} Closure
 
 --------------------------------------------------------------------------------
+
+pattern VVar x = Rigid (RHLocalVar x) SNil
 
 pattern SAppIS sp t = SApp sp t Set  Impl
 pattern SAppES sp t = SApp sp t Set  Expl
@@ -107,9 +115,9 @@ pattern VExfalso u a p =
   Rigid (RHExfalso u) (SNil `SAppIS` a `SAppEP` p)
 
 vAnd :: Val -> Val -> Val
-vAnd a b = Sg "_" a Prop (CFun (\ ~_ -> b)) Prop
+vAnd ~a ~b = Sg "_" a Prop (CFun (\ ~_ -> b)) Prop
 {-# inline vAnd #-}
 
 vImpl :: Val -> Val -> Val
-vImpl a b = PiEP "_" a (\ ~_ -> b)
+vImpl ~a ~b = PiEP "_" a (\ ~_ -> b)
 {-# inline vImpl #-}

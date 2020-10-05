@@ -10,7 +10,7 @@ type UMax = IS.IntSet
 data U
   = Set
   | UMax UMax   -- ^ Maximum of a set of universe metas. Empty set = Prop.
-  deriving Show
+  deriving (Eq, Show)
 
 pattern Prop :: U
 pattern Prop <- ((\case UMax xs -> IS.null xs; _ -> False) -> True) where
@@ -36,14 +36,14 @@ data Tm
   | MetaVar Meta
   | Let Name Ty U Tm Tm
 
-  | Pi Name Icit Ty U Ty  -- ^ (x : A : U) → B)  or  {x : A : U} → B
-  | Lam Name Icit Ty U Tm -- ^ λ(x : A : U).t  or  λ{x : A : U}.t
-  | App Tm Tm U Icit      -- ^ t u  or  t {u}, last Ty is u's universe
+  | Pi Name Icit Ty U Ty   -- ^ (x : A : U) → B)  or  {x : A : U} → B
+  | Lam Name Icit Ty U Tm  -- ^ λ(x : A : U).t  or  λ{x : A : U}.t
+  | App Tm Tm U Icit       -- ^ t u  or  t {u}, last Ty is u's universe
 
   | Sg Name Ty U Ty U
-  | Proj1 Tm U
-  | Proj2 Tm U
-  | ProjField Tm Name Int U
+  | Proj1 Tm
+  | Proj2 Tm
+  | ProjField Tm Name Int
   | Pair Tm U Tm U
 
   | U U            -- ^ U u : Set
