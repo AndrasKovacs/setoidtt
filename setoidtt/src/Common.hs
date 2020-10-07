@@ -1,3 +1,4 @@
+{-# options_ghc -Wno-unused-imports #-}
 
 module Common (
     module Common
@@ -5,15 +6,26 @@ module Common (
   ) where
 
 import qualified Data.ByteString as B
+import Data.Kind
 import GHC.Stack
-
+import Data.Bits
 import FlatParse
 
 --------------------------------------------------------------------------------
 
-impossible :: HasCallStack => a
+type Dbg = () :: Constraint
+-- type Dbg = HasCallStack
+
+impossible :: Dbg => a
 impossible = error "impossible"
-{-# inline impossible #-}
+{-# noinline impossible #-}
+
+infixl 9 $$!
+($$!) :: (a -> b) -> a -> b
+($$!) f a = f $! a
+{-# inline ($$!) #-}
+
+data S a = S !a
 
 data Icit
   = Impl
@@ -29,9 +41,9 @@ newtype Ix = Ix Int
   deriving (Eq, Ord, Show, Num) via Int
 
 newtype Lvl = Lvl Int
-  deriving (Eq, Ord, Show, Num) via Int
+  deriving (Eq, Ord, Show, Num, Bits) via Int
 
-data Name = NP | NNil | NX | NName {-# unpack #-} B.ByteString
+data Name = NP | NNil | NX | NName B.ByteString
   deriving (Eq, Show)
 
 -- | Pick the more informative name.

@@ -35,7 +35,7 @@ data Tm
   = LocalVar Ix
   | TopDef Lvl
   | Postulate Lvl
-  | MetaVar Meta
+  | Meta Meta
   | Let Name Ty U Tm Tm
 
   | Pi Name Icit Ty U Ty   -- ^ (x : A : U) → B)  or  {x : A : U} → B

@@ -4,29 +4,30 @@ module Value where
 import GHC.Types (Int(..))
 import GHC.Prim (Int#)
 import Common
-import Syntax (U(..), Tm, pattern Prop, type UMax)
+import qualified Syntax as S
+
 
 --------------------------------------------------------------------------------
 
 -- TODO: optimize layout using direct unboxed tuples.
-data Closure = Closure (# Val -> Val | (# Env, Int#, Tm #) #)
+data Closure = Closure (# Val -> Val | (# Env, Int#, S.Tm #) #)
 
-pattern CFun f = Closure (# f | #)
+pattern Fun f = Closure (# f | #)
 
-pattern CClose env l t <- Closure (# | (# env, (\x -> Lvl (I# x)) -> l, t #) #) where
-  CClose env (Lvl (I# l)) t = Closure (# | (# env, l, t #) #)
-{-# complete CFun, CClose #-}
+pattern Close env l t <- Closure (# | (# env, (\x -> Lvl (I# x)) -> l, t #) #) where
+  Close env (Lvl (I# l)) t = Closure (# | (# env, l, t #) #)
+{-# complete Fun, Close #-}
 
-data Env = ENil | EDef Env ~Val
+data Env = Nil | Snoc Env ~Val
 
 data RigidHead
   = RHLocalVar Lvl
   | RHPostulate Lvl
-  | RHRefl VTy Val
+  | RHRefl Ty Val
   | RHSym Val Val Val Val
   | RHAp Val Val Val Val Val Val
   | RHTrans Val Val Val Val Val Val
-  | RHExfalso U Val Val
+  | RHExfalso S.U Val Val
   | RHCoe Val Val Val Val
 
 data FlexHead
@@ -35,17 +36,17 @@ data FlexHead
   | FHCoeRefl Meta Val Val Val Val
 
   -- blocking on UMax
-  | FHCoeUMax UMax Val Val Val Val
-  | FHEqUMax UMax Val Val Val
+  | FHCoeUMax S.UMax Val Val Val Val
+  | FHEqUMax S.UMax Val Val Val
 
-data UnfoldHead
+data UnfoldHead    -- TODO: unpack this
   = UHMeta Meta
   | UHTopDef Lvl
 
 -- Blocking on Val in nested ways.
 data Spine
   = SNil
-  | SApp Spine Val U Icit
+  | SApp Spine Val S.U Icit
 
   | SProj1 Spine
   | SProj2 Spine
@@ -59,7 +60,7 @@ data Spine
   | SEqSetLhs Spine Val
   | SEqSetRhs Val Spine
 
-type VTy = Val
+type Ty = Val
 data Val
   -- Rigidly stuck values
   = Rigid RigidHead Spine
@@ -72,66 +73,43 @@ data Val
   | Eq Val Val Val ~Val          -- Eq computation to non-Eq type
 
   -- Canonical values
-  | U U
+  | U S.U
   | Top
   | Tt
   | Bot
-  | Pair Val U Val U
-  | Sg  Name      VTy U {-# unpack #-} Closure U
-  | Pi  Name Icit VTy U {-# unpack #-} Closure
-  | Lam Name Icit VTy U {-# unpack #-} Closure
+  | Pair Val S.U Val S.U
+  | Sg  Name      Ty S.U {-# unpack #-} Closure S.U
+  | Pi  Name Icit Ty S.U {-# unpack #-} Closure
+  | Lam Name Icit Ty S.U {-# unpack #-} Closure
 
 --------------------------------------------------------------------------------
 
-pattern SAppIS sp t <- SApp sp t Set  Impl where
-  SAppIS sp t = SApp sp t Set  Impl
-pattern SAppES sp t <- SApp sp t Set  Expl where
-  SAppES sp t = SApp sp t Set  Expl
-pattern SAppIP sp t <- SApp sp t Prop Impl where
-  SAppIP sp t = SApp sp t Prop Impl
-pattern SAppEP sp t <- SApp sp t Prop Expl where
-  SAppEP sp t = SApp sp t Prop Expl
+pattern SAppIS sp t       = SApp sp t S.Set  Impl
+pattern SAppES sp t       = SApp sp t S.Set  Expl
+pattern SAppIP sp t       = SApp sp t S.Prop Impl
+pattern SAppEP sp t       = SApp sp t S.Prop Expl
+pattern LamIS x a b       = Lam x Impl a S.Set  (Fun b)
+pattern LamES x a b       = Lam x Expl a S.Set  (Fun b)
+pattern LamIP x a b       = Lam x Impl a S.Prop (Fun b)
+pattern LamEP x a b       = Lam x Expl a S.Prop (Fun b)
+pattern PiES x a b        = Pi x Expl a S.Set  (Fun b)
+pattern PiEP x a b        = Pi x Expl a S.Prop (Fun b)
+pattern SgPP x a b        = Sg x a S.Prop (Fun b) S.Prop
+pattern Meta m            = Flex (FHMeta m) SNil
+pattern Set               = U S.Set
+pattern Prop              = U S.Prop
+pattern Var x             = Rigid (RHLocalVar x) SNil
+pattern Skip env l        = Snoc env (Var l)
+pattern Exfalso u a t     = Rigid (RHExfalso u a t) SNil
+pattern Refl a t          = Rigid (RHRefl a t) SNil
+pattern Sym a x y p       = Rigid (RHSym a x y p) SNil
+pattern Trans a x y z p q = Rigid (RHTrans a x y z p q) SNil
+pattern Ap a b f x y p    = Rigid (RHAp a b f x y p) SNil
 
-pattern LamIS x a b <- Lam x Impl a Set  (CFun b) where
-  LamIS x a b = Lam x Impl a Set  (CFun b)
-pattern LamES x a b <- Lam x Expl a Set  (CFun b) where
-  LamES x a b = Lam x Expl a Set  (CFun b)
-pattern LamIP x a b <- Lam x Impl a Prop (CFun b) where
-  LamIP x a b = Lam x Impl a Prop (CFun b)
-pattern LamEP x a b <- Lam x Expl a Prop (CFun b) where
-  LamEP x a b = Lam x Expl a Prop (CFun b)
+andP :: Val -> Val -> Val
+andP a b = Sg NNil a S.Prop (Fun (\ ~_ -> b)) S.Prop
+{-# inline andP #-}
 
-pattern PiES x a b <- Pi x Expl a Set  (CFun b) where
-  PiES x a b = Pi x Expl a Set  (CFun b)
-pattern PiEP x a b <- Pi x Expl a Prop (CFun b) where
-  PiEP x a b = Pi x Expl a Prop (CFun b)
-pattern SgPP x a b <- Sg x a Prop (CFun b) Prop where
-  SgPP x a b = Sg x a Prop (CFun b) Prop
-
-pattern VMeta m = Flex (FHMeta m) SNil
-pattern VSet    = U Set
-pattern VProp   = U Prop
-pattern VVar x  = Rigid (RHLocalVar x) SNil
-
-pattern Exfalso u a t <- Rigid (RHExfalso u a t) SNil where
-  Exfalso u a t = Rigid (RHExfalso u a t) SNil
-
-pattern Refl a t <- Rigid (RHRefl a t) SNil where
-  Refl a t = Rigid (RHRefl a t) SNil
-
-pattern Sym a x y p <- Rigid (RHSym a x y p) SNil where
-  Sym a x y p = Rigid (RHSym a x y p) SNil
-
-pattern Trans a x y z p q <- Rigid (RHTrans a x y z p q) SNil where
-  Trans a x y z p q = Rigid (RHTrans a x y z p q) SNil
-
-pattern Ap a b f x y p <- Rigid (RHAp a b f x y p) SNil where
-  Ap a b f x y p = Rigid (RHAp a b f x y p) SNil
-
-vAnd :: Val -> Val -> Val
-vAnd a b = Sg NNil a Prop (CFun (\ ~_ -> b)) Prop
-{-# inline vAnd #-}
-
-vImpl :: Val -> Val -> Val
-vImpl a b = PiEP NNil a (\ ~_ -> b)
-{-# inline vImpl #-}
+implies :: Val -> Val -> Val
+implies a b = PiEP NNil a (\ ~_ -> b)
+{-# inline implies #-}

@@ -1,6 +1,6 @@
 
 
-1. String and name handling
+-- String and name handling
 --------------------------------------------------------------------------------
 
 A `Pos` is a byte offset into an implicit ByteString, a `Span` is a pair of
@@ -27,12 +27,11 @@ storing spans after elaboration.
   better to use inlined Haskell.
 
 What about names which are generated during elaboration, and do not come from
-any source file? We don't want to generate lots of ByteStrings.
-
-Sometimes, these names are just "x" etc. Since de-shadowing happens only during
-printing, we can simply share a single "x" ByteString for cases like this. In
-other cases, we only invent a name during printing, e.g. for metas, so there's
-no need to store strings for these.
+any source file? We don't want to generate lots of ByteStrings, and we want names
+to be fast to generate (constant time, ideally). Since names are *not* compared
+or computed with, except in displaying, the solution is to use an ADT definition
+for generated names, such that leaves have ByteStrings, and nodes correspond to
+combining or decorating names.
 
 - QUESTION: what about using ByteString in parsing? I.e. can we build strings
   instead of spans? A string has a) a finalizer b) a start address c) a length.
@@ -59,5 +58,25 @@ no need to store strings for these.
   of scope checking is to process each string *once*, then forget about them
   altogether, until pretty printing.
 
-
+-- Strictness at call and return sites
 --------------------------------------------------------------------------------
+
+Consider the following type:
+
+    data S a = S !a
+
+If we wrap all types of a function with S, we can observe in the generated Core
+that this eliminates all potential forcing from the worker function. The reason is
+that S disappears during worker-wrapping, turning into just an "a" in arguments and
+(# a #) in the result. The arguments are annotated with "Unf=OtherCon []":
+
+  https://downloads.haskell.org/~ghc/latest/docs/html/libraries/ghc-8.10.1/CoreSyn.html#v:OtherCon
+
+Meaning that Core knows that they're already forced. In theory, S should completely eliminate
+superfluous forcing from workers, by a) moving input forcing obligations to call sites b) returning
+forced values.
+
+In practice, does this work? I've done small-scale benchmark in github.com/AndrasKovacs/normalization-bench,
+but there's no conclusive evidence. It might be the case that STG/cmm passes kill all superfluous forcing.
+
+TODO: when setoidtt core works, benchmark S-wrapping in eval.

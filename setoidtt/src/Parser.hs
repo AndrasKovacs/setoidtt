@@ -386,5 +386,5 @@ parseFile path = do
   src <- B.readFile path
   case runParser pSrc src of
     OK a _ _ -> pure a
-    Fail     -> error "impossible"
+    Fail     -> impossible
     Err e    -> putStrLn (showError path src e) >> error "parse error"
