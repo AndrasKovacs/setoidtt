@@ -14,28 +14,16 @@ switchClosure# :: Lvl -> (# Int#, Int# #)
 switchClosure# (Lvl (I# l)) = (# l, l /=# (-1#) #)
 {-# inline switchClosure# #-}
 
-data Closure = Closure# WEnv Lvl S.Tm
+data Closure = Closure# WEnv Lvl S.WTm
 
 pattern Close :: Env -> Lvl -> S.Tm -> Closure
-pattern Close env l t <- Closure# (S -> env) (switchClosure# -> (# ((\x -> Lvl (I# x)) -> l), 1# #)) t where
-  Close (S env) l t = Closure# env l t
+pattern Close env l t <- Closure# (S -> env) (switchClosure# -> (# ((\x -> Lvl (I# x)) -> l), 1# #)) (S -> t) where
+  Close (S env) l (S t) = Closure# env l t
 
 pattern Fun :: (Val -> Val) -> Closure
 pattern Fun f <- Closure# ((\x -> sFun1 (unsafeCoerce# x)) -> f) (switchClosure# -> (# _, 0# #)) _ where
   Fun f = Closure# (unsafeCoerce# (oneShot (unSFun1 (oneShot f)))) (-1) (unsafeCoerce# ())
 {-# complete Close, Fun #-}
-
--- -- TODO: optimize layout using direct unboxed tuples.
--- data Closure = Closure (# WVal -> WVal | (# WEnv, Int#, S.Tm #) #)
-
--- pattern Fun :: (Val -> Val) -> Closure
--- pattern Fun f <- Closure (# sFun1 -> f | #) where
---   Fun f = Closure (# oneShot (unSFun1 (oneShot f)) | #)
-
--- pattern Close :: Env -> Lvl -> S.Tm -> Closure
--- pattern Close env l t <- Closure (# | (# (S -> env), (\x -> Lvl (I# x)) -> l, t #) #) where
---   Close (S env) (Lvl (I# l)) t = Closure (# | (# env, l, t #) #)
--- {-# complete Fun, Close #-}
 
 type Env = S WEnv
 data WEnv = WNil | WSnoc Env ~WVal

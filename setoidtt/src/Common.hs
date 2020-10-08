@@ -86,6 +86,10 @@ newtype Ix = Ix Int
 newtype Lvl = Lvl Int
   deriving (Eq, Ord, Show, Num, Bits) via Int
 
+lvlToIx :: Lvl -> Lvl -> Ix
+lvlToIx (Lvl envl) (Lvl l) = Ix (envl - l - 1)
+{-# inline lvlToIx #-}
+
 data Name = NP | NNil | NX | NName B.ByteString
   deriving (Eq, Show)
 

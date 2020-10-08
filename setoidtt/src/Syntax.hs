@@ -2,7 +2,8 @@
 module Syntax where
 
 import qualified Data.IntSet as IS
-import Common
+import qualified Common
+import Common hiding (Meta)
 
 
 type UMax = IS.IntSet
@@ -37,35 +38,59 @@ pattern UVar :: UMeta -> U
 pattern UVar x <- ((\case UMax xs -> IS.toList xs;_ -> []) -> [UMeta -> x]) where
   UVar (UMeta x) = UMax (IS.singleton x)
 
+type Ty = Tm
+type Tm = S WTm
+data WTm
+  = WLocalVar Ix
+  | WTopDef Lvl
+  | WPostulate Lvl
+  | WMeta Common.Meta
+  | WLet Name Ty U Tm Tm
+  | WPi Name Icit Ty U Ty     -- ^ (x : A : U) → B)  or  {x : A : U} → B
+  | WLam Name Icit Ty U Tm    -- ^ λ(x : A : U).t  or  λ{x : A : U}.t
+  | WApp Tm Tm U Icit         -- ^ t u  or  t {u}, last Ty is u's universe
+  | WSg Name Ty U Ty U
+  | WProj1 Tm
+  | WProj2 Tm
+  | WProjField Tm Name Int
+  | WPair Tm U Tm U
+  | WU U                      -- ^ U u : Set
+  | WTop                      -- ^ Top : Prop
+  | WTt                       -- ^ Tt  : Top
+  | WBot                      -- ^ Bot : Prop
+  | WEq Ty Tm Tm              -- ^ {A : Set} → A → A → Prop
+  | WCoe Ty Ty Tm Tm          -- ^ {A B : Set} → Eq {Set} A B → A → B
+  | WRefl Ty Tm               -- ^ {A : Set}(x : A) → Eq x x
+  | WSym Ty Tm Tm Tm          -- ^ {A : Set}{x y : A} → Eq x y → Eq y x
+  | WTrans Ty Tm Tm Tm Tm Tm  -- ^ {A : Set}{x y z : A} → Eq x y → Eq y z → Eq x z
+  | WAp Ty Ty Tm Tm Tm Tm     -- ^ {A B : Set}(f : A → B){x y : A} → Eq x y → Eq (f x) (f y)
+  | WExfalso U Ty Tm          -- ^ {A : U i} → Bot → A
 
-type Ty   = Tm
+pattern LocalVar x        = S (WLocalVar x)
+pattern TopDef x          = S (WTopDef x)
+pattern Postulate x       = S (WPostulate x)
+pattern Meta x            = S (WMeta x)
+pattern Let x a au t u    = S (WLet x a au t u )
+pattern Pi x i a au b     = S (WPi x i a au b)
+pattern Lam x i a au t    = S (WLam x i a au t)
+pattern App t u uu i      = S (WApp t u uu i)
+pattern Sg x a au b bu    = S (WSg x a au b bu )
+pattern Proj1 t           = S (WProj1 t)
+pattern Proj2 t           = S (WProj2 t)
+pattern ProjField t x n   = S (WProjField t x n)
+pattern Pair t tu u uu    = S (WPair t tu u uu)
+pattern U u               = S (WU u)
+pattern Top               = S (WTop)
+pattern Tt                = S (WTt)
+pattern Bot               = S (WBot)
+pattern Eq a t u          = S (WEq a t u )
+pattern Coe a b p t       = S (WCoe a b p t)
+pattern Refl a t          = S (WRefl a t )
+pattern Sym a t u p       = S (WSym a t u p)
+pattern Trans a t u v p q = S (WTrans a t u v p q)
+pattern Ap a b f t u p    = S (WAp a b f t u p)
+pattern Exfalso u a t     = S (WExfalso u a t)
 
-data Tm
-  = LocalVar Ix
-  | TopDef Lvl
-  | Postulate Lvl
-  | Meta Meta
-  | Let Name Ty U Tm Tm
-
-  | Pi Name Icit Ty U Ty   -- ^ (x : A : U) → B)  or  {x : A : U} → B
-  | Lam Name Icit Ty U Tm  -- ^ λ(x : A : U).t  or  λ{x : A : U}.t
-  | App Tm Tm U Icit       -- ^ t u  or  t {u}, last Ty is u's universe
-
-  | Sg Name Ty U Ty U
-  | Proj1 Tm
-  | Proj2 Tm
-  | ProjField Tm Name Int
-  | Pair Tm U Tm U
-
-  | U U            -- ^ U u : Set
-  | Top            -- ^ Top : Prop
-  | Tt             -- ^ Tt  : Top
-  | Bot            -- ^ Bot : Prop
-
-  | Eq Ty Tm Tm              -- ^ {A : Set} → A → A → Prop
-  | Coe Ty Ty Tm Tm          -- ^ {A B : Set} → Eq {Set} A B → A → B
-  | Refl Ty Tm               -- ^ {A : Set}(x : A) → Eq x x
-  | Sym Ty Tm Tm Tm          -- ^ {A : Set}{x y : A} → Eq x y → Eq y x
-  | Trans Ty Tm Tm Tm Tm Tm  -- ^ {A : Set}{x y z : A} → Eq x y → Eq y z → Eq x z
-  | Ap Ty Ty Tm Tm Tm Tm     -- ^ {A B : Set}(f : A → B){x y : A} → Eq x y → Eq (f x) (f y)
-  | Exfalso U Ty Tm          -- ^ {A : U i} → Bot → A
+{-# complete
+  LocalVar, TopDef, Postulate, Meta, Let, Pi, Lam, App, Sg, Proj1,
+  Proj2, ProjField, Pair, U, Top, Tt, Bot, Eq, Coe, Refl, Sym, Trans, Ap, Exfalso #-}
