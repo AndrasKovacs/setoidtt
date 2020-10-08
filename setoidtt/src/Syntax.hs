@@ -4,14 +4,20 @@ module Syntax where
 import qualified Data.IntSet as IS
 import Common
 
-type Ty = Tm
+
 type UMax = IS.IntSet
 
-data U
-  = Set
-  | Prop
-  | UMax UMax   -- ^ Maximum of a non-empty set of universe metas.
+type U = S WU
+data U2 = U2 U U
+data WU
+  = WSet
+  | WProp
+  | WUMax UMax   -- ^ Maximum of a non-empty set of universe metas.
   deriving (Eq, Show)
+pattern Set     = S WSet
+pattern Prop    = S WProp
+pattern UMax xs = S (WUMax xs)
+{-# complete Set, Prop, UMax #-}
 
 instance Semigroup U where
   u <> u' = case u of
@@ -30,6 +36,9 @@ instance Monoid U where
 pattern UVar :: UMeta -> U
 pattern UVar x <- ((\case UMax xs -> IS.toList xs;_ -> []) -> [UMeta -> x]) where
   UVar (UMeta x) = UMax (IS.singleton x)
+
+
+type Ty   = Tm
 
 data Tm
   = LocalVar Ix

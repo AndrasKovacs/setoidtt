@@ -59,7 +59,7 @@ ghc-options:
 - -dno-suppress-type-signatures
 - -ddump-to-file
 - -ddump-stg
-# - -dsuppress-stg-exts
+- -O2
 
 dependencies:
 - base
@@ -84,7 +84,6 @@ executables:
     main: Main.hs
     ghc-options:
       - -O2
-      # - -fllvm
       - -rtsopts
 
   # setoidtt-bench:

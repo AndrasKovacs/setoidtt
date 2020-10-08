@@ -16,8 +16,8 @@ import qualified Value as V
 --------------------------------------------------------------------------------
 
 data TopEntry
-  = TEDef ~V.Val ~V.Ty S.Tm (Maybe S.Ty) B.ByteString
-  | TEPostulate ~V.Ty S.Ty B.ByteString
+  = TEDef ~V.WVal ~V.WTy S.Tm (Maybe S.Ty) B.ByteString
+  | TEPostulate ~V.WTy S.Ty B.ByteString
 
 -- TODO: we'll implement top resizing and allocation later
 topSize :: Int
@@ -36,7 +36,7 @@ readTop (Lvl x) | 0 <= x && x < topSize = A.read top x
 --------------------------------------------------------------------------------
 
 data MetaEntry
-  = MEUnsolved ~V.Ty S.U
+  = MEUnsolved ~V.WTy S.U
   | MESolved V.Val
 
 metaCxt :: D.Array MetaEntry
@@ -47,7 +47,7 @@ readMeta :: Meta -> IO MetaEntry
 readMeta (Meta i) = D.read metaCxt i
 {-# inline readMeta #-}
 
-newMeta :: V.Ty -> S.U -> IO Meta
+newMeta :: V.WTy -> S.U -> IO Meta
 newMeta ~a u = do
   s <- D.size metaCxt
   D.push metaCxt (MEUnsolved a u)
@@ -57,17 +57,21 @@ newMeta ~a u = do
 -- Universe metacontext
 --------------------------------------------------------------------------------
 
-uCxt :: D.Array (Maybe S.U)
+data UMetaEntry
+  = UMEUnsolved
+  | UMESolved S.U
+
+uCxt :: D.Array UMetaEntry
 uCxt = runIO D.empty
 {-# noinline uCxt #-}
 
-readUMeta :: UMeta -> IO (Maybe S.U)
+readUMeta :: UMeta -> IO UMetaEntry
 readUMeta (UMeta i) = D.read uCxt i
 {-# inline readUMeta #-}
 
 newUMeta :: IO UMeta
 newUMeta = do
   s <- D.size uCxt
-  D.push uCxt Nothing
+  D.push uCxt UMEUnsolved
   pure (UMeta s)
 {-# inline newUMeta #-}

@@ -43,16 +43,37 @@ unSFun1 :: (S a -> S b) -> a -> b
 unSFun1 f a = unS (f (S a))
 {-# inline unSFun1 #-}
 
+instance Show a => Show (S a) where
+  showsPrec n (S a) = showsPrec n a
+
+instance Eq a => Eq (S a) where
+  S x == S y = x == y
+  {-# inline (==) #-}
+
 data L a = L ~a
 unL :: L a -> a
 unL (L a) = a
 {-# inline unL #-}
 
+--------------------------------------------------------------------------------
 
-data Icit
-  = Impl
-  | Expl
-  deriving (Eq, Show)
+newtype Unfolding = Unfolding# Int deriving Eq
+pattern DoUnfold   = Unfolding# 0
+pattern DontUnfold = Unfolding# 1
+{-# complete DoUnfold, DontUnfold #-}
+
+instance Show Unfolding where
+  show DoUnfold   = "DoUnfold"
+  show DontUnfold = "DontUnfold"
+
+newtype Icit = Icit# Int deriving Eq
+pattern Impl = Icit# 0
+pattern Expl = Icit# 1
+{-# complete Impl, Expl #-}
+
+instance Show Icit where
+  show Impl = "Impl"
+  show Expl = "Expl"
 
 data ArgInfo
   = NoName Icit
