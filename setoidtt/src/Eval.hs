@@ -42,13 +42,15 @@ import Exceptions
 --      should also make it easier to benchmarked S-wrapping versus no wrapping. By inspecting STG, it seems
 --      that S-wrapping completely eliminates laziness overhead in all known calls. Only unknown calls retain
 --      thunk checks.
+--    - NEVER RETURN S FROM RUNIO
+--    - TODO: USE INSPECTION TESTING
 
 
 -- Variables
 --------------------------------------------------------------------------------
 
-vLocalVar :: Env -> Ix -> L WVal
-vLocalVar (Snoc _ v)   0 = L v
+vLocalVar :: Env -> Ix -> S Val
+vLocalVar (Snoc _ v)   0 = S v
 vLocalVar (Snoc env _) x = vLocalVar env (x - 1)
 vLocalVar _ _            = impossible
 
@@ -72,7 +74,7 @@ infixl 2 $$
 ($$) :: Closure -> Val -> Val
 ($$) cl u = case cl of
   Fun t         -> t u
-  Close env l t -> eval (Snoc env (unS u)) l t
+  Close env l t -> eval (Snoc env u) l t
 {-# inline ($$) #-}
 
 vApp :: Val -> Val -> S.U -> Icit -> Val
@@ -319,50 +321,52 @@ vEqSet l a b = case (a, b) of
 --------------------------------------------------------------------------------
 
 vSp :: Lvl -> Val -> Spine -> Val
-vSp l v sp = let
+vSp l v sp = unS (wvSp l (S v) (S sp)); {-# inline vSp #-}
+wvSp l (S v) (S sp) = let
   go = vSp l v; {-# inline go #-}
   in case sp of
-    SNil              -> v
-    SApp sp t tu i    -> vApp (go sp) t tu i
-    SProj1 sp         -> vProj1 (go sp)
-    SProj2 sp         -> vProj2 (go sp)
-    SProjField sp x n -> vProjField (go sp) x n
-    SCoeSrc a b p t   -> vCoe l (go a) b p t
-    SCoeTgt a b p t   -> vCoe l a (go b) p t
-    SCoeComp a b p t  -> vCoeComp l a b p (go t)
-    SEqType a t u     -> vEq l (go a) t u
-    SEqSetLhs t u     -> vEqSet l (go t) u
-    SEqSetRhs t u     -> vEqSet l t (go u)
+    SNil              -> S v
+    SApp sp t tu i    -> S (vApp (go sp) t tu i)
+    SProj1 sp         -> S (vProj1 (go sp))
+    SProj2 sp         -> S (vProj2 (go sp))
+    SProjField sp x n -> S (vProjField (go sp) x n)
+    SCoeSrc a b p t   -> S (vCoe l (go a) b p t)
+    SCoeTgt a b p t   -> S (vCoe l a (go b) p t)
+    SCoeComp a b p t  -> S (vCoeComp l a b p (go t))
+    SEqType a t u     -> S (vEq l (go a) t u)
+    SEqSetLhs t u     -> S (vEqSet l (go t) u)
+    SEqSetRhs t u     -> S (vEqSet l t (go u))
 
 
 eval :: Env -> Lvl -> S.Tm -> Val
-eval env l t = let
+eval e l t = unS (weval e l t); {-# inline eval #-}
+weval env l t = let
   go = eval env l; {-# inline go #-}
   in case t of
-    S.LocalVar x        -> S (unL (vLocalVar env x))
-    S.TopDef x          -> vTopDef x
-    S.Postulate x       -> Rigid (RHPostulate x) SNil
-    S.Meta x            -> vMeta x
-    S.Let _ _ _ t u     -> eval (Snoc env (unS (go t))) (l + 1) u
-    S.Pi x i a au b     -> Pi x i (go a) au (Close env l b)
-    S.Sg x a au b bu    -> Sg x (go a) au (Close env l b) bu
-    S.Lam x i a au t    -> Lam x i (go a) au (Close env l t)
-    S.App t u uu i      -> vApp (go t) (go u) uu i
-    S.Proj1 t           -> vProj1 (go t)
-    S.Proj2 t           -> vProj2 (go t)
-    S.ProjField t x n   -> vProjField (go t) x n
-    S.Pair t tu u uu    -> Pair (go t) tu (go u) uu
-    S.U u               -> U u
-    S.Top               -> Top
-    S.Tt                -> Tt
-    S.Bot               -> Bot
-    S.Eq a x y          -> vEq l (go a) (go x) (go y)
-    S.Refl a t          -> Refl (go a) (go t)
-    S.Coe a b p t       -> vCoe l (go a) (go b) (go p) (go t)
-    S.Sym a x y p       -> Sym (go a) (go x) (go y) (go p)
-    S.Trans a x y z p q -> Trans (go a) (go x) (go y) (go z) (go p) (go q)
-    S.Ap a b f x y p    -> Ap (go a) (go b) (go f) (go x) (go y) (go p)
-    S.Exfalso u a t     -> Exfalso u (go a) (go t)
+    S.LocalVar x        -> vLocalVar env x
+    S.TopDef x          -> S (vTopDef x)
+    S.Postulate x       -> S (Rigid (RHPostulate x) SNil)
+    S.Meta x            -> S (vMeta x)
+    S.Let _ _ _ t u     -> S (eval (Snoc env (go t)) (l + 1) u)
+    S.Pi x i a au b     -> S (Pi x i (go a) au (Close env l b))
+    S.Sg x a au b bu    -> S (Sg x (go a) au (Close env l b) bu)
+    S.Lam x i a au t    -> S (Lam x i (go a) au (Close env l t))
+    S.App t u uu i      -> S (vApp (go t) (go u) uu i)
+    S.Proj1 t           -> S (vProj1 (go t))
+    S.Proj2 t           -> S (vProj2 (go t))
+    S.ProjField t x n   -> S (vProjField (go t) x n)
+    S.Pair t tu u uu    -> S (Pair (go t) tu (go u) uu)
+    S.U u               -> S (U u)
+    S.Top               -> S (Top)
+    S.Tt                -> S (Tt)
+    S.Bot               -> S (Bot)
+    S.Eq a x y          -> S (vEq l (go a) (go x) (go y))
+    S.Refl a t          -> S (Refl (go a) (go t))
+    S.Coe a b p t       -> S (vCoe l (go a) (go b) (go p) (go t))
+    S.Sym a x y p       -> S (Sym (go a) (go x) (go y) (go p))
+    S.Trans a x y z p q -> S (Trans (go a) (go x) (go y) (go z) (go p) (go q))
+    S.Ap a b f x y p    -> S (Ap (go a) (go b) (go f) (go x) (go y) (go p))
+    S.Exfalso u a t     -> S (Exfalso u (go a) (go t))
 
 -- Forcing
 --------------------------------------------------------------------------------

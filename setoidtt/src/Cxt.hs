@@ -11,8 +11,8 @@ import Eval
 import Common
 
 
-data Types = TyNil | TySnoc Types Name ~V.WTy ~S.U
-data NameInfo = NameInfo Lvl ~V.WTy ~S.U
+data Types = TyNil | TySnoc Types Name ~V.Ty ~S.U
+data NameInfo = NameInfo Lvl ~V.Ty ~S.U
 
 
 -- | Table of names used for scoping raw identifiers. Note: we have *more* names around
@@ -36,7 +36,7 @@ emptyCxt :: Cxt
 emptyCxt = Cxt V.Nil 0 TyNil mempty mempty
 {-# noinline emptyCxt #-}
 
-bind :: B.ByteString -> V.WTy -> S.U -> Cxt -> Cxt
+bind :: B.ByteString -> V.Ty -> S.U -> Cxt -> Cxt
 bind x ~a ~au (Cxt env l as bound ns) =
   Cxt (V.Skip env l)
       (l + 1)
@@ -44,7 +44,7 @@ bind x ~a ~au (Cxt env l as bound ns) =
       (LS.insert l bound)
       (M.insert x (NameInfo l a au) ns)
 
-insert :: Name -> V.WTy -> S.U -> Cxt -> Cxt
+insert :: Name -> V.Ty -> S.U -> Cxt -> Cxt
 insert x ~a ~au (Cxt env l as bound ns) =
   Cxt (V.Skip env l)
       (l + 1)
@@ -52,7 +52,7 @@ insert x ~a ~au (Cxt env l as bound ns) =
       (LS.insert l bound)
       ns
 
-define :: B.ByteString -> V.WVal -> V.WTy -> S.U -> Cxt -> Cxt
+define :: B.ByteString -> V.Val -> V.Ty -> S.U -> Cxt -> Cxt
 define x ~t ~a ~au (Cxt env l as bound ns) =
   Cxt (V.Snoc env t)
       (l + 1)

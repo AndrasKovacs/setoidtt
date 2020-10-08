@@ -25,6 +25,11 @@ infixl 9 $$!
 ($$!) f a = f $! a
 {-# inline ($$!) #-}
 
+type S# a = (# a #)
+pattern S# :: a -> S# a
+pattern S# a = (# a #)
+{-# complete S# #-}
+
 data S a = S !a
 unS :: S a -> a
 unS (S a) = a

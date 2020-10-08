@@ -36,7 +36,7 @@ readTop (Lvl x) | 0 <= x && x < topSize = A.read top x
 --------------------------------------------------------------------------------
 
 data MetaEntry
-  = MEUnsolved ~V.WTy S.U
+  = MEUnsolved ~V.Ty S.U
   | MESolved V.Val
 
 metaCxt :: D.Array MetaEntry
@@ -47,7 +47,7 @@ readMeta :: Meta -> IO MetaEntry
 readMeta (Meta i) = D.read metaCxt i
 {-# inline readMeta #-}
 
-newMeta :: V.WTy -> S.U -> IO Meta
+newMeta :: V.Ty -> S.U -> IO Meta
 newMeta ~a u = do
   s <- D.size metaCxt
   D.push metaCxt (MEUnsolved a u)
