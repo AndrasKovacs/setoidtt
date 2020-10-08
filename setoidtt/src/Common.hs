@@ -26,6 +26,23 @@ infixl 9 $$!
 {-# inline ($$!) #-}
 
 data S a = S !a
+unS :: S a -> a
+unS (S a) = a
+{-# inline unS #-}
+
+sFun1 :: (a -> b) -> S a -> S b
+sFun1 f (S a) = S (f a)
+{-# inline sFun1 #-}
+
+unSFun1 :: (S a -> S b) -> a -> b
+unSFun1 f a = unS (f (S a))
+{-# inline unSFun1 #-}
+
+data L a = L ~a
+unL :: L a -> a
+unL (L a) = a
+{-# inline unL #-}
+
 
 data Icit
   = Impl
