@@ -1,7 +1,7 @@
 
 module Eval (
     ($$), vApp, vProj1, vProj2, vProjField
-  , vCoe, vEq, forceU, conv, force, fforce, vSp, vCoeP, eval, quote
+  , vCoe, vEq, forceU, conv, force, fforce, vSp, vCoeP, eval, quote,
   ) where
 
 import Control.Monad
@@ -511,7 +511,10 @@ convIO l unfold t t' = let
       S.Set -> throwIO ConvDiff
       S.Prop -> pure ()
       S.UMax xs -> throwIO (ConvUMax xs)
-    S.UMax xs -> throwIO (ConvUMax xs)
+    S.UMax xs -> case u' of
+      S.Set  -> throwIO (ConvUMax xs)
+      S.Prop -> throwIO (ConvUMax xs)
+      S.UMax xs' -> unless (xs == xs') (throwIO (ConvUMax xs))
 
   goUMax :: S.UMax -> S.UMax -> IO ()
   goUMax xs xs' = cmpU (forceUMax xs) (forceUMax xs')
@@ -646,9 +649,9 @@ quote l unfold v = let
     UHMeta x   -> S.Meta x
     UHTopDef x -> S.TopDef x
 
-  goCl :: Closure -> S.Tm
-  goCl t = quote (l + 1) unfold (t $$ Var l)
-  {-# inline goCl #-}
+  goClosure :: Closure -> S.Tm
+  goClosure t = quote (l + 1) unfold (t $$ Var l)
+  {-# inline goClosure #-}
 
   in case force' v of
     Rigid h sp     -> goSp (goRH h) sp
@@ -660,6 +663,6 @@ quote l unfold v = let
     Tt             -> S.Tt
     Bot            -> S.Bot
     Pair t tu u uu -> S.Pair (go t) tu (go u) uu
-    Sg x a au b bu -> S.Sg x (go a) au (goCl b) bu
-    Pi x i a au b  -> S.Pi x i (go a) au (goCl b)
-    Lam x i a au t -> S.Lam x i (go a) au (goCl t)
+    Sg x a au b bu -> S.Sg x (go a) au (goClosure b) bu
+    Pi x i a au b  -> S.Pi x i (go a) au (goClosure b)
+    Lam x i a au t -> S.Lam x i (go a) au (goClosure t)

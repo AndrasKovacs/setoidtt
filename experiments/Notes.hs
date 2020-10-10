@@ -1,4 +1,4 @@
-{-# language MagicHash, BangPatterns, UnboxedTuples, Strict #-}
+{-# language MagicHash, BangPatterns, UnboxedTuples, Strict, TemplateHaskell #-}
 
 module Notes where
 
