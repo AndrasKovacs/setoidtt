@@ -54,26 +54,30 @@ ghc-options:
 - -Wno-partial-type-signatures
 - -Wno-type-defaults
 - -Wno-missing-pattern-synonym-signatures
+- -O2
+- -fplugin-opt=Test.Inspection.Plugin:skip-O0
+# - -fplugin-opt=Test.Inspection.Plugin:quiet
 - -ddump-simpl
 - -dsuppress-all
 - -dno-suppress-type-signatures
 - -ddump-to-file
 - -ddump-stg
 - -ddump-cmm
-- -O2
+
 
 dependencies:
 - base
 - bytestring
 - containers
+- directory
 - dynamic-array
 - flatparse
 - ghc-prim
+- inspection-testing
 - primdata
 - template-haskell
 - time
 - unordered-containers
-- directory
 
 data-files:
   - bench/parse01.stt
@@ -85,6 +89,7 @@ executables:
     main: Main.hs
     ghc-options:
       - -rtsopts
+
 
   # setoidtt-bench:
   #   source-dirs:

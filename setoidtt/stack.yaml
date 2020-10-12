@@ -8,6 +8,7 @@ extra-deps:
 - ./primdata
 - ./dynamic-array
 - ./flatparse
+- ../inspection-testing
 
 ghc-options:
     "$everything": -split-sections

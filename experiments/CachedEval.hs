@@ -112,9 +112,6 @@ conv gamma delta r t delta' r' t' = case (t, t') of
 
   _ → False
 
-
--- We can also use cached values for quoting.
-
 -- quote : (Γ : Con) → Val Γ A → Tm Γ A
 quote ∷ Con → Val → Tm
 quote gamma = \case
@@ -158,6 +155,5 @@ test1 =
   Let (2 $$ 0 $$ 1) $
   0
 
-
-convTest :: Bool
-convTest = convTm0 test0 test1
+convTest1 :: Bool
+convTest1 = convTm0 test0 test1

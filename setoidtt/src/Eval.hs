@@ -1,7 +1,7 @@
 
 module Eval (
     ($$), vApp, vProj1, vProj2, vProjField
-  , vCoe, vEq, forceU, conv, force, fforce, vSp, vCoeP, eval, quote,
+  , vCoe, vEq, forceU, conv, force, fforce, vSp, vCoeP, eval, quote, convIO
   ) where
 
 import Control.Monad
@@ -89,6 +89,15 @@ vApp t u un i = case t of
   Unfold h sp t -> Unfold h (SApp sp u un i) (unS (vApp (S t) u un i))
   _             -> impossible
 
+vAppInline :: Val -> Val -> S.U -> Icit -> Val
+vAppInline t u un i = case t of
+  Lam _ _ _ _ t -> t $$ u
+  Rigid h sp    -> Rigid  h (SApp sp u un i)
+  Flex h sp     -> Flex   h (SApp sp u un i)
+  Unfold h sp t -> Unfold h (SApp sp u un i) (unS (vApp (S t) u un i))
+  _             -> impossible
+{-# inline vAppInline #-}
+
 -- Projections
 --------------------------------------------------------------------------------
 
@@ -100,6 +109,15 @@ vProj1 t = case t of
   Unfold h sp t -> Unfold h (SProj1 sp) (unS (vProj1 (S t)))
   _             -> impossible
 
+vProj1Inline :: Val -> Val
+vProj1Inline t = case t of
+  Pair t _ u _  -> t
+  Rigid h sp    -> Rigid  h (SProj1 sp)
+  Flex h sp     -> Flex   h (SProj1 sp)
+  Unfold h sp t -> Unfold h (SProj1 sp) (unS (vProj1 (S t)))
+  _             -> impossible
+{-# inline vProj1Inline #-}
+
 vProj2 :: Val -> Val
 vProj2 t = case t of
   Pair t _ u _  -> u
@@ -107,6 +125,15 @@ vProj2 t = case t of
   Flex h sp     -> Flex   h (SProj2 sp)
   Unfold h sp t -> Unfold h (SProj2 sp) (unS (vProj2 (S t)))
   _             -> impossible
+
+vProj2Inline :: Val -> Val
+vProj2Inline t = case t of
+  Pair t _ u _  -> u
+  Rigid h sp    -> Rigid  h (SProj2 sp)
+  Flex h sp     -> Flex   h (SProj2 sp)
+  Unfold h sp t -> Unfold h (SProj2 sp) (unS (vProj2 (S t)))
+  _             -> impossible
+{-# inline vProj2Inline #-}
 
 vProjField :: Val -> Name -> Int -> Val
 vProjField t x n = case t of
@@ -116,6 +143,16 @@ vProjField t x n = case t of
   Flex h sp      -> Flex   h (SProjField sp x n)
   Unfold h sp t  -> Unfold h (SProjField sp x n) (unS (vProjField (S t) x n))
   _              -> impossible
+
+vProjFieldInline :: Val -> Name -> Int -> Val
+vProjFieldInline t x n = case t of
+  Pair t tu u uu -> case n of 0 -> t
+                              n -> vProjField u x (n - 1)
+  Rigid h sp     -> Rigid  h (SProjField sp x n)
+  Flex h sp      -> Flex   h (SProjField sp x n)
+  Unfold h sp t  -> Unfold h (SProjField sp x n) (unS (vProjField (S t) x n))
+  _              -> impossible
+{-# inline vProjFieldInline #-}
 
 -- Universe matching
 --------------------------------------------------------------------------------
@@ -178,12 +215,12 @@ vCoe l a b p t = case (a, b) of
                      let p1 = vProj1 p
                          p2 = vProj2 p
                          a0 = vCoe l a' a (Sym Set a a' p1) a1
-                     in vCoe l (b $$ a0) (b' $$ a1) (vApp p2 a0 S.Set Expl) (vApp t a0 S.Set i)
+                     in vCoe l (b $$ a0) (b' $$ a1) (vAppInline p2 a0 S.Set Expl) (vAppInline t a0 S.Set i)
         MUProp    -> Lam (pick x x') i a' S.Prop $ Fun \a1 ->
                      let p1 = vProj1 p
                          p2 = vProj2 p
                          a0 = vCoeP (Sym Prop a a' p1) a1
-                     in vCoe l (b $$ a0) (b' $$ a1) (vApp p2 a0 S.Prop Expl) (vApp t a0 S.Prop i)
+                     in vCoe l (b $$ a0) (b' $$ a1) (vAppInline p2 a0 S.Prop Expl) (vAppInline t a0 S.Prop i)
         MUDiff    -> Exfalso S.Set topB p
         MUUMax au -> Flex (FHCoeUMax au topA topB p t) SNil
 
@@ -214,7 +251,7 @@ vCoe l a b p t = case (a, b) of
   (Unfold h sp a, b            ) -> Unfold h (SCoeSrc sp b p t) (unS (vCoe l (S a) b p t))
   (a            , Flex h sp    ) -> Flex h (SCoeTgt a sp p t)
   (a            , Unfold h sp b) -> Unfold h (SCoeTgt a sp p t) (unS (vCoe l a (S b) p t))
-  (a            , b            ) -> vCoeComp l a b p t
+  (a            , b            ) -> vCoeCompInline l a b p t
 
 -- | Try to compute coercion composition.
 vCoeComp :: Lvl -> Val -> Val -> Val -> Val -> Val
@@ -224,6 +261,14 @@ vCoeComp l a b p t = case t of
   Rigid (RHCoe a' _ p' t') SNil -> vCoeRefl l a' b (Trans Set a' a b p' p) t'
   t                             -> vCoeRefl l a b p t
 
+vCoeCompInline :: Lvl -> Val -> Val -> Val -> Val -> Val
+vCoeCompInline l a b p t = case t of
+  Flex h sp                     -> Flex h (SCoeComp a b p sp)
+  Unfold h sp t                 -> Unfold h (SCoeComp a b p sp) (unS (vCoeComp l a b p (S t)))
+  Rigid (RHCoe a' _ p' t') SNil -> vCoeRefl l a' b (Trans Set a' a b p' p) t'
+  t                             -> vCoeRefl l a b p t
+{-# inline vCoeCompInline #-}
+
 -- | Try to compute reflexive coercion.
 vCoeRefl :: Lvl -> Val -> Val -> Val -> Val -> Val
 vCoeRefl l a b p t = S $ runIO do
@@ -232,6 +277,16 @@ vCoeRefl l a b p t = S $ runIO do
     ConvMeta x  -> pure $ WFlex (FHCoeRefl x a b p t) SNil
     ConvUMax xs -> pure $ WFlex (FHCoeUMax xs a b p t) SNil
     ConvSame    -> impossible
+
+-- -- | Try to compute reflexive coercion.
+-- vCoeReflInline :: Lvl -> Val -> Val -> Val -> Val -> Val
+-- vCoeReflInline l a b p t = S $ runIO do
+--   (unS t <$ convIO l DontUnfold a b) `catch` \case
+--     ConvDiff    -> pure $ WRigid (RHCoe a b p t) SNil
+--     ConvMeta x  -> pure $ WFlex (FHCoeRefl x a b p t) SNil
+--     ConvUMax xs -> pure $ WFlex (FHCoeUMax xs a b p t) SNil
+--     ConvSame    -> impossible
+-- {-# inline vCoeReflInline #-}
 
 -- | coeP : {A B : Prop} -> A = B -> A -> B
 vCoeP :: Val -> Val -> Val
@@ -251,7 +306,7 @@ vEq l a t u = case a of
 
   -- funext always computes to Expl function
   topA@(Pi x i a au b) -> Eq topA t u $
-    unS (Pi x Expl a au $ Fun \x -> vEq l (b $$ x) (vApp t x au i) (vApp u x au i))
+    unS (Pi x Expl a au $ Fun \x -> vEq l (b $$ x) (vAppInline t x au i) (vAppInline u x au i))
 
   -- equality of Prop fields is automatically skipped
   topA@(Sg x a (forceU -> !au) b (forceU -> !bu)) ->
@@ -329,10 +384,10 @@ vSp l v sp = let
   go = vSp l v; {-# inline go #-}
   in case sp of
     SNil              -> v
-    SApp sp t tu i    -> vApp (go sp) t tu i
-    SProj1 sp         -> vProj1 (go sp)
-    SProj2 sp         -> vProj2 (go sp)
-    SProjField sp x n -> vProjField (go sp) x n
+    SApp sp t tu i    -> vAppInline (go sp) t tu i
+    SProj1 sp         -> vProj1Inline (go sp)
+    SProj2 sp         -> vProj2Inline (go sp)
+    SProjField sp x n -> vProjFieldInline (go sp) x n
     SCoeSrc a b p t   -> vCoe l (go a) b p t
     SCoeTgt a b p t   -> vCoe l a (go b) p t
     SCoeComp a b p t  -> vCoeComp l a b p (go t)
@@ -353,10 +408,10 @@ eval env l t = let
     S.Pi x i a au b     -> Pi x i (go a) au (Close env l b)
     S.Sg x a au b bu    -> Sg x (go a) au (Close env l b) bu
     S.Lam x i a au t    -> Lam x i (go a) au (Close env l t)
-    S.App t u uu i      -> vApp (go t) (go u) uu i
-    S.Proj1 t           -> vProj1 (go t)
-    S.Proj2 t           -> vProj2 (go t)
-    S.ProjField t x n   -> vProjField (go t) x n
+    S.App t u uu i      -> vAppInline (go t) (go u) uu i
+    S.Proj1 t           -> vProj1Inline (go t)
+    S.Proj2 t           -> vProj2Inline (go t)
+    S.ProjField t x n   -> vProjFieldInline (go t) x n
     S.Pair t tu u uu    -> Pair (go t) tu (go u) uu
     S.U u               -> U u
     S.Top               -> Top
@@ -666,3 +721,9 @@ quote l unfold v = let
     Sg x a au b bu -> S.Sg x (go a) au (goClosure b) bu
     Pi x i a au b  -> S.Pi x i (go a) au (goClosure b)
     Lam x i a au t -> S.Lam x i (go a) au (goClosure t)
+
+-- inspection
+--------------------------------------------------------------------------------
+
+quoteTest l unf t = unS (quote l unf (S t))
+inspectS 'quoteTest

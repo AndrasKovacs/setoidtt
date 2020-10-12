@@ -6,10 +6,13 @@ module Common (
   ) where
 
 import qualified Data.ByteString as B
+import qualified Language.Haskell.TH as TH
+import Test.Inspection
 import Data.Kind
 import GHC.Stack
 import Data.Bits
 import FlatParse
+
 
 --------------------------------------------------------------------------------
 
@@ -24,11 +27,6 @@ infixl 9 $$!
 ($$!) :: (a -> b) -> a -> b
 ($$!) f a = f $! a
 {-# inline ($$!) #-}
-
-type S# a = (# a #)
-pattern S# :: a -> S# a
-pattern S# a = (# a #)
-{-# complete S# #-}
 
 data S a = S !a
 unS :: S a -> a
@@ -90,8 +88,17 @@ lvlToIx :: Lvl -> Lvl -> Ix
 lvlToIx (Lvl envl) (Lvl l) = Ix (envl - l - 1)
 {-# inline lvlToIx #-}
 
-data Name = NP | NNil | NX | NName B.ByteString
+type Name = S WName
+data WName
+  = WNP
+  | WNNil
+  | WNX
+  | WNName B.ByteString
   deriving (Eq, Show)
+pattern NP      = S WNP
+pattern NNil    = S WNNil
+pattern NX      = S WNX
+pattern NName x = S (WNName x)
 
 -- | Pick the more informative name.
 pick :: Name -> Name -> Name
@@ -107,3 +114,18 @@ newtype Meta = Meta Int
 
 newtype UMeta = UMeta Int
   deriving (Eq, Ord, Show, Num) via Int
+
+
+-- Inspection testing
+--------------------------------------------------------------------------------
+
+-- | Check that a definition contains no `S` and `unS`. Note: we enable
+--   -fplugin-opt=Test.Inspection.Plugin:skip-O0 to stop interactive loading
+--   to be killed by inspection failure.
+inspectS name = inspect $ mkObligation name (NoUseOf ['S, 'unS])
+
+
+--------------------------------------------------------------------------------
+
+pickTest x y = unS (pick (S x) (S y))
+inspect $ mkObligation 'pickTest (NoUseOf ['S, 'unS])
