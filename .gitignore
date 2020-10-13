@@ -30,3 +30,5 @@ TAGS
 *.glob
 *.lock
 *.dump-simpl
+*.dump-cmm
+*.dump-stg

@@ -1,0 +1,8 @@
+
+resolver: lts-16.11
+
+packages:
+- .
+
+extra-deps:
+- compact-0.2.0.0
