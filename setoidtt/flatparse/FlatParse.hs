@@ -60,6 +60,7 @@ module FlatParse (
   , some_
   , spanned
   , span2ByteString
+  , unsafeSpan2ByteString
   , string
   , switch
   , switch'
@@ -583,6 +584,13 @@ span2ByteString :: B.ByteString -> Span -> B.ByteString
 span2ByteString bstr (Span (Pos n) (Pos n')) =
   B.take (n - n') (B.drop (B.length bstr - n) bstr)
 {-# inline span2ByteString #-}
+
+-- | Create a `ByteString` from a `Span`. The first argument is the buffer the
+--   `Span` points into.
+unsafeSpan2ByteString :: B.ByteString -> Span -> B.ByteString
+unsafeSpan2ByteString bstr (Span (Pos n) (Pos n')) =
+  B.unsafeTake (n - n') (B.unsafeDrop (B.length bstr - n) bstr)
+{-# inline unsafeSpan2ByteString #-}
 
 -- char and string
 --------------------------------------------------------------------------------

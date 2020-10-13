@@ -1,4 +1,3 @@
-{-# options_ghc -Wno-unused-imports #-}
 
 module Common (
     module Common
@@ -7,12 +6,15 @@ module Common (
 
 import qualified Data.ByteString as B
 import qualified Language.Haskell.TH as TH
-import Test.Inspection
-import Data.Kind
-import GHC.Stack
-import Data.Bits
-import FlatParse
 
+import Data.Bits
+import Data.Hashable
+import Data.Kind
+import Data.String
+import FNV164
+import FlatParse
+-- import GHC.Stack
+import Test.Inspection
 
 --------------------------------------------------------------------------------
 
@@ -53,7 +55,25 @@ unL :: L a -> a
 unL (L a) = a
 {-# inline unL #-}
 
+-- lists
 --------------------------------------------------------------------------------
+
+-- | Lists.
+type List a = S (WList a)
+data WList a = WNil | WSnoc (List a) a
+pattern Nil = S WNil
+pattern Snoc as a = S (WSnoc as a)
+{-# complete Nil, Snoc #-}
+
+-- | Lists with lazy elements.
+type LList a = S (WLList a)
+data WLList a = WLNil | WLSnoc (LList a) ~a
+pattern LNil = S WLNil
+pattern LSnoc as a <- S (WLSnoc as a) where LSnoc as ~a = S (WLSnoc as a)
+{-# complete LNil, LSnoc #-}
+
+--------------------------------------------------------------------------------
+
 
 newtype Unfolding = Unfolding# Int deriving Eq
 pattern DoUnfold   = Unfolding# 0
@@ -88,26 +108,39 @@ lvlToIx :: Lvl -> Lvl -> Ix
 lvlToIx (Lvl envl) (Lvl l) = Ix (envl - l - 1)
 {-# inline lvlToIx #-}
 
+--------------------------------------------------------------------------------
+
+newtype RawName = RawName {unRawName :: B.ByteString}
+  deriving (Show, IsString, Eq) via B.ByteString
+
+instance Hashable RawName where
+  hashWithSalt salt (RawName str) = fnv164 str salt
+  {-# inline hashWithSalt #-}
+
+--------------------------------------------------------------------------------
+
 type Name = S WName
 data WName
   = WNP
-  | WNNil
+  | WNEmpty
   | WNX
-  | WNName B.ByteString
+  | WNName RawName
   deriving (Eq, Show)
 pattern NP      = S WNP
-pattern NNil    = S WNNil
+pattern NEmpty  = S WNEmpty
 pattern NX      = S WNX
 pattern NName x = S (WNName x)
 
 -- | Pick the more informative name.
 pick :: Name -> Name -> Name
 pick x y = case x of
-  NNil -> case y of
-    NNil -> NX
+  NEmpty -> case y of
+    NEmpty -> NX
     y -> y
   x -> x
 {-# inline pick #-}
+
+--------------------------------------------------------------------------------
 
 newtype Meta = Meta Int
   deriving (Eq, Ord, Show, Num) via Int
@@ -122,6 +155,7 @@ newtype UMeta = UMeta Int
 -- | Check that a definition contains no `S` and `unS`. Note: we enable
 --   -fplugin-opt=Test.Inspection.Plugin:skip-O0 to stop interactive loading
 --   to be killed by inspection failure.
+inspectS :: TH.Name -> TH.Q [TH.Dec]
 inspectS name = inspect $ mkObligation name (NoUseOf ['S, 'unS])
 
 

@@ -40,6 +40,7 @@ data Tm
   | Tt      Span
   | Bot     Span
   | Exfalso Span
+
   | Eq Tm Tm
   | Refl    Span
   | Coe     Span

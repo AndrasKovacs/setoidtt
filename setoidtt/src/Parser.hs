@@ -374,7 +374,7 @@ pTopLevel =
           $(switch [| case _ of
              ":=" -> setPos pos >> topIndentErr
              ":"  -> setPos pos >> topIndentErr
-             _    -> (eof `cut` "expected end of file") >> pure Nil |]))
+             _    -> (eof `cut` "expected end of file") >> pure Presyntax.Nil |]))
 
 pSrc :: Parser TopLevel
 pSrc = ws *> pTopLevel

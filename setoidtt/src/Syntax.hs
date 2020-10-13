@@ -2,6 +2,7 @@
 module Syntax where
 
 import qualified Data.IntSet as IS
+import qualified LvlSet as LS
 import qualified Common
 import Common hiding (Meta)
 
@@ -40,11 +41,13 @@ pattern UVar x <- ((\case UMax xs -> IS.toList xs;_ -> []) -> [UMeta -> x]) wher
 
 type Ty = Tm
 type Tm = S WTm
+type WTy = WTm
 data WTm
   = WLocalVar Ix
   | WTopDef Lvl
   | WPostulate Lvl
   | WMeta Common.Meta
+  | WFreshMeta Common.Meta (WList WU) LS.LvlSet
   | WLet Name Ty U Tm Tm
   | WPi Name Icit Ty U Ty     -- ^ (x : A : U) → B)  or  {x : A : U} → B
   | WLam Name Icit Ty U Tm    -- ^ λ(x : A : U).t  or  λ{x : A : U}.t
@@ -70,6 +73,7 @@ pattern LocalVar x        = S (WLocalVar x)
 pattern TopDef x          = S (WTopDef x)
 pattern Postulate x       = S (WPostulate x)
 pattern Meta x            = S (WMeta x)
+pattern FreshMeta m us ls = S (WFreshMeta m us ls)
 pattern Let x a au t u    = S (WLet x a au t u )
 pattern Pi x i a au b     = S (WPi x i a au b)
 pattern Lam x i a au t    = S (WLam x i a au t)
@@ -92,5 +96,5 @@ pattern Ap a b f t u p    = S (WAp a b f t u p)
 pattern Exfalso u a t     = S (WExfalso u a t)
 
 {-# complete
-  LocalVar, TopDef, Postulate, Meta, Let, Pi, Lam, App, Sg, Proj1,
+  LocalVar, TopDef, Postulate, Meta, Let, Pi, Lam, App, Sg, Proj1, FreshMeta,
   Proj2, ProjField, Pair, U, Top, Tt, Bot, Eq, Coe, Refl, Sym, Trans, Ap, Exfalso #-}

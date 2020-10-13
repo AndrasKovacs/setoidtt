@@ -56,13 +56,12 @@ ghc-options:
 - -Wno-missing-pattern-synonym-signatures
 - -O2
 - -fplugin-opt=Test.Inspection.Plugin:skip-O0
-# - -fplugin-opt=Test.Inspection.Plugin:quiet
-- -ddump-simpl
-- -dsuppress-all
-- -dno-suppress-type-signatures
-- -ddump-to-file
-- -ddump-stg
-- -ddump-cmm
+# - -ddump-simpl
+# - -dsuppress-all
+# - -dno-suppress-type-signatures
+# - -ddump-to-file
+# - -ddump-stg
+# - -ddump-cmm
 
 
 dependencies:
@@ -73,6 +72,7 @@ dependencies:
 - dynamic-array
 - flatparse
 - ghc-prim
+- hashable
 - inspection-testing
 - primdata
 - template-haskell

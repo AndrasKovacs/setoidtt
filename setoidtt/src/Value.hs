@@ -25,15 +25,8 @@ pattern Fun f <- Closure# ((\x -> sFun1 (unsafeCoerce# x)) -> f) (switchClosure#
   Fun f = Closure# (unsafeCoerce# (oneShot (unSFun1 (oneShot f)))) (-1) (unsafeCoerce# ())
 {-# complete Close, Fun #-}
 
-type Env = S WEnv
-data WEnv = WNil | WSnoc Env ~WVal
-
-pattern Nil :: Env
-pattern Nil = S WNil
-
-pattern Snoc :: Env -> WVal -> Env
-pattern Snoc env t <- S (WSnoc env t) where Snoc env ~t = S (WSnoc env t)
-{-# complete Nil, Snoc #-}
+type WEnv = WLList WVal
+type Env  = LList WVal
 
 --------------------------------------------------------------------------------
 
@@ -152,8 +145,10 @@ pattern SgPP x a b        = Sg x a S.Prop (Fun b) S.Prop
 pattern Meta m            = Flex (FHMeta m) SNil
 pattern Set               = U S.Set
 pattern Prop              = U S.Prop
+pattern WSet              = WU S.Set
+pattern WProp             = WU S.Prop
 pattern Var x             = Rigid (RHLocalVar x) SNil
-pattern Skip env l        = Snoc env (WRigid (RHLocalVar l) SNil)
+pattern Skip env l        = LSnoc env (WRigid (RHLocalVar l) SNil)
 pattern Exfalso u a t     = Rigid (RHExfalso u a t) SNil
 pattern Refl a t          = Rigid (RHRefl a t) SNil
 pattern Sym a x y p       = Rigid (RHSym a x y p) SNil
@@ -161,9 +156,9 @@ pattern Trans a x y z p q = Rigid (RHTrans a x y z p q) SNil
 pattern Ap a b f x y p    = Rigid (RHAp a b f x y p) SNil
 
 andP :: Val -> Val -> Val
-andP a b = Sg NNil a S.Prop (Fun (\ ~_ -> b)) S.Prop
+andP a b = Sg NEmpty a S.Prop (Fun (\ ~_ -> b)) S.Prop
 {-# inline andP #-}
 
 implies :: Val -> Val -> Val
-implies a b = PiEP NNil a (\ ~_ -> b)
+implies a b = PiEP NEmpty a (\ ~_ -> b)
 {-# inline implies #-}

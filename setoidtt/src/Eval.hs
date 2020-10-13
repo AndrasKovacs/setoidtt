@@ -1,12 +1,13 @@
 
 module Eval (
-    ($$), vApp, vProj1, vProj2, vProjField
+    ($$), ($$$), vApp, vProj1, vProj2, vProjField
   , vCoe, vEq, forceU, conv, force, fforce, vSp, vCoeP, eval, quote, convIO
   ) where
 
 import Control.Monad
 import IO
 import qualified Data.IntSet as IS
+import qualified LvlSet as LS
 
 import qualified Syntax as S
 import Common
@@ -27,11 +28,10 @@ import Exceptions
 --     Unboxed tuples are also lazy in lifted fields.
 --     of unboxed sums for closures. Use instead manually unsafeCoerced and unpacked data type.
 
--- IDEA: make evaluation utterly and totally strict and CBV, with the exception of let bindings.
+-- IDEA: make evaluation utterly and totally strict and CBV
 --       instead, rely on Unfold to limit computation; Unfold behaves like an explicit thunk!
---       Also, we create thunks in elaboration, when we do "substitution", e.g. when checking Pi.
---       However, eval only creates thunks in a) let b) Unfold, nowhere else.
-
+--       Leave laziness to elaboration! Elaboration will do CBN on all lets and type instantiations,
+--       But when evaluation is forced, it's CBV modulo Unfold.
 
 -- TODO: benchmark to see if S usage helps! It definitely improves Core, but there could be some STG/cmm
 --    pass which makes this unnecessary.
@@ -54,9 +54,9 @@ import Exceptions
 --------------------------------------------------------------------------------
 
 vLocalVar :: Env -> Ix -> Val
-vLocalVar (Snoc _ v)   0 = S v
-vLocalVar (Snoc env _) x = vLocalVar env (x - 1)
-vLocalVar _ _            = impossible
+vLocalVar (LSnoc _ v)   0 = S v
+vLocalVar (LSnoc env _) x = vLocalVar env (x - 1)
+vLocalVar _ _             = impossible
 
 vMeta :: Meta -> Val
 vMeta x = S $ runIO $ readMeta x >>= \case
@@ -74,12 +74,22 @@ vTopDef x = S $ runIO $ readTop x >>= \case
 -- Functions
 --------------------------------------------------------------------------------
 
+
 infixl 2 $$
+  -- | Strict closure application.
 ($$) :: Closure -> Val -> Val
 ($$) cl u = case cl of
   Fun t         -> t u
-  Close env l t -> eval (Snoc env (unS u)) l t
+  Close env l t -> eval (LSnoc env (unS u)) l t
 {-# inline ($$) #-}
+
+infixl 2 $$$
+  -- | Lazy closure application.
+($$$) :: Closure -> WVal -> Val
+($$$) cl ~u = case cl of
+  Fun t         -> t (S u)
+  Close env l t -> eval (LSnoc env u) l t
+{-# inline ($$$) #-}
 
 vApp :: Val -> Val -> S.U -> Icit -> Val
 vApp t u un i = case t of
@@ -395,6 +405,12 @@ vSp l v sp = let
     SEqSetLhs t u     -> vEqSet l (go t) u
     SEqSetRhs t u     -> vEqSet l t (go u)
 
+vFreshMeta :: Env -> Lvl -> Meta -> List S.WU -> LS.LvlSet -> Val
+vFreshMeta LNil          l m us           ls = Flex (FHMeta m) SNil
+vFreshMeta (LSnoc env u) l m (Snoc us uu) ls = case vFreshMeta env (l - 1) m us ls of
+  t | LS.member (l - 1) ls -> vAppInline t (S u) (S uu) Expl
+    | otherwise            -> t
+vFreshMeta _ _ _ _ _ = impossible
 
 eval :: Env -> Lvl -> S.Tm -> Val
 eval env l t = let
@@ -404,7 +420,8 @@ eval env l t = let
     S.TopDef x          -> vTopDef x
     S.Postulate x       -> Rigid (RHPostulate x) SNil
     S.Meta x            -> vMeta x
-    S.Let _ _ _ t u     -> let t' = go t in eval (Snoc env (unS t')) (l + 1) u
+    S.FreshMeta m us ls -> vFreshMeta env l m (S us) ls
+    S.Let _ _ _ t u     -> let t' = go t in eval (LSnoc env (unS t')) (l + 1) u
     S.Pi x i a au b     -> Pi x i (go a) au (Close env l b)
     S.Sg x a au b bu    -> Sg x (go a) au (Close env l b) bu
     S.Lam x i a au t    -> Lam x i (go a) au (Close env l t)
@@ -727,3 +744,6 @@ quote l unfold v = let
 
 quoteTest l unf t = unS (quote l unf (S t))
 inspectS 'quoteTest
+
+lazyCAppTest cl ~v = unS (cl $$$ v)
+inspectS 'lazyCAppTest
