@@ -55,7 +55,7 @@ ghc-options:
 - -Wno-type-defaults
 - -Wno-missing-pattern-synonym-signatures
 - -O2
-- -fllvm
+# - -fllvm
 - -fplugin-opt=Test.Inspection.Plugin:skip-O0
 - -ddump-simpl
 - -dsuppress-all
@@ -66,6 +66,9 @@ ghc-options:
 
 dependencies:
   - base
+
+data-files:
+  - bench/parse01.stt
 
 library:
   source-dirs:

@@ -56,11 +56,11 @@ unsafeRead (Array r) i = do
 
 read :: Array a -> Int -> IO a
 read (Array r) i = do
-  s <- RF.read =<< RUU.readFst r
-  if 0 <= i && i < s then
-    unsafeRead (Array r) i
+  elems <- RUU.readSnd r
+  if 0 <= i && i < LM.size elems then
+    LM.read elems i
   else
-    error "Data.Array.Dynamic.read: out of bounds"
+    error "Data.Array.Dynamic.L.read: out of bounds"
 {-# inline read #-}
 
 unsafeWrite :: Array a -> Int -> a -> IO ()
@@ -75,7 +75,7 @@ write (Array r) i ~a = do
   if 0 <= i && i < s then
     unsafeWrite (Array r) i a
   else
-    error "Data.Array.Dynamic.write: out of bounds"
+    error "Data.Array.Dynamic.L.write: out of bounds"
 {-# inline write #-}
 
 modify' :: Array a -> Int -> (a -> a) -> IO ()
@@ -85,7 +85,7 @@ modify' (Array r) i f = do
     elems <- RUU.readSnd r
     LM.modify' elems i f
   else
-    error "Data.Array.Dynamic.write: out of bounds"
+    error "Data.Array.Dynamic.L.write: out of bounds"
 {-# inline modify' #-}
 
 extendCapacity :: RUU.Ref (RF.Ref Int) (LM.Array a) -> a -> Int -> LM.Array a -> IO ()

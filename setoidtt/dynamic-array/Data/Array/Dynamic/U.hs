@@ -28,8 +28,8 @@ module Data.Array.Dynamic.U  (
 import Data.Unlifted
 import Data.Array.UndefElem
 
-import qualified Data.Ref.UU    as RUU
-import qualified Data.Ref.F     as RF
+import qualified Data.Ref.UU   as RUU
+import qualified Data.Ref.F    as RF
 import qualified Data.Array.UM as UM
 
 type role Array representational
@@ -55,10 +55,11 @@ unsafeRead (Array r) i = do
 
 read :: Unlifted a => Array a -> Int -> IO a
 read (Array r) i = do
-  s <- RF.read =<< RUU.readFst r
-  if 0 <= i && i < s
-    then unsafeRead (Array r) i
-    else error "Data.Array.Dynamic.read: out of bounds"
+  elems <- RUU.readSnd r
+  if 0 <= i && i < UM.size elems then
+    UM.read elems i
+  else
+    error "Data.Array.Dynamic.U.read: out of bounds"
 {-# inline read #-}
 
 unsafeWrite :: Unlifted a => Array a -> Int -> a -> IO ()
@@ -72,7 +73,7 @@ write (Array r) i ~a = do
   s <- RF.read =<< RUU.readFst r
   if 0 <= i && i < s
     then unsafeWrite (Array r) i a
-    else error "Data.Array.Dynamic.write: out of bounds"
+    else error "Data.Array.Dynamic.U.write: out of bounds"
 {-# inline write #-}
 
 push :: Unlifted a => Array a -> a -> IO ()

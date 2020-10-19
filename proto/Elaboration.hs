@@ -612,7 +612,7 @@ infer cxt = \case
       _ ->
         report cxt $ ExpectedFunction (quote cxt topA)
 
-    RLam x ann i t -> do
+  RLam x ann i t -> do
     (a, au) <- case ann of
       Just ann -> inferTy cxt ann
       Nothing  -> newTy cxt

@@ -38,10 +38,14 @@ pattern UVar :: UMetaVar -> U
 pattern UVar x <- ((\case UMax xs -> IS.toList xs;_ -> []) -> [UMetaVar -> x]) where
   UVar (UMetaVar x) = UMax (IS.singleton x)
 
-data Locals
-  = Empty
-  | Define Locals Name Tm Ty U
-  | Bind Locals Name Ty U
+type Locals = S WLocals
+data WLocals
+  = WEmpty
+  | WDefine Locals Name Tm Ty U
+  | WBind Locals Name Ty U
+pattern Empty = S WEmpty
+pattern Define ls x t a u = S (WDefine ls x t a u)
+pattern Bind ls x a u     = S (WBind ls x a u)
 
 type Ty = Tm
 type Tm = S WTm

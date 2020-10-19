@@ -1,5 +1,8 @@
 
-module EvalCxt (eval, force, quote, vEq, (Eval.$$), (Eval.$$$)) where
+module EvalCxt (
+    eval, forceF, forceFU, forceFUE, quote, vEq
+  , (Eval.$$), (Eval.$$$), Eval.vApp, Eval.vAppSE
+  , Eval.vProj1, Eval.vProj2, Eval.vProjField) where
 
 import Common
 import Cxt
@@ -12,9 +15,17 @@ eval :: Cxt -> Tm -> Val
 eval cxt t = Eval.eval (_env cxt) (_lvl cxt) t
 {-# inline eval #-}
 
-force :: Cxt -> Val -> Val
-force cxt t = Eval.force (_lvl cxt) t
-{-# inline force #-}
+forceF :: Cxt -> Val -> Val
+forceF cxt t = Eval.forceF (_lvl cxt) t
+{-# inline forceF #-}
+
+forceFU :: Cxt -> Val -> Val
+forceFU cxt t = Eval.forceFU (_lvl cxt) t
+{-# inline forceFU #-}
+
+forceFUE :: Cxt -> Val -> Val
+forceFUE cxt t = Eval.forceFUE (_lvl cxt) t
+{-# inline forceFUE #-}
 
 quote :: Cxt -> Unfolding -> Val -> Tm
 quote cxt unf t = Eval.quote (_lvl cxt) unf t

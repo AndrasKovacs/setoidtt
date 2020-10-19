@@ -94,9 +94,7 @@ define' x t vt a va au (Cxt env l loc ntbl src) =
       src
 {-# inline define' #-}
 
-liftVal :: Cxt -> V.Val -> (V.Val -> V.Val)
-liftVal cxt t ~u =
-  let env = V.Snoc (_env cxt) (unS u)
-      l   = _lvl cxt + 1
-  in eval env l (quote l DontUnfold t)
-{-# inline liftVal #-}
+closeVal :: Cxt -> V.Val -> V.Closure
+closeVal cxt t =
+  V.Close (_env cxt) (_lvl cxt) (quote (_lvl cxt + 1) DontUnfold t)
+{-# inline closeVal #-}

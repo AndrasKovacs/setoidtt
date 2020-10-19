@@ -166,3 +166,18 @@ andP a b = Sg NEmpty a S.Prop (Fun (\ ~_ -> b)) S.Prop
 implies :: Val -> Val -> Val
 implies a b = PiEP NEmpty a (\ ~_ -> b)
 {-# inline implies #-}
+
+-- | Non-dependent function type.
+fun :: Ty -> S.U -> Ty -> Ty
+fun a au b = Pi NEmpty Expl a au (Fun \ ~_ -> b)
+{-# inline fun #-}
+
+-- | Non-dependent pair type.
+prod :: Ty -> S.U -> Ty -> S.U -> Ty
+prod a au b bu = Sg NEmpty a au (Fun \ ~_ -> b) bu
+{-# inline prod #-}
+
+-- | Non-dependent pair type.
+wprod :: Ty -> S.U -> Ty -> S.U -> WTy
+wprod a au b bu = WSg NEmpty a au (Fun \ ~_ -> b) bu
+{-# inline wprod #-}
