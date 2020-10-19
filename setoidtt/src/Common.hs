@@ -25,6 +25,11 @@ impossible :: Dbg => a
 impossible = error "impossible"
 {-# noinline impossible #-}
 
+-- strictness/laziness
+--------------------------------------------------------------------------------
+
+data Pair a b = a :*: b
+
 infixl 9 $$!
 ($$!) :: (a -> b) -> a -> b
 ($$!) f a = f $! a
@@ -55,25 +60,7 @@ unL :: L a -> a
 unL (L a) = a
 {-# inline unL #-}
 
--- lists
 --------------------------------------------------------------------------------
-
--- | Lists.
-type List a = S (WList a)
-data WList a = WNil | WSnoc (List a) a
-pattern Nil = S WNil
-pattern Snoc as a = S (WSnoc as a)
-{-# complete Nil, Snoc #-}
-
--- | Lists with lazy elements.
-type LList a = S (WLList a)
-data WLList a = WLNil | WLSnoc (LList a) ~a
-pattern LNil = S WLNil
-pattern LSnoc as a <- S (WLSnoc as a) where LSnoc as ~a = S (WLSnoc as a)
-{-# complete LNil, LSnoc #-}
-
---------------------------------------------------------------------------------
-
 
 newtype Unfolding = Unfolding# Int deriving Eq
 pattern DoUnfold   = Unfolding# 0
@@ -103,6 +90,12 @@ newtype Ix = Ix Int
 
 newtype Lvl = Lvl Int
   deriving (Eq, Ord, Show, Num, Bits) via Int
+
+newtype MetaVar = MetaVar Int
+  deriving (Eq, Ord, Show, Num) via Int
+
+newtype UMetaVar = UMetaVar Int
+  deriving (Eq, Ord, Show, Num) via Int
 
 lvlToIx :: Lvl -> Lvl -> Ix
 lvlToIx (Lvl envl) (Lvl l) = Ix (envl - l - 1)
@@ -139,15 +132,6 @@ pick x y = case x of
     y -> y
   x -> x
 {-# inline pick #-}
-
---------------------------------------------------------------------------------
-
-newtype Meta = Meta Int
-  deriving (Eq, Ord, Show, Num) via Int
-
-newtype UMeta = UMeta Int
-  deriving (Eq, Ord, Show, Num) via Int
-
 
 -- Inspection testing
 --------------------------------------------------------------------------------

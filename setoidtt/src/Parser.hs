@@ -5,7 +5,7 @@ import Control.Monad
 import Data.Char
 import Data.Foldable
 import FlatParse hiding (Parser, runParser, testParser, string, char, switch, cut, err)
-import qualified FlatParse
+import qualified FlatParse       as FP
 import qualified Data.ByteString as B
 
 import Common
@@ -15,6 +15,9 @@ import Lexer
 --------------------------------------------------------------------------------
 
 {-
+
+TODO: update grammar with fully applied builtins
+
 Precedences from strongest to weakest:
   - atoms
   - projections            (postfix)
@@ -67,47 +70,49 @@ Indentation:
 identStartChar :: Parser ()
 identStartChar =
   () <$ satisfy' isLatinLetter isGreekLetter isLetter isLetter
+{-# inline identStartChar #-}
 
 identChar :: Parser ()
 identChar =
   () <$ satisfy' (\c -> isLatinLetter c || FlatParse.isDigit c) isGreekLetter isAlphaNum isAlphaNum
 
-pRawIdent :: Parser ()
-pRawIdent = identStartChar >> many_ identChar
+inlineIdentChar :: Parser ()
+inlineIdentChar =
+  () <$ satisfy' (\c -> isLatinLetter c || FlatParse.isDigit c) isGreekLetter isAlphaNum isAlphaNum
+{-# inline inlineIdentChar #-}
 
--- TODO: don't repeat keywords here and in pAtomicExp. Group keywords as atomic and non-atomic.
-pKeyword :: Parser ()
-pKeyword = $(FlatParse.switch [| case _ of
-  "let"     -> pure ()
-  "in"      -> pure ()
-  "λ"       -> pure ()
-  "Set"     -> pure ()
-  "Prop"    -> pure ()
-  "trans"   -> pure ()
-  "sym"     -> pure ()
-  "refl"    -> pure ()
-  "coe"     -> pure ()
-  "ap"      -> pure ()
-  "⊤"       -> pure ()
-  "tt"      -> pure ()
-  "⊥"       -> pure ()
-  "exfalso" -> pure () |])
+manyIdents :: Parser ()
+manyIdents = many_ inlineIdentChar
+
+skipToSpan :: Pos -> Parser Span
+skipToSpan l = br identChar
+  (do {manyIdents; r <- getPos; ws; pure (Span l r)})
+  empty
+{-# inline skipToSpan #-}
 
 pIdent :: Parser Span
-pIdent = lexeme do
-  spanned pRawIdent \_ span -> do
-    br (inSpan span (pKeyword *> eof))
-       empty
-       (pure span)
+pIdent = do
+  checkIndent
+  l <- getPos
+  $(FP.switch [| case _ of
+    "let"     -> skipToSpan l
+    "in"      -> skipToSpan l
+    "λ"       -> skipToSpan l
+    "Set"     -> skipToSpan l
+    "Prop"    -> skipToSpan l
+    "trans"   -> skipToSpan l
+    "sym"     -> skipToSpan l
+    "refl"    -> skipToSpan l
+    "coe"     -> skipToSpan l
+    "ap"      -> skipToSpan l
+    "⊤"       -> skipToSpan l
+    "tt"      -> skipToSpan l
+    "⊥"       -> skipToSpan l
+    "exfalso" -> skipToSpan l
+    _         -> do {identStartChar; manyIdents; r <- getPos; ws; pure (Span l r)} |])
 
 pBind :: Parser Bind
-pBind = lexeme (
-      (Bind <$> (spanned pRawIdent \_ span -> do
-        br (inSpan span (pKeyword *> eof))
-           empty
-           (pure span)))
-  <|>
-      (DontBind <$ $(FlatParse.char '_')))
+pBind = (Bind <$> pIdent) <|> (DontBind <$ ($(FP.char '_') >> ws))
 
 pArrow :: Parser ()
 pArrow = $(switch [| case _ of
@@ -132,39 +137,40 @@ pAssign = $(string ":=")
 
 --------------------------------------------------------------------------------
 
--- TODO: add matching on eof to FlatParse.switch, then
--- we wouldn't have to do all these br eof-s.
+skipToVar :: Pos -> (Pos -> Parser Tm) -> Parser Tm
+skipToVar l p = br identChar
+  (do {manyIdents; r <- getPos; ws; pure $ Var (Span l r)})
+  (do {r <- getPos; ws; p r})
+{-# inline skipToVar #-}
+
 pAtomicExp :: Parser Tm
 pAtomicExp = do
   checkIndent
-  start <- getPos
-  $(FlatParse.switch [| case _ of
-      "(" -> ws *> pTm <* pParR `cut` "expected a \")\" in parenthesized expression"
-      "_" -> do {end <- getPos; Hole (Span start end) <$ ws}
-      _   -> do
-        res <- spanned pRawIdent \_ span -> inSpan span $(FlatParse.switch [| case _ of
-          "let"     -> br eof empty                 (pure (Var span))
-          "in"      -> br eof empty                 (pure (Var span))
-          "λ"       -> br eof empty                 (pure (Var span))
-          "Set"     -> br eof (pure (Set span))     (pure (Var span))
-          "Prop"    -> br eof (pure (Prop span))    (pure (Var span))
-          "trans"   -> br eof (pure (Trans span))   (pure (Var span))
-          "sym"     -> br eof (pure (Sym span))     (pure (Var span))
-          "refl"    -> br eof (pure (Refl span))    (pure (Var span))
-          "coe"     -> br eof (pure (Coe span))     (pure (Var span))
-          "ap"      -> br eof (pure (Ap span))      (pure (Var span))
-          "⊤"       -> br eof (pure (Top span))     (pure (Var span))
-          "tt"      -> br eof (pure (Tt span))      (pure (Var span))
-          "⊥"       -> br eof (pure (Bot span))     (pure (Var span))
-          "exfalso" -> br eof (pure (Exfalso span)) (pure (Var span))
-          _         ->                              (pure (Var span)) |])
-        res <$ ws |])
+  l <- getPos
+  $(FP.switch [| case _ of
+    "("       -> ws *> pTm <* pParR `cut` "expected a \")\" in parenthesized expression"
+    "_"       -> do {r <- getPos; ws; pure $ Hole (Span l r)}
+    "let"     -> skipToVar l \_ -> empty
+    "in"      -> skipToVar l \_ -> empty
+    "λ"       -> skipToVar l \_ -> empty
+    "exfalso" -> skipToVar l \_ -> empty
+    "coe"     -> skipToVar l \_ -> empty
+    "sym"     -> skipToVar l \_ -> empty
+    "trans"   -> skipToVar l \_ -> empty
+    "ap"      -> skipToVar l \_ -> empty
+    "refl"    -> skipToVar l \r -> pure (Refl (Span l r) Nothing Nothing)
+    "Set"     -> skipToVar l \r -> pure (Set (Span l r))
+    "Prop"    -> skipToVar l \r -> pure (Prop (Span l r))
+    "⊤"       -> skipToVar l \r -> pure (Top (Span l r))
+    "tt"      -> skipToVar l \r -> pure (Tt (Span l r))
+    "⊥"       -> skipToVar l \r -> pure (Bot (Span l r))
+    _         -> do {identChar; manyIdents; r <- getPos; ws; pure (Var (Span l r))} |])
 
 --------------------------------------------------------------------------------
 
 goProj :: Tm -> Parser Tm
 goProj t = br pDot
-  (checkIndent >> $(FlatParse.switch [|case _ of
+  (checkIndent >> $(FP.switch [|case _ of
       "₁" -> do {p <- getPos; ws; goProj (Proj1 t p)}
       "1" -> do {p <- getPos; ws; goProj (Proj1 t p)}
       "₂" -> do {p <- getPos; ws; goProj (Proj2 t p)}
@@ -174,7 +180,7 @@ goProj t = br pDot
 
 pProjExp :: Parser Tm
 pProjExp = do
-  t <- pAtomicExp `cut` "parse error"
+  t <- pAtomicExp `cut` "expected \"(\", \"_\", \"refl\", \"Set\", \"Prop\", \"⊤\", \"tt\", \"⊥\" or an identifier"
   goProj t
 
 --------------------------------------------------------------------------------
@@ -196,10 +202,45 @@ goApp t = br pBraceL
           goApp (App t u (NoName Expl)))
         (pure t))
 
+mArg :: Parser (Maybe Tm)
+mArg = br pBraceL
+  (do u <- pTm
+      pBraceR `cut` "expected \"}\" in implicit application"
+      pure $ Just u)
+  (pure Nothing)
+
+skipToApp :: Pos -> (Pos -> Parser Tm) -> Parser Tm
+skipToApp l p = br identChar
+  (do {manyIdents; r <- getPos; ws; goApp =<< goProj (Var (Span l r))})
+  (do {r <- getPos; ws; p r})
+{-# inline skipToApp #-}
+
 pAppExp :: Parser Tm
 pAppExp = do
-  t <- pProjExp
-  goApp t
+  checkIndent
+  l <- getPos
+  $(FP.switch [| case _ of
+    "exfalso" ->
+      skipToApp l \_ ->
+      goApp =<< (Exfalso l <$> mArg <*> pProjExp) `cut` "expected an argument for exfalso"
+    "refl"    ->
+      skipToApp l \r ->
+      goApp =<< (Refl (Span l r) <$> mArg <*> mArg)
+    "coe"     ->
+      skipToApp l \_ ->
+      goApp =<< (Coe l <$> mArg <*> mArg <*> pProjExp <*> pProjExp) `cut` "expected two arguments for coe"
+    "sym"     ->
+      skipToApp l \_ ->
+      goApp =<< (Sym l <$> mArg <*> mArg <*> mArg <*> pProjExp) `cut` "expected an argument to sym"
+    "trans"   ->
+      skipToApp l \_ ->
+      goApp =<< (Trans l <$> mArg <*> mArg <*> mArg <*> mArg <*> pProjExp <*> pProjExp) `cut` "expected two arguments for trans"
+    "ap"      ->
+      skipToApp l \_ ->
+      goApp =<< (Ap l <$> mArg <*> mArg <*> pProjExp <*> mArg <*> mArg <*> pProjExp) `cut` "expected two arguments for ap"
+    _         ->
+      goApp =<< pProjExp |])
+
 
 --------------------------------------------------------------------------------
 
@@ -334,12 +375,13 @@ pLet pos = do
 
 pLamLetExp :: Parser Tm
 pLamLetExp = do
-  pos <- getPos
-  $(switch [| case _ of
-    "λ"   -> pLam pos
-    "\\"  -> pLam pos
-    "let" -> pLet pos
-    _     -> pPiExp |])
+  checkIndent
+  l <- getPos
+  $(FP.switch [| case _ of
+    "λ"   -> skipToApp l \_ -> pLam l
+    "\\"  -> ws >> pLam l
+    "let" -> skipToApp l \_ -> pLet l
+    _     -> ws >> pPiExp |])
 
 --------------------------------------------------------------------------------
 
@@ -349,6 +391,7 @@ pTm = do
   br pComma (Pair t <$> pTm) (pure t)
 
 --------------------------------------------------------------------------------
+
 
 topIndentErr :: Parser a
 topIndentErr = err "top-level definitions should be non-indented"

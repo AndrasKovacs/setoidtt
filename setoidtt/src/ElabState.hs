@@ -8,7 +8,7 @@ import qualified Data.ByteString      as B
 
 import Common
 import qualified Syntax as S
-import qualified Value as V
+import qualified Values as V
 
 
 
@@ -43,15 +43,15 @@ metaCxt :: D.Array MetaEntry
 metaCxt = runIO D.empty
 {-# noinline metaCxt #-}
 
-readMeta :: Meta -> IO MetaEntry
-readMeta (Meta i) = D.read metaCxt i
+readMeta :: MetaVar -> IO MetaEntry
+readMeta (MetaVar i) = D.read metaCxt i
 {-# inline readMeta #-}
 
-newMeta :: V.WTy -> S.U -> IO Meta
+newMeta :: V.WTy -> S.U -> IO MetaVar
 newMeta ~a u = do
   s <- D.size metaCxt
   D.push metaCxt (MEUnsolved a u)
-  pure (Meta s)
+  pure (MetaVar s)
 {-# inline newMeta #-}
 
 -- Universe metacontext
@@ -65,13 +65,13 @@ uCxt :: D.Array UMetaEntry
 uCxt = runIO D.empty
 {-# noinline uCxt #-}
 
-readUMeta :: UMeta -> IO UMetaEntry
-readUMeta (UMeta i) = D.read uCxt i
+readUMeta :: UMetaVar -> IO UMetaEntry
+readUMeta (UMetaVar i) = D.read uCxt i
 {-# inline readUMeta #-}
 
-newUMeta :: IO UMeta
+newUMeta :: IO UMetaVar
 newUMeta = do
   s <- D.size uCxt
   D.push uCxt UMEUnsolved
-  pure (UMeta s)
+  pure (UMetaVar s)
 {-# inline newUMeta #-}

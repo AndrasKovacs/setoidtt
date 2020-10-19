@@ -1,11 +1,12 @@
 
-module EvalCxt (eval, force, quote, vEq, (Eval.$$)) where
+module EvalCxt (eval, force, quote, vEq, (Eval.$$), (Eval.$$$)) where
 
 import Common
 import Cxt
 import Syntax
-import Value
-import qualified Eval
+import Values
+
+import qualified Evaluation as Eval
 
 eval :: Cxt -> Tm -> Val
 eval cxt t = Eval.eval (_env cxt) (_lvl cxt) t

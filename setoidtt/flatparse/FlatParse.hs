@@ -19,6 +19,8 @@ module FlatParse (
   , br
   , chainl
   , chainr
+  , lookahead
+  , fails
   , char
   , cut
   , empty
@@ -58,6 +60,7 @@ module FlatParse (
   , setPos
   , some
   , some_
+  , spanOf
   , spanned
   , span2ByteString
   , unsafeSpan2ByteString
@@ -419,6 +422,21 @@ chainr f elem end = go where
   go = (f <$> elem <*> go) <|> end
 {-# inline chainr #-}
 
+lookahead :: Parser r e a -> Parser r e a
+lookahead (Parser f) = Parser \r eob s n ->
+  case f r eob s n of
+    OK# a _ _ -> OK# a s n
+    x         -> x
+{-# inline lookahead #-}
+
+fails :: Parser r e a -> Parser r e ()
+fails (Parser f) = Parser \r eob s n ->
+  case f r eob s n of
+    OK# _ _ _ -> Fail#
+    Fail#     -> OK# () s n
+    Err# e    -> Err# e
+{-# inline fails #-}
+
 -- | Byte offset counted backwards from the end of the buffer.
 newtype Pos = Pos Int deriving (Eq, Show)
 
@@ -454,7 +472,15 @@ setPos s = Parser \r eob _ n -> OK# () (pos2Addr# eob s) n
 
 data Span = Span !Pos !Pos deriving (Eq, Show)
 
--- | Bind the result together with the span of the result.
+-- | Return the consumed span of a parser.
+spanOf :: Parser r e a -> Parser r e Span
+spanOf (Parser f) = Parser \r eob s n -> case f r eob s n of
+  OK# a s' n -> OK# (Span (addr2Pos# eob s) (addr2Pos# eob s')) s' n
+  x          -> unsafeCoerce# x
+{-# inline spanOf #-}
+
+-- | Bind the result together with the span of the result. CPS's version of `spanOf`
+--   for better unboxing.
 spanned :: Parser r e a -> (a -> Span -> Parser r e b) -> Parser r e b
 spanned (Parser f) g = Parser \r eob s n -> case f r eob s n of
   OK# a s' n -> runParser# (g a (Span (addr2Pos# eob s) (addr2Pos# eob s'))) r eob s' n

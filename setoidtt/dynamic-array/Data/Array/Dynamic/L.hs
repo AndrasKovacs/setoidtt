@@ -88,6 +88,15 @@ modify' (Array r) i f = do
     error "Data.Array.Dynamic.write: out of bounds"
 {-# inline modify' #-}
 
+extendCapacity :: RUU.Ref (RF.Ref Int) (LM.Array a) -> a -> Int -> LM.Array a -> IO ()
+extendCapacity r ~a cap elems = do
+  let cap' = 2 * cap
+  elems' <- LM.new cap' undefElem
+  LM.copySlice elems 0 elems' 0 cap
+  LM.write elems' cap a
+  RUU.writeSnd r elems'
+{-# inlinable extendCapacity #-}
+
 push :: Array a -> a -> IO ()
 push (Array r) ~a = do
   sizeRef <- RUU.readFst r
@@ -96,11 +105,7 @@ push (Array r) ~a = do
   let cap = LM.size elems
   RF.write sizeRef (size + 1)
   if (size == cap) then do
-    let cap' = 2 * cap
-    elems' <- LM.new cap' undefElem
-    LM.copySlice elems 0 elems' 0 size
-    LM.write elems' size a
-    RUU.writeSnd r elems'
+    extendCapacity r a cap elems
   else do
     LM.write elems size a
 {-# inline push #-}

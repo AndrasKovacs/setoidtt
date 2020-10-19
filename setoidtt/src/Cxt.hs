@@ -4,9 +4,9 @@ module Cxt where
 import qualified Data.HashMap.Strict as M
 
 import qualified Syntax as S
-import qualified Value  as V
+import qualified Values as V
 
-import Eval
+import Evaluation
 import Common
 
 data NameInfo =
@@ -19,62 +19,84 @@ data NameInfo =
 --   maps raw identifiers that are possibly referenced in source code.
 type NameTable = M.HashMap RawName NameInfo -- TODO: better Eq + Hashable for ByteString
 
-data Locals
-  = LEmpty
-  | LDefine Locals Name S.Tm S.Ty S.U
-  | LBind Locals Name S.Ty S.U
-
 data Cxt = Cxt {
   _env       :: V.Env,
   _lvl       :: Lvl,
-  _locals    :: Locals,
+  _locals    :: S.Locals,
   _nameTable :: NameTable,
-  _src       :: RawName
+  _src       :: ~RawName
   }
 
 emptyCxt :: RawName -> Cxt
-emptyCxt = Cxt LNil 0 LEmpty mempty
+emptyCxt = Cxt V.Nil 0 S.Empty mempty
 {-# noinline emptyCxt #-}
 
 bind :: RawName -> S.Ty -> S.U -> Cxt -> Cxt
 bind x a au cxt@(Cxt env l loc ntbl src) =
   Cxt (V.Skip env l)
       (l + 1)
-      (LBind loc (NName x) a au)
+      (S.Bind loc (NName x) a au)
       (M.insert x (NILocal l (unS (eval env l a)) au) ntbl)
       src
 {-# inline bind #-}
 
-insert :: RawName -> S.Ty -> S.U -> Cxt -> Cxt
-insert x a au cxt@(Cxt env l loc ntbl src) =
+bindEmpty :: S.Ty -> S.U -> Cxt -> Cxt
+bindEmpty a au cxt@(Cxt env l loc ntbl src) =
   Cxt (V.Skip env l)
       (l + 1)
-      (LBind loc (NName x) a au)
+      (S.Bind loc NEmpty a au)
       ntbl
       src
-{-# inline insert #-}
+{-# inline bindEmpty #-}
+
+bind' :: RawName -> S.Ty -> V.Ty -> S.U -> Cxt -> Cxt
+bind' x a va au cxt@(Cxt env l loc ntbl src) =
+  Cxt (V.Skip env l)
+      (l + 1)
+      (S.Bind loc (NName x) a au)
+      (M.insert x (NILocal l (unS va) au) ntbl)
+      src
+{-# inline bind' #-}
+
+bindEmpty' :: S.Ty -> V.Ty -> S.U -> Cxt -> Cxt
+bindEmpty' a va au cxt@(Cxt env l loc ntbl src) =
+  Cxt (V.Skip env l)
+      (l + 1)
+      (S.Bind loc NEmpty a au)
+      ntbl
+      src
+{-# inline bindEmpty' #-}
+
+newBinder :: Name -> S.Ty -> S.U -> Cxt -> Cxt
+newBinder x a au cxt@(Cxt env l loc ntbl src) =
+  Cxt (V.Skip env l)
+      (l + 1)
+      (S.Bind loc x a au)
+      ntbl
+      src
+{-# inline newBinder #-}
 
 define :: RawName -> S.Tm -> S.Ty -> S.U -> Cxt -> Cxt
 define x t a au (Cxt env l loc ntbl src) =
-  Cxt (LSnoc env (unS (eval env l t)))
+  Cxt (V.Snoc env (unS (eval env l t)))
       (l + 1)
-      (LDefine loc (NName x) t a au)
+      (S.Define loc (NName x) t a au)
       (M.insert x (NILocal l (unS (eval env l a)) au) ntbl)
       src
 {-# inline define #-}
 
-define' :: RawName -> S.Tm -> S.Ty -> V.Ty -> S.U -> Cxt -> Cxt
-define' x t a va au (Cxt env l loc ntbl src) =
-  Cxt (LSnoc env (unS (eval env l t)))
+define' :: RawName -> S.Tm -> V.Val -> S.Ty -> V.Ty -> S.U -> Cxt -> Cxt
+define' x t vt a va au (Cxt env l loc ntbl src) =
+  Cxt (V.Snoc env (unS vt))
       (l + 1)
-      (LDefine loc (NName x) t a au)
+      (S.Define loc (NName x) t a au)
       (M.insert x (NILocal l (unS va) au) ntbl)
       src
 {-# inline define' #-}
 
 liftVal :: Cxt -> V.Val -> (V.Val -> V.Val)
 liftVal cxt t ~u =
-  let env = LSnoc (_env cxt) (unS u)
+  let env = V.Snoc (_env cxt) (unS u)
       l   = _lvl cxt + 1
   in eval env l (quote l DontUnfold t)
 {-# inline liftVal #-}

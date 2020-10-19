@@ -26,7 +26,7 @@ catch# (IO io) f = IO (GHC.Prim.catch# io (\e -> case f e of IO f -> f))
 data Ex
   = ConvSame
   | ConvDiff
-  | ConvMeta Meta
+  | ConvMeta MetaVar
   | ConvUMax UMax
 
 throwIO :: Ex -> IO a

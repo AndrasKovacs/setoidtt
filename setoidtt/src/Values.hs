@@ -1,12 +1,11 @@
 
-module Value where
+module Values where
 
 import GHC.Types (Int(..))
 import GHC.Prim (Int#, (/=#), unsafeCoerce#)
 import Common
 import qualified Syntax as S
 import GHC.Magic
-
 
 --------------------------------------------------------------------------------
 
@@ -25,8 +24,13 @@ pattern Fun f <- Closure# ((\x -> sFun1 (unsafeCoerce# x)) -> f) (switchClosure#
   Fun f = Closure# (unsafeCoerce# (oneShot (unSFun1 (oneShot f)))) (-1) (unsafeCoerce# ())
 {-# complete Close, Fun #-}
 
-type WEnv = WLList WVal
-type Env  = LList WVal
+type Env = S WEnv
+data WEnv
+  = WNil
+  | WSnoc Env ~WVal
+pattern Nil = S WNil
+pattern Snoc env v <- S (WSnoc env v) where Snoc env ~v = S (WSnoc env v)
+{-# complete Nil, Snoc #-}
 
 --------------------------------------------------------------------------------
 
@@ -42,15 +46,15 @@ data RigidHead
 
 data FlexHead
   -- blocking on Meta
-  = FHMeta Meta
-  | FHCoeRefl Meta Val Val Val Val
+  = FHMeta MetaVar
+  | FHCoeRefl MetaVar Val Val Val Val
 
   -- blocking on UMax
   | FHCoeUMax S.UMax Val Val Val Val
   | FHEqUMax S.UMax Val Val Val
 
 data UnfoldHead  -- TODO: unpack
-  = UHMeta Meta
+  = UHMeta MetaVar
   | UHTopDef Lvl
 
 --------------------------------------------------------------------------------
@@ -102,7 +106,7 @@ data WVal
 
   -- Non-deterministic values
   | WUnfold UnfoldHead Spine ~WVal -- unfolding choice (top/meta)
-  | WEq Val Val Val ~WVal          -- Eq computation to non-Eq type
+  | WEq Val Val Val Val            -- Eq computation to non-Eq type
 
   -- Canonical values
   | WU S.U
@@ -148,7 +152,7 @@ pattern Prop              = U S.Prop
 pattern WSet              = WU S.Set
 pattern WProp             = WU S.Prop
 pattern Var x             = Rigid (RHLocalVar x) SNil
-pattern Skip env l        = LSnoc env (WRigid (RHLocalVar l) SNil)
+pattern Skip env l        = Snoc env (WRigid (RHLocalVar l) SNil)
 pattern Exfalso u a t     = Rigid (RHExfalso u a t) SNil
 pattern Refl a t          = Rigid (RHRefl a t) SNil
 pattern Sym a x y p       = Rigid (RHSym a x y p) SNil

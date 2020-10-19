@@ -39,15 +39,16 @@ data Tm
   | Top     Span
   | Tt      Span
   | Bot     Span
-  | Exfalso Span
 
+  | Exfalso Pos (Maybe Tm) Tm
   | Eq Tm Tm
-  | Refl    Span
-  | Coe     Span
-  | Sym     Span
-  | Trans   Span
-  | Ap      Span
-  | Hole    Span
+  | Refl Span (Maybe Tm) (Maybe Tm)
+  | Coe Pos (Maybe Tm) (Maybe Tm) Tm Tm
+  | Sym Pos (Maybe Tm) (Maybe Tm) (Maybe Tm) Tm
+  | Trans Pos (Maybe Tm) (Maybe Tm) (Maybe Tm) (Maybe Tm) Tm Tm
+  | Ap Pos (Maybe Tm) (Maybe Tm) Tm (Maybe Tm) (Maybe Tm) Tm
+
+  | Hole Span
   deriving Show
 
 -- | Get the source text spanned by a raw term.
@@ -55,30 +56,29 @@ span :: Tm -> Span
 span t = Span (left t) (right t) where
   left :: Tm -> Pos
   left = \case
-    Var (Span l _)     -> l
-    Let l _ _ _ _      -> l
-    Pi l _ _ _ _       -> l
-    App t _ _          -> left t
-    Sg l _ _ _         -> l
-    Pair t _           -> left t
-    Proj1 t _          -> left t
-    Proj2 t _          -> left t
-    ProjField t _      -> left t
-    Lam l _  _ _       -> l
-    Set (Span l _)     -> l
-    Prop (Span l _)    -> l
-    Top     (Span l _) -> l
-    Tt      (Span l _) -> l
-    Bot     (Span l _) -> l
-    Exfalso (Span l _) -> l
-    Eq t u             -> left t
-    Refl    (Span l _) -> l
-    Coe     (Span l _) -> l
-    Sym     (Span l _) -> l
-    Trans   (Span l _) -> l
-    Ap      (Span l _) -> l
-    Hole    (Span l _) -> l
-
+    Var (Span l _)      -> l
+    Let l _ _ _ _       -> l
+    Pi l _ _ _ _        -> l
+    App t _ _           -> left t
+    Sg l _ _ _          -> l
+    Pair t _            -> left t
+    Proj1 t _           -> left t
+    Proj2 t _           -> left t
+    ProjField t _       -> left t
+    Lam l _  _ _        -> l
+    Set (Span l _)      -> l
+    Prop (Span l _)     -> l
+    Top     (Span l _)  -> l
+    Tt      (Span l _)  -> l
+    Bot     (Span l _)  -> l
+    Exfalso l _ _       -> l
+    Eq t u              -> left t
+    Refl (Span l _) _ _ -> l
+    Coe l _ _ _ _       -> l
+    Sym l _ _ _ _       -> l
+    Trans l _ _ _ _ _ _ -> l
+    Ap l _ _ _ _ _ _    -> l
+    Hole    (Span l _)  -> l
 
   right :: Tm -> Pos
   right = \case
@@ -97,11 +97,11 @@ span t = Span (left t) (right t) where
     Top     (Span _ r)     -> r
     Tt      (Span _ r)     -> r
     Bot     (Span _ r)     -> r
-    Exfalso (Span _ r)     -> r
-    Eq t u                 -> right u
-    Refl    (Span _ r)     -> r
-    Coe     (Span _ r)     -> r
-    Sym     (Span _ r)     -> r
-    Trans   (Span _ r)     -> r
-    Ap      (Span _ r)     -> r
-    Hole    (Span _ r)     -> r
+    Exfalso _ _ t          -> right t
+    Eq _ t                 -> right t
+    Refl (Span _ r) _ t    -> maybe r right t
+    Coe _ _ _ _ t          -> right t
+    Sym _ _ _ _ t          -> right t
+    Trans _ _ _ _ _ _ t    -> right t
+    Ap _ _ _ _ _ _ t       -> right t
+    Hole (Span l r)        -> r
