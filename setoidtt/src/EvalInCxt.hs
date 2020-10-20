@@ -1,5 +1,5 @@
 
-module EvalCxt (
+module EvalInCxt (
     eval, forceF, forceFU, forceFUE, quote, vEq
   , (Eval.$$), (Eval.$$$), Eval.vApp, Eval.vAppSE
   , Eval.vProj1, Eval.vProj2, Eval.vProjField) where

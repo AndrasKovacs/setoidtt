@@ -85,12 +85,12 @@ define x t a au (Cxt env l loc ntbl src) =
       src
 {-# inline define #-}
 
-define' :: RawName -> S.Tm -> V.Val -> S.Ty -> V.Ty -> S.U -> Cxt -> Cxt
-define' x t vt a va au (Cxt env l loc ntbl src) =
-  Cxt (V.Snoc env (unS vt))
+define' :: RawName -> S.Tm -> V.WVal -> S.Ty -> V.WTy -> S.U -> Cxt -> Cxt
+define' x t ~vt a ~va au (Cxt env l loc ntbl src) =
+  Cxt (V.Snoc env vt)
       (l + 1)
       (S.Define loc (NName x) t a au)
-      (M.insert x (NILocal l (unS va) au) ntbl)
+      (M.insert x (NILocal l va au) ntbl)
       src
 {-# inline define' #-}
 

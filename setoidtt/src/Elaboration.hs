@@ -2,6 +2,8 @@
 
 module Elaboration (infer, check, bind2Name, insert, insert') where
 
+import Control.Monad
+
 import qualified Data.ByteString     as B
 import qualified Data.HashMap.Strict as HM
 import qualified Syntax              as S
@@ -14,7 +16,7 @@ import Common
 import ElabState
 import Exceptions
 import Cxt
-import EvalCxt
+import EvalInCxt
 import Unification
 
 {- CORE INSPECTION
@@ -72,7 +74,6 @@ wfreshMeta' cxt a au = do
 data Infer   = Infer S.Tm ~V.WTy S.U
 data InferTy = InferTy S.Tm S.U
 
-
 inferTy :: Cxt -> P.Tm -> IO InferTy
 inferTy cxt a = do
   Infer a au _ <- infer cxt a
@@ -99,6 +100,20 @@ insert :: Cxt -> IO Infer -> IO Infer
 insert cxt inf = inf >>= \case
   res@(Infer (S.Lam _ Impl _ _ _) va _) -> pure res
   res                                   -> insert' cxt (pure res)
+
+-- | Insert fresh implicit applications until we hit a Pi with
+--   a particular binder name.
+insertUntilName :: Cxt -> RawName -> IO Infer -> IO Infer
+insertUntilName cxt name act = go cxt name =<< act where
+  go cxt name (Infer t topA topU) = case forceFUE cxt (S topA) of
+    V.Pi x Impl a au b -> do
+      if NName name == x then
+        pure (Infer t topA topU)
+      else do
+        m <- freshMeta cxt (unS a) au
+        go cxt name (Infer (S.App t m au Impl) (unS (b $$ eval cxt m)) topU)
+    _ ->
+      undefined
 
 data Checking = Checking P.Tm V.Ty
 
@@ -132,8 +147,8 @@ wcheck cxt topT topA topU = case Checking topT (forceFUE cxt topA) of
     InferTy a au <- maybe (freshTy cxt) (inferTy cxt) a
     let va = eval cxt a
     t <- check cxt t va au
-    let ~vt = eval cxt t
-    u <- check (define' x t vt a va au cxt) u topA topU
+    let ~vt = unS (eval cxt t)
+    u <- check (define' x t vt a (unS va) au cxt) u topA topU
     pure $ S.WLet (NName x) a au t u
 
   Checking (P.Hole _) (topA) -> do
@@ -170,7 +185,7 @@ infer cxt topT = case topT of
     let va = eval cxt a
     t <- check cxt t va au
     let ~vt = unS (eval cxt t)
-    Infer u b bu <- infer (define' x t (S vt) a va au cxt) u
+    Infer u b bu <- infer (define' x t vt a (unS va) au cxt) u
     pure $ Infer (S.Let (NName x) a au t u) b bu
 
   P.Pi _ P.DontBind i a b -> do
@@ -183,7 +198,33 @@ infer cxt topT = case topT of
     InferTy b bu <- inferTy (bind x a au cxt) b
     pure $ Infer (S.Pi (NName x) i a au b) (V.WU bu) S.Set
 
-  P.App t u inf -> undefined
+  P.App t u inf -> do
+
+    (i, t, topA, topU) <- case inf of
+      Named (span2RawName cxt -> x) -> do
+        Infer t a u <- insertUntilName cxt x $ infer cxt t
+        pure (Impl, unS t, a, unS u)
+      NoName Impl -> do
+        Infer t a u <- infer cxt t
+        pure (Impl, unS t, a, unS u)
+      NoName Expl -> do
+        Infer t a u <- insert' cxt $ infer cxt t
+        pure (Expl, unS t, a, unS u)
+
+    (a, au, b) <- case forceFUE cxt (S topA) of
+      V.Pi x i' a au b -> do
+        unless (i == i) $
+          undefined
+        pure (unS a, unS au, b)
+      topA -> do
+        InferTy a au <- freshTy cxt
+        InferTy b bu <- freshTy (bindEmpty a au cxt)
+        let va = unS (eval cxt a)
+        let vb = closeVal cxt (eval (bindEmpty a au cxt) b)
+        pure (va, unS au, vb)
+
+    u <- check cxt u (S a) (S au)
+    pure $ Infer (S.App (S t) u (S au) i) (unS (b $$$ unS (eval cxt u))) (S topU)
 
   P.Lam _ P.DontBind i t -> do
     i <- case i of NoName i -> pure i; _ -> undefined
@@ -223,11 +264,18 @@ infer cxt topT = case topT of
   P.Proj2 t _ -> do
     Infer t topA topU <- infer cxt t
     case forceFUE cxt (S topA) of
-      V.Sg x a au b bu -> pure $ Infer (S.Proj2 t) (unS (vProj1 (eval cxt t))) bu
+      V.Sg x a au b bu -> pure $ Infer (S.Proj2 t) (unS (b $$ vProj1 (eval cxt t))) bu
       topA             -> undefined
 
-  P.ProjField t x ->
-    undefined
+  P.ProjField t (span2RawName cxt -> topX) -> do
+    Infer topT topA topU <- infer cxt t
+    let go :: S.Tm -> V.Val -> V.Ty -> Int -> IO Infer
+        go topT t sg i = case forceFUE cxt sg of
+          V.Sg x a au b bu
+            | NName topX == x -> pure $ Infer (S.ProjField topT x i) (unS a) au
+            | otherwise       -> go topT (vProj2 t) (b $$ vProj2 t) (i + 1)
+          _ -> undefined
+    go topT (eval cxt topT) (S topA) 0
 
   P.Set _  -> pure $ Infer (S.U S.Set)  V.WSet S.Set
   P.Prop _ -> pure $ Infer (S.U S.Prop) V.WSet S.Set

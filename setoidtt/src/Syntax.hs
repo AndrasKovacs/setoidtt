@@ -46,6 +46,7 @@ data WLocals
 pattern Empty = S WEmpty
 pattern Define ls x t a u = S (WDefine ls x t a u)
 pattern Bind ls x a u     = S (WBind ls x a u)
+{-# complete Empty, Define, Bind #-}
 
 type Ty = Tm
 type Tm = S WTm
