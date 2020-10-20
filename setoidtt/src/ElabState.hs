@@ -16,8 +16,8 @@ import qualified Values as V
 --------------------------------------------------------------------------------
 
 data TopEntry
-  = TEDef ~V.WVal ~V.WTy S.Tm (Maybe S.Ty) B.ByteString
-  | TEPostulate ~V.WTy S.Ty B.ByteString
+  = TEDef ~V.WVal V.Ty S.Tm (Maybe S.Ty) B.ByteString
+  | TEPostulate V.Ty S.Ty B.ByteString
 
 -- TODO: we'll implement top resizing and allocation later
 topSize :: Int
@@ -36,7 +36,7 @@ readTop (Lvl x) | 0 <= x && x < topSize = A.read top x
 --------------------------------------------------------------------------------
 
 data MetaEntry
-  = MEUnsolved ~V.WTy S.U
+  = MEUnsolved V.Ty S.U
   | MESolved V.Val
 
 metaCxt :: D.Array MetaEntry
@@ -47,8 +47,8 @@ readMeta :: MetaVar -> IO MetaEntry
 readMeta (MetaVar i) = D.read metaCxt i
 {-# inline readMeta #-}
 
-newMeta :: V.WTy -> S.U -> IO MetaVar
-newMeta ~a u = do
+newMeta :: V.Ty -> S.U -> IO MetaVar
+newMeta a u = do
   s <- D.size metaCxt
   D.push metaCxt (MEUnsolved a u)
   pure (MetaVar s)

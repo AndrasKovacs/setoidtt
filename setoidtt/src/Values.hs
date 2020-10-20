@@ -19,7 +19,7 @@ pattern Close :: Env -> Lvl -> S.Tm -> Closure
 pattern Close env l t <- Closure# (S -> env) (switchClosure# -> (# ((\x -> Lvl (I# x)) -> l), 1# #)) (S -> t) where
   Close (S env) l (S t) = Closure# env l t
 
-pattern Fun :: (Val -> Val) -> Closure
+pattern Fun :: (WVal -> Val) -> Closure
 pattern Fun f <- Closure# ((\x -> sFun1 (unsafeCoerce# x)) -> f) (switchClosure# -> (# _, 0# #)) _ where
   Fun f = Closure# (unsafeCoerce# (oneShot (unSFun1 (oneShot f)))) (-1) (unsafeCoerce# ())
 {-# complete Close, Fun #-}

@@ -40,12 +40,12 @@ unS :: S a -> a
 unS (S a) = a
 {-# inline unS #-}
 
-sFun1 :: (a -> b) -> S a -> S b
-sFun1 f (S a) = S (f a)
+sFun1 :: (a -> b) -> a -> S b
+sFun1 f ~a = S (f a)
 {-# inline sFun1 #-}
 
-unSFun1 :: (S a -> S b) -> a -> b
-unSFun1 f a = unS (f (S a))
+unSFun1 :: (a -> S b) -> a -> b
+unSFun1 f ~a = unS (f a)
 {-# inline unSFun1 #-}
 
 instance Show a => Show (S a) where

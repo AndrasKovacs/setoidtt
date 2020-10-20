@@ -1,6 +1,6 @@
 
 module Exceptions (
-  Ex(..), throwIO, throw, catch, fenceEx
+  Ex(..), throwIO, throw, catch, fenceEx, ElabError(..), module Errors
   ) where
 
 import GHC.Prim
@@ -9,7 +9,20 @@ import GHC.Stack
 import qualified Control.Exception as Ex
 
 import Common
+import Errors
 import Syntax
+
+--------------------------------------------------------------------------------
+
+data Ex
+  = ConvSame
+  | ConvDiff
+  | ConvMeta MetaVar
+  | ConvUMax UMax
+  | CantUnify
+  | ElabException {-# unpack #-} ElabEx
+
+--------------------------------------------------------------------------------
 
 throwIO# :: forall a. Ex# -> IO a
 throwIO# e = IO (raiseIO# e)
@@ -23,11 +36,7 @@ catch# :: forall a. IO a -> (Ex# -> IO a) -> IO a
 catch# (IO io) f = IO (GHC.Prim.catch# io (\e -> case f e of IO f -> f))
 {-# inline catch# #-}
 
-data Ex
-  = ConvSame
-  | ConvDiff
-  | ConvMeta MetaVar
-  | ConvUMax UMax
+--------------------------------------------------------------------------------
 
 throwIO :: Ex -> IO a
 throwIO e = throwIO# (Ex# e)

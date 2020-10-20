@@ -1,6 +1,6 @@
 
 module Evaluation (
-    ($$), ($$$), vApp, vProj1, vProj2, vProjField, vAppSE, forceFUE
+    ($$), ($$$), vApp, vProj1, vProj2, vProjField, vAppSE, forceFUE, forceFUE'
   , vCoe, vEq, forceU, conv, forceFU, forceF, vSp, vCoeP, eval, quote, convIO
   ) where
 
@@ -79,7 +79,7 @@ infixl 2 $$
   -- | Strict closure application.
 ($$) :: Closure -> Val -> Val
 ($$) cl u = case cl of
-  Fun t         -> t u
+  Fun t         -> t (unS u)
   Close env l t -> eval (Snoc env (unS u)) l t
 {-# inline ($$) #-}
 
@@ -87,7 +87,7 @@ infixl 2 $$$
   -- | Lazy closure application.
 ($$$) :: Closure -> WVal -> Val
 ($$$) cl ~u = case cl of
-  Fun t         -> t (S u)
+  Fun t         -> t u
   Close env l t -> eval (Snoc env u) l t
 {-# inline ($$$) #-}
 
@@ -225,12 +225,12 @@ vCoe l a b p t = case (a, b) of
   (topA@(Pi x i a au b), topB@(Pi x' i' a' au' b'))
     | i /= i'   -> Exfalso S.Set (Pi x' i' a' au' b') p
     | otherwise -> case matchU au au' of
-        MUSet     -> Lam (pick x x') i a' S.Set $ Fun \a1 ->
+        MUSet     -> Lam (pick x x') i a' S.Set $ Fun \(S -> a1) ->
                      let p1 = vProj1 p
                          p2 = vProj2 p
                          a0 = vCoe l a' a (Sym Set a a' p1) a1
                      in vCoe l (b $$ a0) (b' $$ a1) (vAppInline p2 a0 S.Set Expl) (vAppInline t a0 S.Set i)
-        MUProp    -> Lam (pick x x') i a' S.Prop $ Fun \a1 ->
+        MUProp    -> Lam (pick x x') i a' S.Prop $ Fun \(S -> a1) ->
                      let p1 = vProj1 p
                          p2 = vProj2 p
                          a0 = vCoeP (Sym Prop a a' p1) a1
@@ -290,7 +290,7 @@ vCoeRefl l a b p t = S $ runIO do
     ConvDiff    -> pure $ WRigid (RHCoe a b p t) SNil
     ConvMeta x  -> pure $ WFlex (FHCoeRefl x a b p t) SNil
     ConvUMax xs -> pure $ WFlex (FHCoeUMax xs a b p t) SNil
-    ConvSame    -> impossible
+    _           -> impossible
 
 -- | coeP : {A B : Prop} -> A = B -> A -> B
 vCoeP :: Val -> Val -> Val
@@ -310,7 +310,7 @@ vEq l a t u = case a of
 
   -- funext always computes to Expl function
   topA@(Pi x i a au b) -> Eq topA t u $
-    Pi x Expl a au $ Fun \x -> vEq l (b $$ x) (vAppInline t x au i) (vAppInline u x au i)
+    Pi x Expl a au $ Fun \(S -> x) -> vEq l (b $$ x) (vAppInline t x au i) (vAppInline u x au i)
 
   -- equality of Prop fields is automatically skipped
   topA@(Sg x a (forceU -> !au) b (forceU -> !bu)) ->
@@ -321,7 +321,7 @@ vEq l a t u = case a of
     case (au, bu) of
       (S.Set, S.Prop)  -> vEq l a p1t p1u
       (S.Set, S.Set )  -> Eq topA t u $
-                          PiEP NP (vEq l a p1t p1u) \p ->
+                          PiEP NP (vEq l a p1t p1u) \(S -> p) ->
                           vEq l (b $$ p1u)
                                 (vCoe l (b $$ p1t) (b $$ p1u)
                                         (Ap a Set (Lam x Expl a S.Set b) p1t p1u p) p2t)
@@ -352,22 +352,22 @@ vEqSet l a b = case (a, b) of
   (topA@(Pi x i a au b), topB@(Pi x' i' a' au' b')) ->
     let eq = Eq Set topA topB in
     case matchU au au' of
-      MUProp      -> eq $ SgPP NP (vEqProp a a') \p ->
-                     PiEP (pick x x') a \x -> vEqSet l (b $$ x) (b' $$ vCoeP p x)
-      MUSet       -> eq $ SgPP NP (vEqSet l a a') \p ->
-                     PiEP (pick x x') a \x -> vEqSet l (b $$ x) (b' $$ vCoe l a a' p x)
+      MUProp      -> eq $ SgPP NP (vEqProp a a') \(S -> p) ->
+                     PiEP (pick x x') a \(S -> x) -> vEqSet l (b $$ x) (b' $$ vCoeP p x)
+      MUSet       -> eq $ SgPP NP (vEqSet l a a') \(S -> p) ->
+                     PiEP (pick x x') a \(S -> x) -> vEqSet l (b $$ x) (b' $$ vCoe l a a' p x)
       MUDiff      -> eq Bot
       MUUMax au   -> Flex (FHEqUMax au Set topA topB) SNil
 
   (topA@(Sg x a au b bu), topB@(Sg x' a' au' b' bu')) ->
     let eq = Eq Set topA topB in
     case (matchU au au' :*: matchU bu bu') of
-      MUSet     :*: MUSet     -> eq $ SgPP NP (vEqSet l a a') \p ->
-                                 PiEP (pick x x') a \x -> vEqSet l (b $$ x) (b' $$ vCoe l a a' p x)
-      MUSet     :*: MUProp    -> eq $ SgPP NP (vEqSet l a a') \p ->
-                                 PiEP (pick x x') a \x -> vEqProp (b $$ x) (b' $$ vCoeP p x)
-      MUProp    :*: MUSet     -> eq $ SgPP NP (vEqProp a a') \p ->
-                                 PiEP (pick x x') a \x -> vEqSet l (b $$ x) (b' $$ vCoe l a a' p x)
+      MUSet     :*: MUSet     -> eq $ SgPP NP (vEqSet l a a') \(S -> p) ->
+                                 PiEP (pick x x') a \(S -> x) -> vEqSet l (b $$ x) (b' $$ vCoe l a a' p x)
+      MUSet     :*: MUProp    -> eq $ SgPP NP (vEqSet l a a') \(S -> p) ->
+                                 PiEP (pick x x') a \(S -> x) -> vEqProp (b $$ x) (b' $$ vCoeP p x)
+      MUProp    :*: MUSet     -> eq $ SgPP NP (vEqProp a a') \(S -> p) ->
+                                 PiEP (pick x x') a \(S -> x) -> vEqSet l (b $$ x) (b' $$ vCoe l a a' p x)
       MUProp    :*: MUProp    -> impossible
       MUDiff    :*: _         -> eq Bot
       _         :*: MUDiff    -> eq Bot

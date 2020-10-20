@@ -43,6 +43,8 @@ data WLocals
   = WEmpty
   | WDefine Locals Name Tm Ty U
   | WBind Locals Name Ty U
+  deriving Show
+
 pattern Empty = S WEmpty
 pattern Define ls x t a u = S (WDefine ls x t a u)
 pattern Bind ls x a u     = S (WBind ls x a u)
@@ -77,6 +79,7 @@ data WTm
   | WTrans Ty Tm Tm Tm Tm Tm  -- ^ {A : Set}{x y z : A} → Eq x y → Eq y z → Eq x z
   | WAp Ty Ty Tm Tm Tm Tm     -- ^ {A B : Set}(f : A → B){x y : A} → Eq x y → Eq (f x) (f y)
   | WExfalso U Ty Tm          -- ^ {A : U i} → Bot → A
+  deriving Show
 
 pattern LocalVar x        = S (WLocalVar x)
 pattern TopDef x          = S (WTopDef x)

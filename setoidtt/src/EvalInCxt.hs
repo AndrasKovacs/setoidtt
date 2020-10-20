@@ -1,6 +1,6 @@
 
 module EvalInCxt (
-    eval, forceF, forceFU, forceFUE, quote, vEq
+    eval, forceF, forceFU, forceFUE, forceFUE', quote, vEq
   , (Eval.$$), (Eval.$$$), Eval.vApp, Eval.vAppSE
   , Eval.vProj1, Eval.vProj2, Eval.vProjField) where
 
@@ -26,6 +26,10 @@ forceFU cxt t = Eval.forceFU (_lvl cxt) t
 forceFUE :: Cxt -> Val -> Val
 forceFUE cxt t = Eval.forceFUE (_lvl cxt) t
 {-# inline forceFUE #-}
+
+forceFUE' :: Cxt -> Val -> Val
+forceFUE' cxt t = Eval.forceFUE' (_lvl cxt) t
+{-# inline forceFUE' #-}
 
 quote :: Cxt -> Unfolding -> Val -> Tm
 quote cxt unf t = Eval.quote (_lvl cxt) unf t
