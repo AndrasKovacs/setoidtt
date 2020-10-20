@@ -23,7 +23,7 @@ data Cxt = Cxt {
   _lvl       :: Lvl,
   _locals    :: S.Locals,
   _nameTable :: NameTable,
-  _src       :: ~RawName
+  _src       :: {-# unpack #-} RawName
   }
 
 instance Show Cxt where

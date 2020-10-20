@@ -55,8 +55,9 @@ ghc-options:
 - -Wno-type-defaults
 - -Wno-missing-pattern-synonym-signatures
 - -fplugin-opt=Test.Inspection.Plugin:skip-O0
-- -O
-- -fllvm
+- -O2
+- -fmax-worker-args=15
+# - -fllvm
 - -ddump-simpl
 - -dsuppress-all
 - -dno-suppress-type-signatures

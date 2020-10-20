@@ -2,19 +2,18 @@
 module Errors where
 
 import Common
-import Cxt.Types
 import Syntax
 import qualified Presyntax as P
 
 data ElabError
   = UnifyError Tm Tm
-  | NameNotInScope RawName
-  | NoSuchField RawName
-  | NoSuchArgument RawName
+  | NameNotInScope {-# unpack #-} RawName
+  | NoSuchField {-# unpack #-} RawName
+  | NoSuchArgument {-# unpack #-} RawName
   | IcitMismatch Icit Icit
   | NoNamedLambdaInference
   | ExpectedSg Tm
   deriving Show
 
-data ElabEx = ElabEx {-# unpack #-} Cxt P.Tm ElabError
+data ElabEx = ElabEx Locals P.Tm ElabError
   deriving Show

@@ -24,7 +24,10 @@ import qualified Unification
 
 {- CORE INSPECTION:
 - MYSTERIOUS ISSUE: if I make RawName strict in Cxt, check fails to unbox!
-- HashMap adds a bit of noise
+   - MYSTERY SOLVED: it would go over the limit of max worker args!
+   - -fmax-worker-args=15    for the rescue!!!!
+- HashMap could be improved
+- RawString would be nicer in latest ByteString version (3 words)
 -}
 
 --------------------------------------------------------------------------------
@@ -45,7 +48,7 @@ bind2Name cxt P.DontBind = NEmpty
 --------------------------------------------------------------------------------
 
 elabError :: Cxt -> P.Tm -> ElabError -> IO a
-elabError cxt tgt err = throwIO $ ElabException $ ElabEx cxt tgt err
+elabError cxt tgt err = throwIO $ ElabException $ ElabEx (_locals cxt) tgt err
 {-# inline elabError #-}
 
 unifySet :: Cxt -> P.Tm -> V.Val -> V.Val -> IO ()
@@ -57,6 +60,10 @@ unifySet cxt tgt a b =
 
 data Infer   = Infer S.Tm V.Ty S.U
 data InferTy = InferTy S.Tm S.U
+
+-- throwaway helper types for defining infer P.App
+data InferApp1 = InferApp1 Icit S.Tm V.Ty S.U
+data InferApp2 = InferApp2 V.Val S.U {-# unpack #-} V.Closure
 
 freshTy :: Cxt -> IO InferTy
 freshTy cxt = do
@@ -85,26 +92,31 @@ insert' cxt inf = go cxt =<< inf where
       go cxt (Infer (S.App t m au Impl) (b $$$ unS (eval cxt m)) topU)
     topA ->
       pure $ Infer t topA topU
+{-# inline insert' #-}
 
 -- | Insert fresh implicit applications to a neutral term.
 insert :: Cxt -> IO Infer -> IO Infer
 insert cxt inf = inf >>= \case
   res@(Infer (S.Lam _ Impl _ _ _) va _) -> pure res
   res                                   -> insert' cxt (pure res)
+{-# inline insert #-}
 
 -- | Insert fresh implicit applications until we hit a Pi with
 --   a particular binder name.
 insertUntilName :: Cxt -> P.Tm -> RawName -> IO Infer -> IO Infer
-insertUntilName cxt tgt name act = go cxt name =<< act where
-  go cxt name (Infer t topA topU) = case forceFUE cxt topA of
+insertUntilName cxt tgt name act = go cxt tgt name =<< act where
+
+  go :: Cxt -> P.Tm -> RawName -> Infer -> IO Infer
+  go cxt tgt name (Infer t topA topU) = case forceFUE cxt topA of
     V.Pi x Impl a au b -> do
       if NName name == x then
         pure (Infer t topA topU)
       else do
         m <- freshMeta cxt (unS a) au
-        go cxt name (Infer (S.App t m au Impl) (b $$$ unS (eval cxt m)) topU)
+        go cxt tgt name (Infer (S.App t m au Impl) (b $$$ unS (eval cxt m)) topU)
     _ ->
       elabError cxt tgt $ NoSuchArgument name
+{-# inline insertUntilName #-}
 
 
 data Checking = Checking P.Tm V.Ty
@@ -145,9 +157,10 @@ wcheck cxt topmostT topA topU = case Checking topmostT (forceFUE cxt topA) of
     wfreshMeta cxt (unS topA) topU
 
   Checking t topA -> do
-    Infer t a au <- infer cxt t
+    Infer t a au <- insert cxt $ infer cxt t
     unifySet cxt topmostT a topA
     pure (unS t)
+
 
 maybeInferSet :: Cxt -> Maybe P.Tm -> IO S.Ty
 maybeInferSet cxt a =
@@ -159,8 +172,6 @@ maybeCheckInSet cxt t a =
   maybe (freshMeta cxt (unS a) S.Set) (\t -> check cxt t a S.Set) t
 {-# inline maybeCheckInSet #-}
 
-data WApp1 = WApp1 Icit S.Tm V.Ty S.U
-data WApp2 = WApp2 V.Val S.U {-# unpack #-} V.Closure
 
 infer :: Cxt -> P.Tm -> IO Infer
 infer cxt topmostT = case topmostT of
@@ -192,34 +203,36 @@ infer cxt topmostT = case topmostT of
     InferTy b bu <- inferTy (bind x a au cxt) b
     pure $ Infer (S.Pi (NName x) i a au b) (V.U bu) S.Set
 
-  P.App topT u inf -> do
+  P.App rawT u inf -> do
 
-    WApp1 i t topA topU <- case inf of
+    -- data InferApp1 = InferApp1 Icit S.Tm V.Ty S.U
+    InferApp1 i t tty tu <- case inf of
       Named (span2RawName cxt -> x) -> do
-        Infer t a u <- insertUntilName cxt topmostT x $ infer cxt topT
-        pure $ WApp1 Impl t a u
+        Infer t tty tu <- insertUntilName cxt topmostT x $ infer cxt rawT
+        pure $ InferApp1 Impl t tty tu
       NoName Impl -> do
-        Infer t a u <- infer cxt topT
-        pure $ WApp1 Impl t a u
+        Infer t tty tu <- infer cxt rawT
+        pure $ InferApp1 Impl t tty tu
       NoName Expl -> do
-        Infer t a u <- insert' cxt $ infer cxt topT
-        pure $ WApp1 Expl t a u
+        Infer t tty tu <- insert' cxt $ infer cxt rawT
+        pure $ InferApp1 Expl t tty tu
 
-    WApp2 a au b <- case forceFUE cxt topA of
+    -- data InferApp2 = InferApp2 V.Val S.U {-# unpack #-} V.Closure
+    InferApp2 a au b <- case forceFUE cxt tty of
       V.Pi x i' a au b -> do
         unless (i == i') $
           elabError cxt topmostT $ IcitMismatch i i'
-        pure $ WApp2 a au b
+        pure $ InferApp2 a au b
       topA -> do
         InferTy a au <- freshTy cxt
         InferTy b bu <- freshTy (bindEmpty a au cxt)
         let va = eval cxt a
         let vb = closeVal cxt (eval (bindEmpty a au cxt) b)
-        unifySet cxt topT topA (V.Pi NEmpty i va au vb)
-        pure $ WApp2 va au vb
+        unifySet cxt rawT topA (V.Pi NEmpty i va au vb)
+        pure $ InferApp2 va au vb
 
     u <- check cxt u a au
-    pure $ Infer (S.App t u au i) (b $$$ unS (eval cxt u)) topU
+    pure $ Infer (S.App t u au i) (b $$$ unS (eval cxt u)) tu
 
   P.Lam _ P.DontBind i t -> do
     i <- case i of NoName i -> pure i

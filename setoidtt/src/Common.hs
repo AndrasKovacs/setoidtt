@@ -117,7 +117,7 @@ data WName
   = WNP
   | WNEmpty
   | WNX
-  | WNName RawName
+  | WNName {-# unpack #-} RawName
   deriving (Eq, Show)
 pattern NP      = S WNP
 pattern NEmpty  = S WNEmpty
