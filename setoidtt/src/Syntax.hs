@@ -1,42 +1,63 @@
 
 module Syntax where
 
-import qualified Data.IntSet as IS
+import IO
+import Data.Bits
+import qualified Data.IntSet.Internal as IS
+
 import Common
 
 --------------------------------------------------------------------------------
 
 type UMax = IS.IntSet
 
+forUMax :: UMax -> (UMetaVar -> IO ()) -> IO ()
+forUMax us f =
+  let go :: RW -> Int -> RW
+      go (RW s) (UMetaVar -> x) = case unIO (f x) s of (# s , _ #) -> RW s
+  in IO \s -> case IS.foldl' go (RW s) us of
+                RW s -> (# s , () #)
+{-# inline forUMax #-}
+
+--------------------------------------------------------------------------------
+
 type U = S WU
 data U2 = U2 U U
 data WU
   = WSet
   | WProp
-  | WUMax UMax   -- ^ Maximum of a non-empty set of universe metas.
+  | WMax UMax   -- ^ Maximum of a non-empty set of universe metas.
   deriving (Eq, Show)
-pattern Set     = S WSet
-pattern Prop    = S WProp
-pattern UMax xs = S (WUMax xs)
-{-# complete Set, Prop, UMax #-}
+pattern Set    = S WSet
+pattern Prop   = S WProp
+pattern Max xs = S (WMax xs)
+{-# complete Set, Prop, Max #-}
 
 instance Semigroup U where
   u <> u' = case u of
     Set     -> Set
     Prop    -> u'
-    UMax xs -> case u' of
+    Max xs -> case u' of
       Set      -> Set
-      Prop     -> UMax xs
-      UMax xs' -> UMax (xs <> xs')
+      Prop     -> Max xs
+      Max xs' -> Max (xs <> xs')
   {-# inline (<>) #-}
 
 instance Monoid U where
   mempty = Prop
   {-# inline mempty #-}
 
+matchSingleton :: UMax -> Maybe UMetaVar
+matchSingleton xs = case xs of
+  IS.Tip pref mask | popCount mask == 1 ->
+    Just $! UMetaVar $! pref + countTrailingZeros mask
+  _ ->
+    Nothing
+{-# inline matchSingleton #-}
+
 pattern UVar :: UMetaVar -> U
-pattern UVar x <- ((\case UMax xs -> IS.toList xs;_ -> []) -> [UMetaVar -> x]) where
-  UVar (UMetaVar x) = UMax (IS.singleton x)
+pattern UVar x <- ((\case Max xs -> matchSingleton xs; _ -> Nothing) -> Just x) where
+  UVar (UMetaVar x) = Max (IS.singleton x)
 
 type Locals = S WLocals
 data WLocals
@@ -53,21 +74,30 @@ pattern Bind ls x a u     = S (WBind ls x a u)
 type Ty = Tm
 type Tm = S WTm
 type WTy = WTm
+
 data WTm
   = WLocalVar Ix
   | WTopDef Lvl
-  | WPostulate Lvl
-  | WMeta MetaVar
-  | WInsertedMeta MetaVar Locals
-  | WLet Name Ty U Tm Tm
-  | WPi Name Icit Ty U Ty     -- ^ (x : A : U) → B)  or  {x : A : U} → B
+
+  -- Note: we bring term constructors to the front because the first 6 consructors
+  -- are dispatched on pointer tags, and the rest on info table, so we want
+  -- the first 6 constructors to be the most commonly occurring.
   | WLam Name Icit Ty U Tm    -- ^ λ(x : A : U).t  or  λ{x : A : U}.t
   | WApp Tm Tm U Icit         -- ^ t u  or  t {u}, last Ty is u's universe
-  | WSg Name Ty U Ty U
+
+  | WPair Tm U Tm U
+  | WProjField Tm Name Int
   | WProj1 Tm
   | WProj2 Tm
-  | WProjField Tm Name Int
-  | WPair Tm U Tm U
+
+  | WPi Name Icit Ty U Ty     -- ^ (x : A : U) → B)  or  {x : A : U} → B
+  | WSg Name Ty U Ty U
+
+  | WPostulate Lvl
+  | WInsertedMeta MetaVar Locals
+  | WMeta MetaVar
+  | WLet Name Ty U Tm Tm
+
   | WU U                      -- ^ U u : Set
   | WTop                      -- ^ Top : Prop
   | WTt                       -- ^ Tt  : Top

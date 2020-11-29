@@ -2,17 +2,18 @@
 module Common (
     module Common
   , FlatParse.Span(..)
+  , module Data.Coerce
   ) where
 
+import GHC.Exts
 import qualified Data.ByteString as B
 import qualified Language.Haskell.TH as TH
 
 import Data.Bits
 import Data.Hashable
-import Data.Kind
-import Data.String
 import FNV164
 import FlatParse
+import Data.Coerce
 -- import GHC.Stack
 import Test.Inspection
 
@@ -24,6 +25,11 @@ type Dbg = () :: Constraint
 impossible :: Dbg => a
 impossible = error "impossible"
 {-# noinline impossible #-}
+
+-- Wrapper for RealWorld in Type
+--------------------------------------------------------------------------------
+
+data RW = RW (State# RealWorld)
 
 -- strictness/laziness
 --------------------------------------------------------------------------------
@@ -62,7 +68,18 @@ unL (L a) = a
 
 --------------------------------------------------------------------------------
 
-newtype Unfolding = Unfolding# Int deriving Eq
+newtype ConvState = ConvState# Int deriving Eq via Int
+pattern CSRigid = ConvState# 0
+pattern CSFlex  = ConvState# 1
+pattern CSFull  = ConvState# 2
+{-# complete CSRigid, CSFlex, CSFull #-}
+
+instance Show ConvState where
+  show CSRigid = "Rigid"
+  show CSFlex  = "Flex"
+  show CSFull  = "Full"
+
+newtype Unfolding = Unfolding# Int deriving (Eq, Num) via Int
 pattern DoUnfold   = Unfolding# 0
 pattern DontUnfold = Unfolding# 1
 {-# complete DoUnfold, DontUnfold #-}

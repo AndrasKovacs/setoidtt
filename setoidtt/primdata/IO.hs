@@ -1,5 +1,5 @@
 
-module IO (IO, runIO, unIO) where
+module IO (IO(..), runIO, unIO) where
 
 import GHC.Types
 import GHC.Prim

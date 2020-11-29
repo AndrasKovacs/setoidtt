@@ -4,7 +4,6 @@ module Serialization.Internal where
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Internal as B
 import qualified Data.ByteString.Unsafe as B
-import Control.Monad
 import Data.Word
 import Foreign.Marshal.Alloc
 import GHC.Exts

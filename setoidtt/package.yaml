@@ -55,15 +55,15 @@ ghc-options:
 - -Wno-type-defaults
 - -Wno-missing-pattern-synonym-signatures
 - -fplugin-opt=Test.Inspection.Plugin:skip-O0
-- -O2
+- -O
 - -fmax-worker-args=15
 # - -fllvm
-- -ddump-simpl
-- -dsuppress-all
-- -dno-suppress-type-signatures
-- -ddump-to-file
-- -ddump-stg
-- -ddump-cmm
+# - -ddump-simpl
+# - -dsuppress-all
+# - -dno-suppress-type-signatures
+# - -ddump-to-file
+# - -ddump-stg
+# - -ddump-cmm
 
 
 dependencies:

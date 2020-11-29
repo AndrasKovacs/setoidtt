@@ -18,7 +18,7 @@ import Exceptions
 import Cxt
 import EvalInCxt
 
-import Unification hiding (unifySet)
+import Unification
 import qualified Unification
 
 
@@ -28,6 +28,7 @@ import qualified Unification
    - -fmax-worker-args=15    for the rescue!!!!
 - HashMap could be improved
 - RawString would be nicer in latest ByteString version (3 words)
+
 -}
 
 --------------------------------------------------------------------------------
@@ -48,18 +49,19 @@ bind2Name cxt P.DontBind = NEmpty
 --------------------------------------------------------------------------------
 
 elabError :: Cxt -> P.Tm -> ElabError -> IO a
-elabError cxt tgt err = throwIO $ ElabException $ ElabEx (_locals cxt) tgt err
+elabError cxt tgt err = throwIO $ ElabError (_locals cxt) tgt err
 {-# inline elabError #-}
 
 unifySet :: Cxt -> P.Tm -> V.Val -> V.Val -> IO ()
 unifySet cxt tgt a b =
-  Unification.unifySet cxt a b `catch` \case
+  Unification.unify (_lvl cxt) CSRigid a b `catch` \case
     CantUnify -> elabError cxt tgt $
-                   UnifyError (quote cxt DontUnfold a) (quote cxt DontUnfold b)
+                   UnifyError (quote cxt a) (quote cxt b)
     _         -> impossible
+{-# inline unifySet #-}
 
 data Infer   = Infer S.Tm V.Ty S.U
-data InferTy = InferTy S.Tm S.U
+data InferTy = InferTy S.Ty S.U
 
 -- throwaway helper types for defining infer P.App
 data InferApp1 = InferApp1 Icit S.Tm V.Ty S.U
@@ -129,7 +131,7 @@ wcheck cxt topmostT topA topU = case Checking topmostT (forceFUE cxt topA) of
   Checking (P.Lam _ x i t) (V.Pi x' i' a' au' b')
     | case i of NoName i                   -> i == i'
                 Named (span2Name cxt -> x) -> x == x' -> do
-    let qa' = quote cxt DontUnfold a'
+    let qa' = quote cxt a'
     case x of
       P.Bind (span2RawName cxt -> x) ->
         S.WLam (NName x) i' qa' au' <$> check (bind' x qa' a' au' cxt) t (b' $$ V.Var (_lvl cxt)) topU
@@ -137,7 +139,7 @@ wcheck cxt topmostT topA topU = case Checking topmostT (forceFUE cxt topA) of
         S.WLam NEmpty i' qa' au' <$> check (bindEmpty' qa' a' au' cxt) t (b' $$ V.Var (_lvl cxt)) topU
 
   Checking t (V.Pi x' Impl a' au' b') -> do
-    let qa' = quote cxt DontUnfold a'
+    let qa' = quote cxt a'
     S.WLam x' Impl qa' au' <$> check (newBinder x' qa' au' cxt) t (b' $$ V.Var (_lvl cxt)) topU
 
   Checking (P.Pair t u) (V.Sg x a au b bu) -> do
@@ -268,14 +270,14 @@ infer cxt topmostT = case topmostT of
   P.Proj1 t _ -> do
     Infer t topA topU <- infer cxt t
     case forceFUE cxt topA of
-      V.Sg x a au b bu               -> pure $ Infer (S.Proj1 t) a au
-      (quote cxt DontUnfold -> topA) -> elabError cxt topmostT $ ExpectedSg topA
+      V.Sg x a au b bu    -> pure $ Infer (S.Proj1 t) a au
+      (quote cxt -> topA) -> elabError cxt topmostT $ ExpectedSg topA
 
   P.Proj2 t _ -> do
     Infer t topA topU <- infer cxt t
     case forceFUE cxt topA of
-      V.Sg x a au b bu               -> pure $ Infer (S.Proj2 t) (b $$$ unS (vProj1 (eval cxt t))) bu
-      (quote cxt DontUnfold -> topA) -> elabError cxt topmostT $ ExpectedSg topA
+      V.Sg x a au b bu    -> pure $ Infer (S.Proj2 t) (b $$$ unS (vProj1 (eval cxt t))) bu
+      (quote cxt -> topA) -> elabError cxt topmostT $ ExpectedSg topA
 
   P.ProjField t (span2RawName cxt -> topX) -> do
     Infer topT topA topU <- infer cxt t
@@ -301,7 +303,7 @@ infer cxt topmostT = case topmostT of
 
   P.Eq t u -> do
     Infer t a au <- infer cxt t
-    let qa = quote cxt DontUnfold a
+    let qa = quote cxt a
     u <- check cxt u a au
     pure $ Infer (S.Eq qa t u) V.Prop S.Set
 
@@ -317,7 +319,7 @@ infer cxt topmostT = case topmostT of
     b <- freshTyInU cxt S.Set
     let bv = eval cxt b
     p <- check cxt p (vEq cxt V.Set a bv) S.Set
-    pure $ Infer (S.Coe (quote cxt DontUnfold a) b p t) bv S.Set
+    pure $ Infer (S.Coe (quote cxt a) b p t) bv S.Set
 
   P.Coe _ a b p t -> do
     a <- maybeInferSet cxt a

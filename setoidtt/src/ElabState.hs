@@ -37,7 +37,7 @@ readTop (Lvl x) | 0 <= x && x < topSize = A.read top x
 
 data MetaEntry
   = MEUnsolved V.Ty S.U
-  | MESolved V.Val
+  | MESolved V.Val V.Ty S.U
 
 metaCxt :: D.Array MetaEntry
 metaCxt = runIO D.empty

@@ -22,17 +22,16 @@ data TopLevel
 
 data Tm
   = Var Span
+  | App Tm Tm ArgInfo
+  | Lam Pos Bind ArgInfo Tm
+  | Pair Tm Tm
+  | ProjField Tm Span
   | Let Pos Span (Maybe Tm) Tm Tm
 
   | Pi Pos Bind Icit Tm Tm
-  | App Tm Tm ArgInfo
-  | Lam Pos Bind ArgInfo Tm
-
   | Sg Pos Bind Tm Tm
-  | Pair Tm Tm
   | Proj1 Tm Pos
   | Proj2 Tm Pos
-  | ProjField Tm Span
 
   | Set     Span
   | Prop    Span

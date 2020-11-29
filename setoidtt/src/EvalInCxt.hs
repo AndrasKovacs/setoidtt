@@ -31,8 +31,8 @@ forceFUE' :: Cxt -> Val -> Val
 forceFUE' cxt t = Eval.forceFUE' (_lvl cxt) t
 {-# inline forceFUE' #-}
 
-quote :: Cxt -> Unfolding -> Val -> Tm
-quote cxt unf t = Eval.quote (_lvl cxt) unf t
+quote :: Cxt -> Val -> Tm
+quote cxt t = Eval.quote (_lvl cxt) DontUnfold t
 {-# inline quote #-}
 
 vEq :: Cxt -> Val -> Val -> Val -> Val

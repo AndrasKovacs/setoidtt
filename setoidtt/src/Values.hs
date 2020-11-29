@@ -37,21 +37,21 @@ pattern Snoc env v <- S (WSnoc env v) where Snoc env ~v = S (WSnoc env v)
 data RigidHead
   = RHLocalVar Lvl
   | RHPostulate Lvl
+  | RHCoe Val Val Val Val
   | RHRefl Ty Val
   | RHSym Val Val Val Val
-  | RHAp Val Val Val Val Val Val
   | RHTrans Val Val Val Val Val Val
+  | RHAp Val Val Val Val Val Val
   | RHExfalso S.U Val Val
-  | RHCoe Val Val Val Val
 
 data FlexHead
   -- blocking on Meta
   = FHMeta MetaVar
   | FHCoeRefl MetaVar Val Val Val Val
 
-  -- blocking on UMax
-  | FHCoeUMax S.UMax Val Val Val Val
-  | FHEqUMax S.UMax Val Val Val
+  -- blocking on Max
+  | FHCoeMax S.UMax Val Val Val Val
+  | FHEqMax S.UMax Val Val Val
 
 data UnfoldHead  -- TODO: unpack
   = UHMeta MetaVar
@@ -109,14 +109,14 @@ data WVal
   | WEq Val Val Val Val            -- Eq computation to non-Eq type
 
   -- Canonical values
+  | WPair Val S.U Val S.U
+  | WLam Name Icit Ty S.U {-# unpack #-} Closure
+  | WSg  Name      Ty S.U {-# unpack #-} Closure S.U
+  | WPi  Name Icit Ty S.U {-# unpack #-} Closure
   | WU S.U
   | WTop
   | WTt
   | WBot
-  | WPair Val S.U Val S.U
-  | WSg  Name      Ty S.U {-# unpack #-} Closure S.U
-  | WPi  Name Icit Ty S.U {-# unpack #-} Closure
-  | WLam Name Icit Ty S.U {-# unpack #-} Closure
 
 pattern Rigid h sp      = S (WRigid h sp)
 pattern Flex h sp       = S (WFlex h sp)

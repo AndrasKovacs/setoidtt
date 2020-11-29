@@ -304,8 +304,10 @@ pPiExp = do
         [([x], a, Expl)] -> $(switch [| case _ of
           "->" -> Pi pos x Expl a <$> pPiExp
           "→"  -> Pi pos x Expl a <$> pPiExp
-          "*"  -> Sg pos x a <$> pSigmaExp
-          "×"  -> Sg pos x a <$> pSigmaExp
+          "*"  -> do dom <- Sg pos x a <$> pSigmaExp;
+                     br pArrow (Pi pos DontBind Expl dom <$> pPiExp) (pure dom)
+          "×"  -> do dom <- Sg pos x a <$> pSigmaExp;
+                     br pArrow (Pi pos DontBind Expl dom <$> pPiExp) (pure dom)
           _    -> err "expected \"->\", \"→\", \"×\" or \"*\" after binder" |])
         binders -> do
           pArrow        `cut` "expected \"->\" or \"→\" in function type"
